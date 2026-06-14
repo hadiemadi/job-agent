@@ -42,9 +42,10 @@ An AI-powered job search and CV tailoring agent.
 - warnings from pdf2json about "NOT valid form element" are harmless — suppressed in v1.1
 
 ## Bug Backlog
-- **Country filter bug**: Selecting "United States" returns GB jobs — country param not being passed correctly to job search
-- **CV link UX**: After tailoring CV, the link to open it is not visible enough — needs a highlighted/prominent button
-- **Job database coverage**: JSearch returns too few results — evaluate alternative APIs (LinkedIn, Indeed, Adzuna) in Phase 5+
+- **CV link UX**: After tailoring CV, the link to open it is not visible enough — needs a highlighted/prominent button ✅ fixed in v1.1
+- **Country/location filter**: JSearch coverage too weak for reliable geo-filtering — deferred. Future goal: fetch US jobs and filter by state (e.g. California, Texas). Requires switching to a better API (LinkedIn, Indeed, Adzuna) with proper geo-filtering support.
+- **CV re-read on country change**: If only the country changes (same CV), the app re-reads and re-analyzes the CV unnecessarily — cache CV text + job titles in the session so only the job search step reruns
+- **Executive mismatch analysis**: After ranking, generate a short AI summary explaining WHY the found jobs are not a strong fit overall (e.g. "Market shows mostly mid-level roles; your profile is senior TPM with RF specialization — low overlap with available listings"). Shown above the job cards as a coach-level insight.
 
 ## Priority Roadmap
 
@@ -60,9 +61,57 @@ An AI-powered job search and CV tailoring agent.
 | # | Task | Why |
 |---|------|-----|
 | 5 | Improve UI | Better usability + portfolio |
-| 6 | Career Coach | AI career advisor, not just job ranker |
+| 6 | Career Coach (3 phases — see spec below) | AI career advisor, not just job ranker |
 | 7 | Ghost Job Detection | Flag suspicious listings |
 | 8 | Fix Sweden/Stockholm search | Personal job search |
+
+### Career Coach — Feature Spec
+
+A 3-phase AI career advisor that goes beyond job ranking.
+
+**Coach Phase 1 — Profile Analysis + Career Direction**
+- Claude deeply analyzes the CV (experience, skills, seniority, trajectory)
+- Asks the user one high-level input: career direction preference
+  - Technical track (deep specialist, IC, architect)
+  - Generalist track (cross-functional, program/product management)
+  - Leadership track (director, VP, people management)
+- Output: 3–5 ideal role suggestions tailored to the chosen direction
+  - These may NOT exist in current job ads — they are aspirational/strategic targets
+  - Each role includes: title, why it fits this person's background, what makes them a strong candidate
+
+**Coach Phase 2 — Market Fit**
+- Uses the current job search results (already fetched and ranked)
+- Maps the user's ideal roles (from Phase 1) to what actually exists in the market today
+- Output: best available matches with explanation of:
+  - Why this job fits as a NEXT STEP (not just skills match)
+  - How it aligns with the chosen career direction
+
+**Coach Phase 3 — Career Path + Challenges**
+- For each role proposed in Phase 1 or 2:
+  - Key challenges the candidate will likely face
+  - Skills gaps to address before/after transition
+  - What success looks like in 6–12 months
+  - Long-term trajectory from this role
+
+**UI**: New "Career Coach" tab in the main UI, available after a job search completes.
+
+### HR CV Reviewer — Feature Spec
+
+After a CV is tailored for a specific job, an HR expert AI reviews it and gives structured feedback.
+
+**Trigger**: "HR Review" button appears next to "Open Tailored CV ↗" after tailoring completes.
+
+**Claude acts as**: Senior HR manager / recruiter with industry expertise in the target job's sector.
+
+**Review covers**:
+1. **Template & presentation** — Does the format look professional for this role/industry? ATS-friendly?
+2. **Content vs job description** — How well does the CV content match the specific JD? Missing keywords?
+3. **Industry wording** — Are the right sector-specific terms used? What sounds off to an HR reader?
+4. **Strengths** — What stands out positively in this CV for this role?
+5. **Top 3 improvements** — Concrete, actionable edits the candidate should make before applying
+
+**Output**: Structured feedback panel shown in the UI alongside the CV link.
+**Location in roadmap**: Phase 3 — CV Features (after Career Coach)
 
 ### Phase 3 — CV Features
 | # | Task | Why |
@@ -71,6 +120,7 @@ An AI-powered job search and CV tailoring agent.
 | 10 | Multiple CV templates | Modern, Classic, Executive |
 | 11 | Result-oriented CV restructuring | Stronger CV |
 | 12 | Writing style tuning | More personalized CV |
+| 13 | HR CV Reviewer | AI HR expert reviews tailored CV vs JD — template, content, industry wording, top 3 fixes |
 
 ### Phase 4 — Advanced Features (selective)
 | # | Task | Why |
@@ -115,10 +165,7 @@ An AI-powered job search and CV tailoring agent.
 ## Communication Style & Learning Goals
 
 ### Language
-- Primary: Mixed Farsi/English (developer prefers this natural style)
-- Code explanations: Always in English
-- When switching language mid-sentence: go to a new line
-- General conversation: Farsi with English technical terms
+- English only — no Farsi
 
 ### Code Explanation Format
 For every code snippet, always explain:

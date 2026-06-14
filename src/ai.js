@@ -18,7 +18,10 @@ async function extractJobTitles(cvText) {
   return message.content[0].text.split(',').map(t => t.trim());
 }
 
-async function analyzeJobFit(cvText, jobs) {
+async function analyzeJobFit(cvText, jobs, countryCode = 'GB') {
+  const countryNames = { GB: 'United Kingdom', SE: 'Sweden', US: 'United States', DE: 'Germany', NL: 'Netherlands' };
+  const preferredCountry = countryNames[countryCode] || 'United Kingdom';
+
   const jobList = jobs.map((job, i) =>
     `${i+1}. ${job.job_title} at ${job.employer_name} (${job.job_country || 'Remote'}) - ${job.job_description?.slice(0, 200)}...`
   ).join('\n');
@@ -27,7 +30,7 @@ async function analyzeJobFit(cvText, jobs) {
     max_tokens: 2000,
     messages: [{
       role: 'user',
-      content: `Here is my CV:\n${cvText}\n\nHere are the jobs found:\n${jobList}\n\nPlease rank these jobs by fit. Prioritize remote-friendly and Sweden-based roles. Return a JSON array with this exact structure, no explanation:
+      content: `Here is my CV:\n${cvText}\n\nHere are the jobs found:\n${jobList}\n\nPlease rank these jobs by fit. Prioritize jobs based in ${preferredCountry} or Remote. Deprioritize jobs in other countries. Return a JSON array with this exact structure, no explanation:
 [{
   "rank": 1,
   "job_title": "",
