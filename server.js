@@ -162,12 +162,68 @@ app.get('/', (req, res) => {
         <label>Country</label>
         <select id="country">
           <option value="GB">United Kingdom</option>
-          <option value="SE" selected>Sweden</option>
-          <option value="US">United States</option>
+          <option value="SE">Sweden</option>
+          <option value="US" selected>United States</option>
           <option value="DE">Germany</option>
           <option value="NL">Netherlands</option>
         </select>
       </div>
+    </div>
+    <div class="form-group" id="stateGroup" style="display:none;margin-bottom:16px;">
+      <label>US State (optional — leave blank for all states)</label>
+      <select id="usState">
+        <option value="">All US States</option>
+        <option value="Alabama">Alabama</option>
+        <option value="Alaska">Alaska</option>
+        <option value="Arizona">Arizona</option>
+        <option value="Arkansas">Arkansas</option>
+        <option value="California">California</option>
+        <option value="Colorado">Colorado</option>
+        <option value="Connecticut">Connecticut</option>
+        <option value="Delaware">Delaware</option>
+        <option value="Florida">Florida</option>
+        <option value="Georgia">Georgia</option>
+        <option value="Hawaii">Hawaii</option>
+        <option value="Idaho">Idaho</option>
+        <option value="Illinois">Illinois</option>
+        <option value="Indiana">Indiana</option>
+        <option value="Iowa">Iowa</option>
+        <option value="Kansas">Kansas</option>
+        <option value="Kentucky">Kentucky</option>
+        <option value="Louisiana">Louisiana</option>
+        <option value="Maine">Maine</option>
+        <option value="Maryland">Maryland</option>
+        <option value="Massachusetts">Massachusetts</option>
+        <option value="Michigan">Michigan</option>
+        <option value="Minnesota">Minnesota</option>
+        <option value="Mississippi">Mississippi</option>
+        <option value="Missouri">Missouri</option>
+        <option value="Montana">Montana</option>
+        <option value="Nebraska">Nebraska</option>
+        <option value="Nevada">Nevada</option>
+        <option value="New Hampshire">New Hampshire</option>
+        <option value="New Jersey">New Jersey</option>
+        <option value="New Mexico">New Mexico</option>
+        <option value="New York">New York</option>
+        <option value="North Carolina">North Carolina</option>
+        <option value="North Dakota">North Dakota</option>
+        <option value="Ohio">Ohio</option>
+        <option value="Oklahoma">Oklahoma</option>
+        <option value="Oregon">Oregon</option>
+        <option value="Pennsylvania">Pennsylvania</option>
+        <option value="Rhode Island">Rhode Island</option>
+        <option value="South Carolina">South Carolina</option>
+        <option value="South Dakota">South Dakota</option>
+        <option value="Tennessee">Tennessee</option>
+        <option value="Texas">Texas</option>
+        <option value="Utah">Utah</option>
+        <option value="Vermont">Vermont</option>
+        <option value="Virginia">Virginia</option>
+        <option value="Washington">Washington</option>
+        <option value="West Virginia">West Virginia</option>
+        <option value="Wisconsin">Wisconsin</option>
+        <option value="Wyoming">Wyoming</option>
+      </select>
     </div>
     <button class="btn-primary" id="searchBtn" onclick="startSearch()">Search Jobs</button>
   </div>
@@ -255,6 +311,12 @@ app.get('/', (req, res) => {
 <script>
 const countryNames = { GB:'United Kingdom', SE:'Sweden', US:'United States', DE:'Germany', NL:'Netherlands' };
 let selectedDirection = null;
+document.getElementById('country').addEventListener('change', function() {
+  document.getElementById('stateGroup').style.display = this.value === 'US' ? 'block' : 'none';
+});
+if (document.getElementById('country').value === 'US') {
+  document.getElementById('stateGroup').style.display = 'block';
+}
 
 function showTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', ['jobs','coach'][i] === name));
@@ -292,6 +354,8 @@ function setCoachStep(n, state, detail) {
 async function startSearch() {
   const fileInput = document.getElementById('cvFile');
   const country = document.getElementById('country').value;
+  const usState = country === 'US' ? document.getElementById('usState').value : '';
+  const locationLabel = country === 'US' && usState ? usState + ', US' : (countryNames[country] || country);
   if (!fileInput.files[0]) { alert('Please upload your CV first'); return; }
 
   document.getElementById('searchBtn').disabled = true;
@@ -305,6 +369,7 @@ async function startSearch() {
   const formData = new FormData();
   formData.append('cv', fileInput.files[0]);
   formData.append('country', country);
+  if (usState) formData.append('usState', usState);
 
   let jobsData;
   try {
@@ -318,7 +383,7 @@ async function startSearch() {
   if (jobsData.error) { setStep(1, 'error', jobsData.error); document.getElementById('searchBtn').disabled = false; return; }
 
   setStep(1, 'done', jobsData.titlesFound + ' job titles extracted');
-  setStep(2, 'done', jobsData.count + ' jobs found in ' + (countryNames[country] || country));
+  setStep(2, 'done', jobsData.count + ' jobs found in ' + locationLabel);
 
   if (jobsData.count === 0) {
     setStep(2, 'warn', 'No jobs found — try a different country');
@@ -344,7 +409,7 @@ async function startSearch() {
   window._jobs = analyzeData.jobs;
   window._cvPath = jobsData.cvPath;
 
-  document.getElementById('resultsTitle').textContent = analyzeData.jobs.length + ' job matches in ' + (countryNames[country] || country);
+  document.getElementById('resultsTitle').textContent = analyzeData.jobs.length + ' job matches in ' + locationLabel;
   document.getElementById('jobList').innerHTML = analyzeData.jobs.map((job, i) => \`
     <div class="job-card" id="card-\${i}">
       <div class="rank">#\${job.rank}</div>
@@ -498,12 +563,13 @@ app.post('/search/jobs', upload.single('cv'), async (req, res) => {
   try {
     const cvPath = req.file.path;
     const country = req.body.country || 'GB';
+    const usState = req.body.usState || '';
     const cvText = await readCV(cvPath);
     const jobTitles = await extractJobTitles(cvText);
 
     let allJobs = [];
     for (const title of jobTitles) {
-      const jobs = await searchAllLocations(title, country);
+      const jobs = await searchAllLocations(title, country, usState);
       allJobs = [...allJobs, ...jobs];
     }
     const uniqueJobs = [...new Map(allJobs.map(j => [j.job_id, j])).entries()].map(([, j]) => j);
