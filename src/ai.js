@@ -22,12 +22,13 @@ async function analyzeJobFit(cvText, jobs, countryCode = 'GB') {
   const countryNames = { GB: 'United Kingdom', SE: 'Sweden', US: 'United States', DE: 'Germany', NL: 'Netherlands' };
   const preferredCountry = countryNames[countryCode] || 'United Kingdom';
 
-  const jobList = jobs.map((job, i) =>
-    `${i+1}. ${job.job_title} at ${job.employer_name} (${job.job_country || 'Remote'}) - ${job.job_description?.slice(0, 200)}...`
+  const topJobs = jobs.slice(0, 30);
+  const jobList = topJobs.map((job, i) =>
+    `${i+1}. ${job.job_title} at ${job.employer_name} (${job.job_city || job.job_country || 'Remote'}) - ${(job.job_description || '').slice(0, 300)}`
   ).join('\n');
   const message = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2000,
+    max_tokens: 8192,
     messages: [{
       role: 'user',
       content: `Here is my CV:\n${cvText}\n\nHere are the jobs found:\n${jobList}\n\nPlease rank these jobs by fit. Prioritize jobs based in ${preferredCountry} or Remote. Deprioritize jobs in other countries. Return a JSON array with this exact structure, no explanation:
@@ -45,7 +46,12 @@ async function analyzeJobFit(cvText, jobs, countryCode = 'GB') {
   });
   try {
     const raw = message.content[0].text.replace(/```json|```/g, '').trim();
-    return JSON.parse(raw);
+    const ranked = JSON.parse(raw);
+    // Inject apply links from source data since Claude can't reliably reproduce URLs
+    return ranked.map((r, i) => ({
+      ...r,
+      apply_link: r.apply_link || topJobs[r.rank - 1]?.job_apply_link || '',
+    }));
   } catch (e) {
     return [];
   }
