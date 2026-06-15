@@ -5,6 +5,7 @@ const {
   readCV, extractJobTitles, searchAllLocations, analyzeJobFit, rewriteCV,
   analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath,
 } = require('./agent');
+const { generatePDF } = require('./src/pdf');
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
@@ -48,6 +49,8 @@ app.get('/', (req, res) => {
   .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
   .btn-cv-link { display: inline-block; margin-top: 8px; background: #1A7A3C; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; text-decoration: none; }
   .btn-cv-link:hover { background: #145c2d; }
+  .btn-pdf-link { display: inline-block; margin-top: 6px; background: #185FA5; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; text-decoration: none; }
+  .btn-pdf-link:hover { background: #0C447C; }
   .btn-coach-path { background: #5C35A0; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; margin-top: 8px; }
   .btn-coach-path:hover { background: #47287d; }
   .btn-coach-path:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -445,7 +448,9 @@ async function tailorCV(index) {
     const data = await res.json();
     btn.textContent = 'Tailor CV'; btn.disabled = false;
     if (data.filePath) {
-      linkDiv.innerHTML = '<a class="btn-cv-link" href="/' + data.filePath + '" target="_blank">Open Tailored CV ↗</a>';
+      linkDiv.innerHTML =
+        '<a class="btn-cv-link" href="/' + data.filePath + '" target="_blank">Open CV ↗</a>' +
+        (data.pdfPath ? '<br><a class="btn-pdf-link" href="/' + data.pdfPath + '" download>Download PDF ↓</a>' : '');
       window.open('/' + data.filePath, '_blank');
     }
   } catch (err) {
@@ -636,7 +641,8 @@ app.post('/rewrite', async (req, res) => {
     const { job, cvPath } = req.body;
     const cvText = await readCV(cvPath);
     const filePath = await rewriteCV(cvText, job);
-    res.json({ filePath });
+    const pdfPath = await generatePDF(filePath);
+    res.json({ filePath, pdfPath });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

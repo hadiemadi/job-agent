@@ -1,7 +1,25 @@
 # Job Agent — Project Context for Claude Code
 
+## Business Case
+
+**Primary goal:** Make job applications as fast and easy as possible for the client.
+
+**Core flow (must work perfectly):**
+1. Client uploads their CV
+2. System finds available jobs in the US, filtered by state
+3. AI ranks jobs by fit against the CV
+4. Client picks a job → CV is automatically tailored to that job
+5. Client downloads a professional PDF of the tailored CV
+6. Client clicks directly to the job application page
+
+**Secondary goals (layered on top):**
+- Career Coach: AI advisor to help identify the right role and next career step
+- Self-assessment: future "career psychologist" feature — helps clients understand if they are underestimating their own skills and capabilities
+
+**Current blocker:** JSearch API has poor US coverage and no reliable state-level filtering. Need a better job data source.
+
 ## What we're building
-An AI-powered job search and CV tailoring agent.
+An AI-powered job application assistant — find US jobs by state, tailor CV, export PDF, apply.
 
 ## Tech Stack
 - Runtime: Node.js v24 (WSL/Ubuntu 24.04)
@@ -43,27 +61,36 @@ An AI-powered job search and CV tailoring agent.
 
 ## Bug Backlog
 - **CV link UX**: After tailoring CV, the link to open it is not visible enough — needs a highlighted/prominent button ✅ fixed in v1.1
-- **Country/location filter**: JSearch coverage too weak for reliable geo-filtering — deferred. Future goal: fetch US jobs and filter by state (e.g. California, Texas). Requires switching to a better API (LinkedIn, Indeed, Adzuna) with proper geo-filtering support.
+- **Country/location filter**: JSearch coverage too weak for reliable geo-filtering — ✅ resolved by switching to Jooble with US state filtering.
 - **CV re-read on country change**: If only the country changes (same CV), the app re-reads and re-analyzes the CV unnecessarily — cache CV text + job titles in the session so only the job search step reruns
 - **Executive mismatch analysis**: After ranking, generate a short AI summary explaining WHY the found jobs are not a strong fit overall (e.g. "Market shows mostly mid-level roles; your profile is senior TPM with RF specialization — low overlap with available listings"). Shown above the job cards as a coach-level insight.
+- **LinkedIn job post import**: User should be able to paste a LinkedIn (or any) job post URL directly into the app and get the full service — tailored CV PDF + HR agent review — without going through the job search flow. Scrape/fetch the job post content from the URL, parse title/company/description, then feed into the existing tailor + HR review pipeline.
 
 ## Priority Roadmap
 
-### Phase 1 — Foundation (Do First)
-| # | Task | Why |
-|---|------|-----|
-| 1 | Refactor & modularize code | Clean foundation for everything else |
-| 2 | Write README.md | Documentation + portfolio |
-| 3 | Suppress pdf2json warnings | Cleaner output |
-| 4 | Create .env.example | Other devs know what variables are needed |
+### Phase 1 — Foundation ✅ Done
+| # | Task | Status |
+|---|------|--------|
+| 1 | Refactor & modularize code | ✅ |
+| 2 | Write README.md | ✅ |
+| 3 | Suppress pdf2json warnings | ✅ |
+| 4 | Create .env.example | ✅ |
 
-### Phase 2 — Core Features
+### Phase 2 — Core Features ✅ Done
+| # | Task | Status |
+|---|------|--------|
+| 5 | Improve UI + step-by-step progress | ✅ |
+| 6 | Career Coach (3 phases) | ✅ |
+| 7 | Ghost Job Detection | ⏳ deferred |
+| 8 | Fix location filter | ⏳ blocked on job API |
+
+### Phase 3 — Core Business Flow (Next Priority)
 | # | Task | Why |
 |---|------|-----|
-| 5 | Improve UI | Better usability + portfolio |
-| 6 | Career Coach (3 phases — see spec below) | AI career advisor, not just job ranker |
-| 7 | Ghost Job Detection | Flag suspicious listings |
-| 8 | Fix Sweden/Stockholm search | Personal job search |
+| 9 | **Find better US job source** | JSearch has no reliable US/state coverage — evaluate Adzuna, Indeed, LinkedIn |
+| 10 | **State-level filtering** | Client needs to filter jobs by US state (e.g. California, Texas) |
+| 11 | **PDF export of tailored CV** | Client needs a downloadable PDF to attach to job applications |
+| 12 | **Direct apply link** | One-click to job application page from the tailored CV result |
 
 ### Career Coach — Feature Spec
 
