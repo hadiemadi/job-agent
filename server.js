@@ -2,9 +2,10 @@ require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
 const {
-  readCV, extractJobTitles, searchAllLocations, analyzeJobFit, rewriteCV,
+  readCV, extractJobTitles, searchAllLocations, analyzeJobFit, rewriteCV, parseJobFromText,
   analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath,
 } = require('./agent');
+const { scrapeJobPage } = require('./src/scraper');
 const { generatePDF } = require('./src/pdf');
 
 const app = express();
@@ -141,6 +142,26 @@ app.get('/', (req, res) => {
 
   .no-results { text-align: center; padding: 48px; color: #999; font-size: 14px; }
   .alert-warn { background: #fff8e6; border: 1px solid #ffd980; color: #7a5500; border-radius: 8px; padding: 12px 16px; font-size: 13px; margin-bottom: 12px; }
+
+  /* Job link import */
+  .import-card { background: white; border-radius: 12px; border: 0.5px solid #E0E0E0; padding: 24px 32px; margin-bottom: 24px; }
+  .import-card h2 { font-size: 15px; font-weight: 500; color: #2C2C2A; margin-bottom: 6px; }
+  .import-card p { font-size: 12px; color: #999; margin-bottom: 14px; }
+  .import-row { display: flex; gap: 10px; align-items: flex-start; }
+  .import-row input[type="url"] { flex: 1; padding: 10px 14px; border: 0.5px solid #E0E0E0; border-radius: 8px; font-size: 14px; color: #333; }
+  .import-row input[type="url"]:focus { outline: none; border-color: #185FA5; }
+  .btn-fetch { background: #2C2C2A; color: white; border: none; padding: 10px 24px; border-radius: 8px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+  .btn-fetch:hover { background: #444; }
+  .btn-fetch:disabled { background: #ccc; cursor: not-allowed; }
+  .import-toggle { font-size: 12px; color: #185FA5; cursor: pointer; margin-top: 8px; display: inline-block; }
+  .import-toggle:hover { text-decoration: underline; }
+  .paste-area { margin-top: 10px; display: none; }
+  .paste-area textarea { width: 100%; height: 120px; padding: 10px 14px; border: 0.5px solid #E0E0E0; border-radius: 8px; font-size: 13px; resize: vertical; }
+  .import-result { margin-top: 14px; padding: 14px 16px; background: #f9f9f9; border: 0.5px solid #E0E0E0; border-radius: 8px; display: none; }
+  .import-result .ir-title { font-size: 15px; font-weight: 600; color: #2C2C2A; }
+  .import-result .ir-company { font-size: 13px; color: #666; margin-bottom: 10px; }
+  .import-result .ir-desc { font-size: 12px; color: #777; line-height: 1.6; max-height: 80px; overflow: hidden; }
+  .import-status { font-size: 13px; color: #185FA5; margin-top: 8px; display: none; }
 </style>
 </head>
 <body>
@@ -229,6 +250,30 @@ app.get('/', (req, res) => {
       </select>
     </div>
     <button class="btn-primary" id="searchBtn" onclick="startSearch()">Search Jobs</button>
+  </div>
+
+  <div class="import-card">
+    <h2>Have a specific job? Paste the link</h2>
+    <p>Works with LinkedIn, Indeed, company career pages — any public job post URL.</p>
+    <div class="import-row">
+      <input type="url" id="jobUrl" placeholder="https://www.linkedin.com/jobs/view/..." />
+      <button class="btn-fetch" id="fetchBtn" onclick="fetchJob()">Fetch Job</button>
+    </div>
+    <span class="import-toggle" onclick="togglePaste()">↳ LinkedIn blocked? Paste job text manually instead</span>
+    <div class="paste-area" id="pasteArea">
+      <textarea id="jobText" placeholder="Paste the full job description here..."></textarea>
+      <button class="btn-fetch" style="margin-top:8px;" onclick="parseManual()">Parse Job Text</button>
+    </div>
+    <div class="import-status" id="importStatus"></div>
+    <div class="import-result" id="importResult">
+      <div class="ir-title" id="irTitle"></div>
+      <div class="ir-company" id="irCompany"></div>
+      <div class="ir-desc" id="irDesc"></div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-secondary" id="importTailorBtn" onclick="tailorImported()">Tailor CV for this Job</button>
+        <div id="importCvLink"></div>
+      </div>
+    </div>
   </div>
 
   <div class="status" id="status">
@@ -533,6 +578,96 @@ function renderCoachResults(data) {
   document.getElementById('coachResults').innerHTML = profileHtml + rolesHtml + marketHtml;
 }
 
+// ── Job link import ──────────────────────────────────────────────────────────
+
+function togglePaste() {
+  const area = document.getElementById('pasteArea');
+  area.style.display = area.style.display === 'block' ? 'none' : 'block';
+}
+
+function showImportStatus(msg) {
+  const el = document.getElementById('importStatus');
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+function renderImportedJob(job) {
+  window._importedJob = job;
+  document.getElementById('irTitle').textContent = job.job_title || 'Unknown title';
+  document.getElementById('irCompany').textContent = [job.employer_name, job.job_city].filter(Boolean).join(' · ');
+  document.getElementById('irDesc').textContent = (job.job_description || '').slice(0, 300) + '...';
+  document.getElementById('importResult').style.display = 'block';
+  document.getElementById('importCvLink').innerHTML = '';
+}
+
+async function fetchJob() {
+  const url = document.getElementById('jobUrl').value.trim();
+  if (!url) { alert('Please enter a job URL'); return; }
+  document.getElementById('fetchBtn').disabled = true;
+  document.getElementById('importResult').style.display = 'none';
+  showImportStatus('Fetching job page...');
+  try {
+    const res = await fetch('/fetch-job', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+    const data = await res.json();
+    if (data.error) {
+      if (data.loginWall) {
+        showImportStatus('LinkedIn requires login for this post — paste the job description below instead.');
+        document.getElementById('pasteArea').style.display = 'block';
+      } else {
+        showImportStatus('Error: ' + data.error);
+      }
+    } else {
+      showImportStatus('');
+      renderImportedJob(data.job);
+    }
+  } catch (err) {
+    showImportStatus('Error: ' + err.message);
+  }
+  document.getElementById('fetchBtn').disabled = false;
+}
+
+async function parseManual() {
+  const text = document.getElementById('jobText').value.trim();
+  if (!text) { alert('Please paste the job description first'); return; }
+  showImportStatus('Parsing job description...');
+  document.getElementById('importResult').style.display = 'none';
+  try {
+    const res = await fetch('/fetch-job', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobText: text }) });
+    const data = await res.json();
+    if (data.error) { showImportStatus('Error: ' + data.error); return; }
+    showImportStatus('');
+    renderImportedJob(data.job);
+  } catch (err) {
+    showImportStatus('Error: ' + err.message);
+  }
+}
+
+async function tailorImported() {
+  const job = window._importedJob;
+  if (!job) return;
+  if (!window._cvPath && !appSession) {
+    alert('Please upload your CV using the search form first.');
+    return;
+  }
+  const btn = document.getElementById('importTailorBtn');
+  const linkDiv = document.getElementById('importCvLink');
+  btn.disabled = true; btn.textContent = 'Tailoring + PDF...';
+  try {
+    const res = await fetch('/rewrite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job, cvPath: window._cvPath }) });
+    const data = await res.json();
+    btn.textContent = 'Tailor CV for this Job'; btn.disabled = false;
+    if (data.filePath) {
+      linkDiv.innerHTML =
+        '<a class="btn-cv-link" href="/' + data.filePath + '" target="_blank">Open CV ↗</a>' +
+        (data.pdfPath ? '&nbsp;<a class="btn-pdf-link" href="/' + data.pdfPath + '" download>Download PDF ↓</a>' : '');
+      window.open('/' + data.filePath, '_blank');
+    }
+  } catch (err) {
+    btn.textContent = 'Tailor CV for this Job'; btn.disabled = false;
+    linkDiv.innerHTML = '<span style="color:#cc0000;font-size:12px;">' + err.message + '</span>';
+  }
+}
+
 async function getCareerPath(roleTitle, index) {
   const btn = document.getElementById('path-btn-' + index);
   const panel = document.getElementById('path-panel-' + index);
@@ -631,6 +766,33 @@ app.post('/coach/path', async (req, res) => {
     const path = await buildCareerPath(roleTitle, appSession.cvText);
     if (!path) return res.status(500).json({ error: 'Career path analysis failed. Please try again.' });
     res.json(path);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/fetch-job', async (req, res) => {
+  try {
+    const { url, jobText } = req.body;
+
+    let rawText;
+    if (jobText) {
+      rawText = jobText;
+    } else if (url) {
+      try {
+        rawText = await scrapeJobPage(url);
+      } catch (err) {
+        if (err.message === 'LOGIN_WALL') {
+          return res.status(422).json({ error: 'LinkedIn requires login to view this post.', loginWall: true });
+        }
+        throw err;
+      }
+    } else {
+      return res.status(400).json({ error: 'Provide a url or jobText.' });
+    }
+
+    const job = await parseJobFromText(rawText, url || '');
+    res.json({ job });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

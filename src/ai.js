@@ -105,4 +105,42 @@ Return ONLY the JSON, no explanation.`
   return fileName;
 }
 
-module.exports = { extractJobTitles, analyzeJobFit, rewriteCV };
+async function parseJobFromText(rawText, sourceUrl) {
+  const message = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1000,
+    messages: [{
+      role: 'user',
+      content: `Extract the job posting details from this web page text. Return JSON only, no explanation:
+{
+  "job_title": "",
+  "employer_name": "",
+  "job_city": "",
+  "job_employment_type": "",
+  "job_description": ""
+}
+
+For job_description include the full responsibilities and requirements.
+If a field is not found leave it as an empty string.
+
+Page text:
+${rawText}`
+    }]
+  });
+
+  const raw = message.content[0].text.replace(/```json|```/g, '').trim();
+  const parsed = JSON.parse(raw);
+  return {
+    job_id: 'imported-' + Date.now(),
+    job_title:           parsed.job_title || '',
+    employer_name:       parsed.employer_name || '',
+    job_city:            parsed.job_city || '',
+    job_country:         '',
+    job_description:     parsed.job_description || '',
+    job_employment_type: parsed.job_employment_type || '',
+    job_apply_link:      sourceUrl,
+    job_is_remote:       /remote/i.test(rawText),
+  };
+}
+
+module.exports = { extractJobTitles, analyzeJobFit, rewriteCV, parseJobFromText };
