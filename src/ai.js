@@ -105,6 +105,37 @@ Return ONLY the JSON, no explanation.`
   return fileName;
 }
 
+async function reviewCV(cvText, job) {
+  const message = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1200,
+    messages: [{
+      role: 'user',
+      content: `You are a senior HR manager reviewing a CV for a specific role. Be concise and direct.
+
+JOB: ${job.job_title} at ${job.employer_name || job.company || ''}
+${(job.job_description || job.description || '').slice(0, 800)}
+
+CV:
+${cvText}
+
+Return JSON only:
+{
+  "overall_match": "Strong | Moderate | Weak",
+  "strengths": ["", ""],
+  "top_3_improvements": [
+    { "issue": "", "fix": "" },
+    { "issue": "", "fix": "" },
+    { "issue": "", "fix": "" }
+  ]
+}`
+    }]
+  });
+
+  const raw = message.content[0].text.replace(/```json|```/g, '').trim();
+  return JSON.parse(raw);
+}
+
 async function parseJobFromText(rawText, sourceUrl) {
   const message = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -143,4 +174,4 @@ ${rawText}`
   };
 }
 
-module.exports = { extractJobTitles, analyzeJobFit, rewriteCV, parseJobFromText };
+module.exports = { extractJobTitles, analyzeJobFit, rewriteCV, reviewCV, parseJobFromText };

@@ -2,7 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
 const {
-  readCV, extractJobTitles, searchAllLocations, analyzeJobFit, rewriteCV, parseJobFromText,
+  readCV, extractJobTitles, searchAllLocations, analyzeJobFit,
+  rewriteCV, reviewCV, parseJobFromText,
   analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath,
 } = require('./agent');
 const { scrapeJobPage } = require('./src/scraper');
@@ -13,8 +14,9 @@ const upload = multer({ dest: 'uploads/' });
 app.use(express.json());
 app.use('/output', express.static('output'));
 
-// Persists for the lifetime of a single CV upload session
 let appSession = { cvText: null, cvPath: null, jobs: null, rankedJobs: null };
+
+// ── HTML UI ───────────────────────────────────────────────────────────────────
 
 app.get('/', (req, res) => {
   res.send(`<!DOCTYPE html>
@@ -24,144 +26,124 @@ app.get('/', (req, res) => {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Job Agent</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f4f4; color: #333; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI',Arial,sans-serif; background:#f0f0ee; color:#333; }
 
-  .header { background: #2C2C2A; color: white; padding: 24px 48px; display: flex; align-items: center; gap: 16px; }
-  .header h1 { font-size: 22px; font-weight: 500; }
-  .header span { font-size: 13px; color: rgba(255,255,255,0.5); }
-  .accent { width: 4px; height: 32px; background: #185FA5; border-radius: 2px; }
+.header { background:#2C2C2A; color:white; padding:20px 48px; display:flex; align-items:center; gap:14px; }
+.header h1 { font-size:20px; font-weight:500; }
+.header span { font-size:12px; color:rgba(255,255,255,0.45); }
+.accent { width:4px; height:28px; background:#185FA5; border-radius:2px; }
 
-  .container { max-width: 960px; margin: 40px auto; padding: 0 24px; }
+.container { max-width:780px; margin:36px auto; padding:0 20px; }
 
-  .upload-card { background: white; border-radius: 12px; border: 0.5px solid #E0E0E0; padding: 32px; margin-bottom: 24px; }
-  .upload-card h2 { font-size: 16px; font-weight: 500; margin-bottom: 20px; color: #2C2C2A; }
-  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-  .form-group { display: flex; flex-direction: column; gap: 6px; }
-  .form-group label { font-size: 12px; color: #666; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; }
-  select { padding: 10px 14px; border: 0.5px solid #E0E0E0; border-radius: 8px; font-size: 14px; color: #333; background: white; }
-  input[type="file"] { padding: 10px 14px; border: 0.5px solid #E0E0E0; border-radius: 8px; font-size: 14px; color: #333; background: white; width: 100%; }
+.card { background:white; border-radius:12px; border:0.5px solid #E0E0E0; padding:28px 32px; margin-bottom:20px; }
+.card h2 { font-size:15px; font-weight:600; color:#2C2C2A; margin-bottom:18px; }
+.card h3 { font-size:13px; font-weight:600; color:#2C2C2A; margin-bottom:14px; }
 
-  .btn-primary { background: #185FA5; color: white; border: none; padding: 12px 32px; border-radius: 8px; font-size: 14px; cursor: pointer; width: 100%; margin-top: 8px; }
-  .btn-primary:hover { background: #0C447C; }
-  .btn-primary:disabled { background: #ccc; cursor: not-allowed; }
-  .btn-secondary { background: white; color: #185FA5; border: 1px solid #185FA5; padding: 8px 20px; border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap; }
-  .btn-secondary:hover { background: #f0f7ff; }
-  .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
-  .btn-cv-link { display: inline-block; margin-top: 8px; background: #1A7A3C; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; text-decoration: none; }
-  .btn-cv-link:hover { background: #145c2d; }
-  .btn-pdf-link { display: inline-block; margin-top: 6px; background: #185FA5; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; text-decoration: none; }
-  .btn-pdf-link:hover { background: #0C447C; }
-  .btn-coach-path { background: #5C35A0; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; margin-top: 8px; }
-  .btn-coach-path:hover { background: #47287d; }
-  .btn-coach-path:disabled { opacity: 0.5; cursor: not-allowed; }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
+.form-group { display:flex; flex-direction:column; gap:5px; }
+.form-group label { font-size:11px; color:#888; font-weight:600; letter-spacing:0.6px; text-transform:uppercase; }
+.form-group label .opt { font-weight:400; color:#bbb; text-transform:none; letter-spacing:0; }
+input[type="file"], input[type="url"], select, textarea {
+  padding:10px 13px; border:0.5px solid #ddd; border-radius:8px; font-size:13px; color:#333; background:white; width:100%;
+}
+input[type="url"]:focus, select:focus, textarea:focus { outline:none; border-color:#185FA5; }
+textarea { resize:vertical; height:100px; }
 
-  /* Status */
-  .status { padding: 24px; display: none; }
-  .status.active { display: block; }
-  .status-step { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
-  .status-step:last-child { border-bottom: none; }
-  .step-icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; margin-top: 1px; }
-  .step-icon.waiting { background: #f0f0f0; color: #999; }
-  .step-icon.running { background: #E6F1FB; color: #185FA5; }
-  .step-icon.done { background: #EAF3DE; color: #1A7A3C; }
-  .step-icon.warn { background: #fff8e6; color: #7a5500; }
-  .step-icon.error { background: #fff0f0; color: #cc0000; }
-  .spinner-sm { width: 14px; height: 14px; border: 2px solid #E0E0E0; border-top-color: #185FA5; border-radius: 50%; animation: spin 0.8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .step-text .label { font-size: 13px; color: #333; }
-  .step-text .detail { font-size: 12px; margin-top: 2px; }
-  .detail.ok { color: #1A7A3C; }
-  .detail.warn { color: #cc5500; }
-  .detail.info { color: #185FA5; }
+.btn { border:none; padding:11px 28px; border-radius:8px; font-size:14px; cursor:pointer; font-weight:500; }
+.btn-go { background:#2C2C2A; color:white; width:100%; margin-top:4px; }
+.btn-go:hover { background:#444; }
+.btn-go:disabled { background:#bbb; cursor:not-allowed; }
+.btn-blue { background:#185FA5; color:white; }
+.btn-blue:hover { background:#0C447C; }
+.btn-blue:disabled { background:#bbb; cursor:not-allowed; }
+.btn-green { background:#1A7A3C; color:white; text-decoration:none; display:inline-block; }
+.btn-green:hover { background:#145c2d; }
+.btn-ghost { background:white; color:#185FA5; border:1px solid #185FA5; }
+.btn-ghost:hover { background:#f0f7ff; }
+.btn-ghost:disabled { opacity:0.5; cursor:not-allowed; }
+.btn-sm { padding:7px 16px; font-size:12px; }
 
-  /* Tabs */
-  .tabs { display: none; margin-bottom: 0; }
-  .tabs.active { display: flex; }
-  .tab-btn { padding: 10px 24px; font-size: 14px; border: none; background: #e8e8e6; color: #666; cursor: pointer; border-radius: 8px 8px 0 0; margin-right: 4px; }
-  .tab-btn.active { background: white; color: #2C2C2A; font-weight: 500; }
-  .tab-panel { display: none; background: white; border-radius: 0 12px 12px 12px; border: 0.5px solid #E0E0E0; padding: 24px; margin-bottom: 24px; }
-  .tab-panel.active { display: block; }
+.link-btn { background:none; border:none; color:#185FA5; font-size:12px; cursor:pointer; padding:0; text-decoration:underline; }
+.link-btn:hover { color:#0C447C; }
 
-  /* Job cards */
-  .results-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-  .results-header h2 { font-size: 16px; font-weight: 500; color: #2C2C2A; }
-  .job-card { border-radius: 10px; border: 0.5px solid #E0E0E0; padding: 18px 20px; margin-bottom: 10px; display: grid; grid-template-columns: 40px 1fr auto; gap: 16px; align-items: start; }
-  .rank { font-size: 22px; font-weight: 600; color: #185FA5; }
-  .job-title { font-size: 15px; font-weight: 500; color: #2C2C2A; margin-bottom: 4px; }
-  .job-company { font-size: 13px; color: #666; margin-bottom: 8px; }
-  .job-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
-  .badge { font-size: 11px; padding: 3px 10px; border-radius: 20px; }
-  .badge-score { background: #E6F1FB; color: #185FA5; }
-  .badge-remote { background: #EAF3DE; color: #3B6D11; }
-  .badge-location { background: #F1EFE8; color: #5F5E5A; }
-  .reasons { font-size: 12px; color: #666; line-height: 1.6; }
-  .reasons strong { color: #333; }
-  .card-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+/* Progress steps */
+.steps { padding:4px 0; }
+.step { display:flex; gap:12px; align-items:flex-start; padding:9px 0; border-bottom:1px solid #f5f5f5; }
+.step:last-child { border-bottom:none; }
+.step-icon { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; flex-shrink:0; margin-top:1px; }
+.step-icon.wait { background:#f0f0f0; color:#aaa; }
+.step-icon.run { background:#E6F1FB; color:#185FA5; }
+.step-icon.ok { background:#EAF3DE; color:#1A7A3C; }
+.step-icon.err { background:#fff0f0; color:#cc0000; }
+.step-icon.warn { background:#fff8e6; color:#7a5500; }
+.spinner { width:12px; height:12px; border:2px solid #ddd; border-top-color:#185FA5; border-radius:50%; animation:spin 0.8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.step-label { font-size:13px; color:#333; }
+.step-detail { font-size:11px; margin-top:2px; }
+.step-detail.ok { color:#1A7A3C; }
+.step-detail.info { color:#185FA5; }
+.step-detail.warn { color:#cc5500; }
+.step-detail.err { color:#cc0000; }
 
-  /* Career Coach */
-  .direction-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 20px; }
-  .direction-card { border: 1.5px solid #E0E0E0; border-radius: 10px; padding: 16px; cursor: pointer; text-align: center; transition: all 0.15s; }
-  .direction-card:hover { border-color: #185FA5; background: #f5f9ff; }
-  .direction-card.selected { border-color: #185FA5; background: #E6F1FB; }
-  .direction-card .icon { font-size: 24px; margin-bottom: 6px; }
-  .direction-card .title { font-size: 14px; font-weight: 600; color: #2C2C2A; }
-  .direction-card .desc { font-size: 11px; color: #888; margin-top: 4px; }
+/* Job list (search flow) */
+.job-row { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:0.5px solid #f0f0f0; }
+.job-row:last-child { border-bottom:none; }
+.job-rank { font-size:18px; font-weight:600; color:#185FA5; min-width:28px; }
+.job-info { flex:1; }
+.job-title-sm { font-size:14px; font-weight:500; color:#2C2C2A; }
+.job-meta-sm { font-size:12px; color:#888; margin-top:2px; }
+.badge-fit { font-size:11px; background:#E6F1FB; color:#185FA5; padding:2px 8px; border-radius:12px; margin-left:6px; }
+.job-row-actions { display:flex; flex-direction:column; align-items:flex-end; gap:6px; min-width:110px; }
 
-  .coach-section { margin-top: 24px; }
-  .coach-section-title { font-size: 12px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: #185FA5; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #E6F1FB; }
+/* Fetched job preview */
+.job-preview { background:#fafafa; border:0.5px solid #E0E0E0; border-radius:8px; padding:14px 16px; margin-bottom:16px; }
+.job-preview .jp-title { font-size:16px; font-weight:600; color:#2C2C2A; margin-bottom:4px; }
+.job-preview .jp-company { font-size:13px; color:#666; margin-bottom:8px; }
+.job-preview .jp-desc { font-size:12px; color:#888; line-height:1.6; max-height:72px; overflow:hidden; }
 
-  .profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 8px; }
-  .profile-item .key { font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
-  .profile-item .val { font-size: 13px; color: #333; margin-top: 2px; }
-  .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-  .tag { background: #f0f0f0; border-radius: 4px; padding: 3px 8px; font-size: 12px; color: #555; }
+/* Result card */
+.result-job { font-size:15px; font-weight:600; color:#2C2C2A; margin-bottom:3px; }
+.result-company { font-size:13px; color:#666; margin-bottom:16px; }
+.result-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:20px; }
 
-  .role-card { border: 0.5px solid #E0E0E0; border-radius: 10px; padding: 16px 18px; margin-bottom: 10px; }
-  .role-card .role-title { font-size: 15px; font-weight: 600; color: #2C2C2A; margin-bottom: 8px; }
-  .role-card .role-row { font-size: 12px; color: #666; line-height: 1.6; margin-bottom: 4px; }
-  .role-card .role-row strong { color: #333; }
-  .role-card .market-tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; margin-bottom: 8px; }
-  .market-tag.common { background: #EAF3DE; color: #3B6D11; }
-  .market-tag.rare { background: #fff8e6; color: #7a5500; }
+/* HR Review panel */
+.hr-panel { border-top:0.5px solid #eee; padding-top:18px; margin-top:4px; }
+.hr-match { display:inline-block; font-size:12px; font-weight:600; padding:4px 12px; border-radius:20px; margin-bottom:14px; }
+.hr-match.Strong { background:#EAF3DE; color:#1A7A3C; }
+.hr-match.Moderate { background:#fff8e6; color:#7a5500; }
+.hr-match.Weak { background:#fff0f0; color:#cc0000; }
+.hr-section { margin-bottom:14px; }
+.hr-label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.8px; color:#888; margin-bottom:6px; }
+.hr-list { padding-left:0; list-style:none; }
+.hr-list li { font-size:13px; color:#444; line-height:1.6; padding:3px 0; padding-left:16px; position:relative; }
+.hr-list li::before { content:'✓'; position:absolute; left:0; color:#1A7A3C; font-size:11px; top:4px; }
+.hr-improve { margin-bottom:8px; }
+.hr-improve .issue { font-size:13px; color:#cc5500; margin-bottom:2px; }
+.hr-improve .fix { font-size:12px; color:#555; padding-left:12px; }
 
-  .match-card { border: 0.5px solid #E0E0E0; border-radius: 10px; padding: 16px 18px; margin-bottom: 10px; }
-  .match-card .match-title { font-size: 14px; font-weight: 600; color: #2C2C2A; }
-  .match-card .match-company { font-size: 12px; color: #888; margin-bottom: 8px; }
-  .match-card .match-row { font-size: 12px; color: #666; line-height: 1.6; margin-bottom: 4px; }
-  .match-card .match-row strong { color: #333; }
-  .align-score { display: inline-block; font-size: 11px; background: #E6F1FB; color: #185FA5; padding: 2px 10px; border-radius: 20px; margin-bottom: 8px; }
+/* Career Coach (secondary) */
+.coach-toggle-bar { text-align:center; padding:8px 0 20px; }
+.direction-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:16px; }
+.dir-card { border:1.5px solid #E0E0E0; border-radius:10px; padding:14px 12px; cursor:pointer; text-align:center; }
+.dir-card:hover { border-color:#185FA5; background:#f5f9ff; }
+.dir-card.sel { border-color:#185FA5; background:#E6F1FB; }
+.dir-card .d-icon { font-size:20px; margin-bottom:4px; }
+.dir-card .d-title { font-size:13px; font-weight:600; color:#2C2C2A; }
+.dir-card .d-desc { font-size:10px; color:#999; margin-top:3px; }
+.role-card { border:0.5px solid #E0E0E0; border-radius:8px; padding:14px 16px; margin-bottom:8px; }
+.role-title { font-size:14px; font-weight:600; color:#2C2C2A; margin-bottom:6px; }
+.role-row { font-size:12px; color:#666; line-height:1.6; margin-bottom:3px; }
+.role-row strong { color:#444; }
+.coach-section-title { font-size:11px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:#185FA5; margin:18px 0 10px; padding-bottom:4px; border-bottom:1px solid #E6F1FB; }
+.path-panel { background:#fafafa; border:0.5px solid #E0E0E0; border-radius:8px; padding:14px 16px; margin-top:10px; }
+.path-label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.8px; color:#185FA5; margin-bottom:5px; }
+.path-list { padding-left:16px; margin-bottom:12px; }
+.path-list li { font-size:12px; color:#555; line-height:1.7; }
+.path-p { font-size:12px; color:#555; line-height:1.7; margin-bottom:12px; }
 
-  .path-panel { background: #fafafa; border: 0.5px solid #E0E0E0; border-radius: 10px; padding: 16px 18px; margin-top: 12px; }
-  .path-section { margin-bottom: 14px; }
-  .path-section:last-child { margin-bottom: 0; }
-  .path-section .path-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: #185FA5; margin-bottom: 6px; }
-  .path-section ul { padding-left: 16px; }
-  .path-section li { font-size: 13px; color: #555; line-height: 1.7; }
-  .path-section p { font-size: 13px; color: #555; line-height: 1.7; }
-
-  .no-results { text-align: center; padding: 48px; color: #999; font-size: 14px; }
-  .alert-warn { background: #fff8e6; border: 1px solid #ffd980; color: #7a5500; border-radius: 8px; padding: 12px 16px; font-size: 13px; margin-bottom: 12px; }
-
-  /* Job link import */
-  .import-card { background: white; border-radius: 12px; border: 0.5px solid #E0E0E0; padding: 24px 32px; margin-bottom: 24px; }
-  .import-card h2 { font-size: 15px; font-weight: 500; color: #2C2C2A; margin-bottom: 6px; }
-  .import-card p { font-size: 12px; color: #999; margin-bottom: 14px; }
-  .import-row { display: flex; gap: 10px; align-items: flex-start; }
-  .import-row input[type="url"] { flex: 1; padding: 10px 14px; border: 0.5px solid #E0E0E0; border-radius: 8px; font-size: 14px; color: #333; }
-  .import-row input[type="url"]:focus { outline: none; border-color: #185FA5; }
-  .btn-fetch { background: #2C2C2A; color: white; border: none; padding: 10px 24px; border-radius: 8px; font-size: 14px; cursor: pointer; white-space: nowrap; }
-  .btn-fetch:hover { background: #444; }
-  .btn-fetch:disabled { background: #ccc; cursor: not-allowed; }
-  .import-toggle { font-size: 12px; color: #185FA5; cursor: pointer; margin-top: 8px; display: inline-block; }
-  .import-toggle:hover { text-decoration: underline; }
-  .paste-area { margin-top: 10px; display: none; }
-  .paste-area textarea { width: 100%; height: 120px; padding: 10px 14px; border: 0.5px solid #E0E0E0; border-radius: 8px; font-size: 13px; resize: vertical; }
-  .import-result { margin-top: 14px; padding: 14px 16px; background: #f9f9f9; border: 0.5px solid #E0E0E0; border-radius: 8px; display: none; }
-  .import-result .ir-title { font-size: 15px; font-weight: 600; color: #2C2C2A; }
-  .import-result .ir-company { font-size: 13px; color: #666; margin-bottom: 10px; }
-  .import-result .ir-desc { font-size: 12px; color: #777; line-height: 1.6; max-height: 80px; overflow: hidden; }
-  .import-status { font-size: 13px; color: #185FA5; margin-top: 8px; display: none; }
+.err-msg { color:#cc0000; font-size:12px; margin-top:6px; }
+.info-msg { color:#185FA5; font-size:12px; margin-top:6px; }
 </style>
 </head>
 <body>
@@ -170,541 +152,554 @@ app.get('/', (req, res) => {
   <div class="accent"></div>
   <div>
     <h1>Job Agent</h1>
-    <span>AI-powered job search & CV tailoring</span>
+    <span>Tailor your CV to any job — instantly</span>
   </div>
 </div>
 
 <div class="container">
-  <div class="upload-card">
-    <h2>Find matching jobs</h2>
+
+  <!-- ── Input card ─────────────────────────────── -->
+  <div class="card" id="inputCard">
+    <h2>Get started</h2>
     <div class="form-row">
       <div class="form-group">
-        <label>CV (PDF)</label>
+        <label>Your CV <span class="opt">(PDF)</span></label>
         <input type="file" id="cvFile" accept=".pdf" />
       </div>
       <div class="form-group">
-        <label>Country</label>
-        <select id="country">
-          <option value="GB">United Kingdom</option>
-          <option value="SE">Sweden</option>
-          <option value="US" selected>United States</option>
-          <option value="DE">Germany</option>
-          <option value="NL">Netherlands</option>
-        </select>
+        <label>Job post URL <span class="opt">— optional</span></label>
+        <input type="url" id="jobUrl" placeholder="LinkedIn, Indeed, company site…" />
       </div>
     </div>
-    <div class="form-group" id="stateGroup" style="display:none;margin-bottom:16px;">
-      <label>US State (optional — leave blank for all states)</label>
-      <select id="usState">
-        <option value="">All US States</option>
-        <option value="Alabama">Alabama</option>
-        <option value="Alaska">Alaska</option>
-        <option value="Arizona">Arizona</option>
-        <option value="Arkansas">Arkansas</option>
-        <option value="California">California</option>
-        <option value="Colorado">Colorado</option>
-        <option value="Connecticut">Connecticut</option>
-        <option value="Delaware">Delaware</option>
-        <option value="Florida">Florida</option>
-        <option value="Georgia">Georgia</option>
-        <option value="Hawaii">Hawaii</option>
-        <option value="Idaho">Idaho</option>
-        <option value="Illinois">Illinois</option>
-        <option value="Indiana">Indiana</option>
-        <option value="Iowa">Iowa</option>
-        <option value="Kansas">Kansas</option>
-        <option value="Kentucky">Kentucky</option>
-        <option value="Louisiana">Louisiana</option>
-        <option value="Maine">Maine</option>
-        <option value="Maryland">Maryland</option>
-        <option value="Massachusetts">Massachusetts</option>
-        <option value="Michigan">Michigan</option>
-        <option value="Minnesota">Minnesota</option>
-        <option value="Mississippi">Mississippi</option>
-        <option value="Missouri">Missouri</option>
-        <option value="Montana">Montana</option>
-        <option value="Nebraska">Nebraska</option>
-        <option value="Nevada">Nevada</option>
-        <option value="New Hampshire">New Hampshire</option>
-        <option value="New Jersey">New Jersey</option>
-        <option value="New Mexico">New Mexico</option>
-        <option value="New York">New York</option>
-        <option value="North Carolina">North Carolina</option>
-        <option value="North Dakota">North Dakota</option>
-        <option value="Ohio">Ohio</option>
-        <option value="Oklahoma">Oklahoma</option>
-        <option value="Oregon">Oregon</option>
-        <option value="Pennsylvania">Pennsylvania</option>
-        <option value="Rhode Island">Rhode Island</option>
-        <option value="South Carolina">South Carolina</option>
-        <option value="South Dakota">South Dakota</option>
-        <option value="Tennessee">Tennessee</option>
-        <option value="Texas">Texas</option>
-        <option value="Utah">Utah</option>
-        <option value="Vermont">Vermont</option>
-        <option value="Virginia">Virginia</option>
-        <option value="Washington">Washington</option>
-        <option value="West Virginia">West Virginia</option>
-        <option value="Wisconsin">Wisconsin</option>
-        <option value="Wyoming">Wyoming</option>
-      </select>
-    </div>
-    <button class="btn-primary" id="searchBtn" onclick="startSearch()">Search Jobs</button>
-  </div>
+    <button class="btn btn-go" id="goBtn" onclick="go()">Go →</button>
+    <div id="goStatus" class="info-msg" style="display:none;margin-top:10px;"></div>
 
-  <div class="import-card">
-    <h2>Have a specific job? Paste the link</h2>
-    <p>Works with LinkedIn, Indeed, company career pages — any public job post URL.</p>
-    <div class="import-row">
-      <input type="url" id="jobUrl" placeholder="https://www.linkedin.com/jobs/view/..." />
-      <button class="btn-fetch" id="fetchBtn" onclick="fetchJob()">Fetch Job</button>
-    </div>
-    <span class="import-toggle" onclick="togglePaste()">↳ LinkedIn blocked? Paste job text manually instead</span>
-    <div class="paste-area" id="pasteArea">
-      <textarea id="jobText" placeholder="Paste the full job description here..."></textarea>
-      <button class="btn-fetch" style="margin-top:8px;" onclick="parseManual()">Parse Job Text</button>
-    </div>
-    <div class="import-status" id="importStatus"></div>
-    <div class="import-result" id="importResult">
-      <div class="ir-title" id="irTitle"></div>
-      <div class="ir-company" id="irCompany"></div>
-      <div class="ir-desc" id="irDesc"></div>
-      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn-secondary" id="importTailorBtn" onclick="tailorImported()">Tailor CV for this Job</button>
-        <div id="importCvLink"></div>
+    <!-- Paste fallback (shown if scraping fails) -->
+    <div id="pasteToggleRow" style="display:none;margin-top:12px;">
+      <button class="link-btn" onclick="togglePaste()">LinkedIn blocked? Paste the job description instead</button>
+      <div id="pasteArea" style="display:none;margin-top:10px;">
+        <textarea id="jobText" placeholder="Paste the full job description here…"></textarea>
+        <button class="btn btn-blue btn-sm" style="margin-top:8px;" onclick="parseManual()">Parse this text</button>
       </div>
+    </div>
+
+    <!-- Search panel (shown when no URL) -->
+    <div id="searchPanel" style="display:none;border-top:0.5px solid #eee;margin-top:20px;padding-top:20px;">
+      <h3>Search for jobs</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Country</label>
+          <select id="country" onchange="onCountryChange()">
+            <option value="US" selected>United States</option>
+            <option value="GB">United Kingdom</option>
+            <option value="SE">Sweden</option>
+            <option value="DE">Germany</option>
+            <option value="NL">Netherlands</option>
+          </select>
+        </div>
+        <div class="form-group" id="stateGroup">
+          <label>State <span class="opt">— optional</span></label>
+          <select id="usState">
+            <option value="">All US States</option>
+            <option value="Alabama">Alabama</option><option value="Alaska">Alaska</option>
+            <option value="Arizona">Arizona</option><option value="Arkansas">Arkansas</option>
+            <option value="California">California</option><option value="Colorado">Colorado</option>
+            <option value="Connecticut">Connecticut</option><option value="Delaware">Delaware</option>
+            <option value="Florida">Florida</option><option value="Georgia">Georgia</option>
+            <option value="Hawaii">Hawaii</option><option value="Idaho">Idaho</option>
+            <option value="Illinois">Illinois</option><option value="Indiana">Indiana</option>
+            <option value="Iowa">Iowa</option><option value="Kansas">Kansas</option>
+            <option value="Kentucky">Kentucky</option><option value="Louisiana">Louisiana</option>
+            <option value="Maine">Maine</option><option value="Maryland">Maryland</option>
+            <option value="Massachusetts">Massachusetts</option><option value="Michigan">Michigan</option>
+            <option value="Minnesota">Minnesota</option><option value="Mississippi">Mississippi</option>
+            <option value="Missouri">Missouri</option><option value="Montana">Montana</option>
+            <option value="Nebraska">Nebraska</option><option value="Nevada">Nevada</option>
+            <option value="New Hampshire">New Hampshire</option><option value="New Jersey">New Jersey</option>
+            <option value="New Mexico">New Mexico</option><option value="New York">New York</option>
+            <option value="North Carolina">North Carolina</option><option value="North Dakota">North Dakota</option>
+            <option value="Ohio">Ohio</option><option value="Oklahoma">Oklahoma</option>
+            <option value="Oregon">Oregon</option><option value="Pennsylvania">Pennsylvania</option>
+            <option value="Rhode Island">Rhode Island</option><option value="South Carolina">South Carolina</option>
+            <option value="South Dakota">South Dakota</option><option value="Tennessee">Tennessee</option>
+            <option value="Texas">Texas</option><option value="Utah">Utah</option>
+            <option value="Vermont">Vermont</option><option value="Virginia">Virginia</option>
+            <option value="Washington">Washington</option><option value="West Virginia">West Virginia</option>
+            <option value="Wisconsin">Wisconsin</option><option value="Wyoming">Wyoming</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-blue" id="searchBtn" onclick="runSearch()">Search Jobs</button>
     </div>
   </div>
 
-  <div class="status" id="status">
-    <div class="status-step">
-      <div class="step-icon waiting" id="icon1"><span>1</span></div>
-      <div class="step-text">
-        <div class="label">Reading CV &amp; extracting job titles</div>
-        <div class="detail" id="detail1"></div>
-      </div>
-    </div>
-    <div class="status-step">
-      <div class="step-icon waiting" id="icon2"><span>2</span></div>
-      <div class="step-text">
-        <div class="label">Searching jobs</div>
-        <div class="detail" id="detail2"></div>
-      </div>
-    </div>
-    <div class="status-step">
-      <div class="step-icon waiting" id="icon3"><span>3</span></div>
-      <div class="step-text">
-        <div class="label">Analyzing job fit with AI</div>
-        <div class="detail" id="detail3"></div>
-      </div>
-    </div>
+  <!-- ── Progress card ──────────────────────────── -->
+  <div class="card" id="progressCard" style="display:none;">
+    <div class="steps" id="steps"></div>
   </div>
 
-  <div class="tabs" id="tabs">
-    <button class="tab-btn active" onclick="showTab('jobs')">Job Matches</button>
-    <button class="tab-btn" onclick="showTab('coach')">Career Coach</button>
+  <!-- ── Fetched job preview (URL flow) ─────────── -->
+  <div class="card" id="fetchedCard" style="display:none;">
+    <div class="job-preview">
+      <div class="jp-title" id="fpTitle"></div>
+      <div class="jp-company" id="fpCompany"></div>
+      <div class="jp-desc" id="fpDesc"></div>
+    </div>
+    <button class="btn btn-blue" id="tailorFetchedBtn" onclick="tailorFetched()">Tailor my CV for this job</button>
   </div>
 
-  <div class="tab-panel active" id="tab-jobs">
-    <div class="results-header">
-      <h2 id="resultsTitle">Job matches</h2>
-    </div>
+  <!-- ── Search results (search flow) ──────────── -->
+  <div class="card" id="searchResultsCard" style="display:none;">
+    <h3 id="searchResultsTitle">Jobs found</h3>
     <div id="jobList"></div>
   </div>
 
-  <div class="tab-panel" id="tab-coach">
-    <p style="font-size:13px;color:#666;margin-bottom:20px;">Select your preferred career direction, then get personalized coaching based on your CV and today's job market.</p>
+  <!-- ── Result card ────────────────────────────── -->
+  <div class="card" id="resultCard" style="display:none;">
+    <div class="result-job" id="resultTitle"></div>
+    <div class="result-company" id="resultCompany"></div>
+    <div class="result-actions">
+      <a class="btn btn-green btn-sm" id="openCvBtn" href="#" target="_blank">Open CV ↗</a>
+      <a class="btn btn-blue btn-sm" id="downloadPdfBtn" href="#" download>Download PDF ↓</a>
+      <button class="btn btn-ghost btn-sm" id="hrBtn" onclick="getHRReview()">HR Review →</button>
+    </div>
+    <div id="hrStatus" class="info-msg" style="display:none;"></div>
+    <div id="hrPanel" style="display:none;" class="hr-panel"></div>
+  </div>
 
+  <!-- ── Career Coach (secondary) ──────────────── -->
+  <div class="coach-toggle-bar" id="coachToggleBar" style="display:none;">
+    <button class="link-btn" onclick="toggleCoach()">Career advice for your next step →</button>
+  </div>
+  <div class="card" id="coachCard" style="display:none;">
+    <h2>Career Coach</h2>
+    <p style="font-size:12px;color:#888;margin-bottom:16px;">Pick your direction and get personalized career advice based on your CV and today's market.</p>
     <div class="direction-row">
-      <div class="direction-card" id="dir-specialist" onclick="selectDirection('specialist')">
-        <div class="icon">⚙️</div>
-        <div class="title">Specialist Track</div>
-        <div class="desc">Deep expert · IC · Architect · Domain authority</div>
+      <div class="dir-card" id="dir-specialist" onclick="selectDir('specialist')">
+        <div class="d-icon">⚙️</div>
+        <div class="d-title">Specialist</div>
+        <div class="d-desc">Deep expert · IC · Architect</div>
       </div>
-      <div class="direction-card" id="dir-generalist" onclick="selectDirection('generalist')">
-        <div class="icon">🔀</div>
-        <div class="title">Generalist Track</div>
-        <div class="desc">Program/Product Mgmt · Cross-functional</div>
+      <div class="dir-card" id="dir-generalist" onclick="selectDir('generalist')">
+        <div class="d-icon">🔀</div>
+        <div class="d-title">Generalist</div>
+        <div class="d-desc">Program/Product Mgmt</div>
       </div>
-      <div class="direction-card" id="dir-leadership" onclick="selectDirection('leadership')">
-        <div class="icon">🏛️</div>
-        <div class="title">Leadership Track</div>
-        <div class="desc">Team Lead · Manager · Director · VP</div>
-      </div>
-    </div>
-
-    <button class="btn-primary" id="coachBtn" onclick="runCoach()" disabled>Get Career Advice</button>
-
-    <div id="coachStatus" style="margin-top:16px;display:none;">
-      <div class="status-step">
-        <div class="step-icon waiting" id="cicon1"><span>1</span></div>
-        <div class="step-text">
-          <div class="label">Analyzing your profile &amp; suggesting ideal roles</div>
-          <div class="detail" id="cdetail1"></div>
-        </div>
-      </div>
-      <div class="status-step">
-        <div class="step-icon waiting" id="cicon2"><span>2</span></div>
-        <div class="step-text">
-          <div class="label">Matching to today's job market</div>
-          <div class="detail" id="cdetail2"></div>
-        </div>
+      <div class="dir-card" id="dir-leadership" onclick="selectDir('leadership')">
+        <div class="d-icon">🏛️</div>
+        <div class="d-title">Leadership</div>
+        <div class="d-desc">Manager · Director · VP</div>
       </div>
     </div>
-
+    <button class="btn btn-blue" id="coachBtn" onclick="runCoach()" disabled>Get advice</button>
+    <div id="coachStatus" class="info-msg" style="display:none;margin-top:8px;"></div>
     <div id="coachResults"></div>
   </div>
+
 </div>
 
 <script>
-const countryNames = { GB:'United Kingdom', SE:'Sweden', US:'United States', DE:'Germany', NL:'Netherlands' };
-let selectedDirection = null;
-document.getElementById('country').addEventListener('change', function() {
-  document.getElementById('stateGroup').style.display = this.value === 'US' ? 'block' : 'none';
-});
-if (document.getElementById('country').value === 'US') {
-  document.getElementById('stateGroup').style.display = 'block';
+let _cvPath = null;
+let _fetchedJob = null;
+let _currentJob = null;
+let _selectedDir = null;
+const countryNames = { US:'United States', GB:'United Kingdom', SE:'Sweden', DE:'Germany', NL:'Netherlands' };
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+
+function show(id) { document.getElementById(id).style.display = ''; }
+function hide(id) { document.getElementById(id).style.display = 'none'; }
+function el(id) { return document.getElementById(id); }
+
+function setGoStatus(msg, type) {
+  const s = el('goStatus');
+  s.textContent = msg;
+  s.className = type === 'err' ? 'err-msg' : 'info-msg';
+  s.style.display = msg ? 'block' : 'none';
 }
 
-function showTab(name) {
-  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', ['jobs','coach'][i] === name));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-}
-
-function selectDirection(d) {
-  selectedDirection = d;
-  ['specialist','generalist','leadership'].forEach(x =>
-    document.getElementById('dir-' + x).classList.toggle('selected', x === d)
-  );
-  document.getElementById('coachBtn').disabled = false;
-}
-
-function setStep(n, state, detail) {
-  const icon = document.getElementById('icon' + n);
-  const det = document.getElementById('detail' + n);
-  const states = { waiting:'waiting', running:'running', done:'done', warn:'warn', error:'error' };
-  const icons = { waiting: n, running: '<div class="spinner-sm"></div>', done:'✓', warn:'!', error:'✗' };
-  icon.className = 'step-icon ' + (states[state] || 'waiting');
-  icon.innerHTML = icons[state] || n;
-  if (det && detail) { det.className = 'detail ' + (state === 'done' ? 'ok' : state === 'warn' ? 'warn' : 'info'); det.textContent = detail; }
-}
-
-function setCoachStep(n, state, detail) {
-  const icon = document.getElementById('cicon' + n);
-  const det = document.getElementById('cdetail' + n);
-  const icons = { waiting: n, running: '<div class="spinner-sm"></div>', done:'✓', warn:'!', error:'✗' };
-  icon.className = 'step-icon ' + state;
-  icon.innerHTML = icons[state] || n;
-  if (det && detail) { det.className = 'detail ' + (state === 'done' ? 'ok' : 'info'); det.textContent = detail; }
-}
-
-async function startSearch() {
-  const fileInput = document.getElementById('cvFile');
-  const country = document.getElementById('country').value;
-  const usState = country === 'US' ? document.getElementById('usState').value : '';
-  const locationLabel = country === 'US' && usState ? usState + ', US' : (countryNames[country] || country);
-  if (!fileInput.files[0]) { alert('Please upload your CV first'); return; }
-
-  document.getElementById('searchBtn').disabled = true;
-  document.getElementById('status').classList.add('active');
-  document.getElementById('tabs').classList.remove('active');
-  document.getElementById('jobList').innerHTML = '';
-  document.getElementById('coachResults').innerHTML = '';
-  [1,2,3].forEach(n => setStep(n, 'waiting', ''));
-
-  setStep(1, 'running');
-  const formData = new FormData();
-  formData.append('cv', fileInput.files[0]);
-  formData.append('country', country);
-  if (usState) formData.append('usState', usState);
-
-  let jobsData;
-  try {
-    const res = await fetch('/search/jobs', { method: 'POST', body: formData });
-    jobsData = await res.json();
-  } catch (err) {
-    setStep(1, 'error', err.message);
-    document.getElementById('searchBtn').disabled = false;
-    return;
-  }
-  if (jobsData.error) { setStep(1, 'error', jobsData.error); document.getElementById('searchBtn').disabled = false; return; }
-
-  setStep(1, 'done', jobsData.titlesFound + ' job titles extracted');
-  setStep(2, 'done', jobsData.count + ' jobs found in ' + locationLabel);
-
-  if (jobsData.count === 0) {
-    setStep(2, 'warn', 'No jobs found — try a different country');
-    document.getElementById('searchBtn').disabled = false;
-    return;
-  }
-
-  setStep(3, 'running');
-  let analyzeData;
-  try {
-    const res = await fetch('/search/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ country }) });
-    analyzeData = await res.json();
-  } catch (err) {
-    setStep(3, 'error', err.message);
-    document.getElementById('searchBtn').disabled = false;
-    return;
-  }
-  if (analyzeData.error) { setStep(3, 'error', analyzeData.error); document.getElementById('searchBtn').disabled = false; return; }
-
-  setStep(3, 'done', analyzeData.jobs.length + ' jobs ranked');
-  document.getElementById('searchBtn').disabled = false;
-
-  window._jobs = analyzeData.jobs;
-  window._cvPath = jobsData.cvPath;
-
-  document.getElementById('resultsTitle').textContent = analyzeData.jobs.length + ' job matches in ' + locationLabel;
-  document.getElementById('jobList').innerHTML = analyzeData.jobs.map((job, i) => \`
-    <div class="job-card" id="card-\${i}">
-      <div class="rank">#\${job.rank}</div>
+function buildSteps(defs) {
+  el('steps').innerHTML = defs.map((d, i) => \`
+    <div class="step" id="step\${i}">
+      <div class="step-icon wait" id="si\${i}">\${i+1}</div>
       <div>
-        <div class="job-title">\${job.job_title}</div>
-        <div class="job-company">\${job.company} · \${job.location || 'Location not specified'}</div>
-        <div class="job-meta">
-          <span class="badge badge-score">Fit: \${job.fit_score}/10</span>
-          \${job.location === 'Remote' ? '<span class="badge badge-remote">Remote</span>' : '<span class="badge badge-location">' + (job.location || '') + '</span>'}
-          \${job.apply_link ? '<a href="' + job.apply_link + '" target="_blank" style="font-size:12px;color:#185FA5;">View job ↗</a>' : ''}
-        </div>
-        <div class="reasons"><strong>✓</strong> \${job.reasons_for}</div>
-        <div class="reasons"><strong>✗</strong> \${job.reasons_against}</div>
+        <div class="step-label">\${d}</div>
+        <div class="step-detail" id="sd\${i}"></div>
       </div>
-      <div class="card-actions">
-        <button class="btn-secondary" id="tailor-btn-\${i}" onclick="tailorCV(\${i})">Tailor CV</button>
-        <div id="cv-link-\${i}"></div>
+    </div>
+  \`).join('');
+}
+
+function setStep(i, state, detail) {
+  const icon = el('si' + i);
+  const det = el('sd' + i);
+  const iconMap = { wait: i+1, run: '<div class="spinner"></div>', ok:'✓', err:'✗', warn:'!' };
+  icon.className = 'step-icon ' + state;
+  icon.innerHTML = iconMap[state] || (i+1);
+  if (det && detail) { det.className = 'step-detail ' + state; det.textContent = detail; }
+}
+
+// ── Main entry point ──────────────────────────────────────────────────────────
+
+async function go() {
+  const file = el('cvFile').files[0];
+  const url  = el('jobUrl').value.trim();
+  if (!file) { setGoStatus('Please select your CV file.', 'err'); return; }
+
+  el('goBtn').disabled = true;
+  hide('fetchedCard'); hide('searchResultsCard'); hide('resultCard');
+  hide('hrPanel'); hide('coachToggleBar'); hide('coachCard');
+
+  // Always upload CV first
+  setGoStatus('Reading your CV…', 'info');
+  show('progressCard');
+  buildSteps(['Reading CV']);
+  setStep(0, 'run');
+
+  const fd = new FormData();
+  fd.append('cv', file);
+  const upRes = await fetch('/upload-cv', { method:'POST', body: fd });
+  const upData = await upRes.json();
+  if (upData.error) { setStep(0,'err', upData.error); setGoStatus(upData.error,'err'); el('goBtn').disabled=false; return; }
+  _cvPath = upData.cvPath;
+  setStep(0, 'ok', 'CV ready');
+  setGoStatus('', '');
+
+  if (url) {
+    await urlFlow(url);
+  } else {
+    hide('progressCard');
+    show('searchPanel');
+    setGoStatus('No job URL — choose a location and search below.', 'info');
+  }
+
+  el('goBtn').disabled = false;
+}
+
+// ── URL flow ──────────────────────────────────────────────────────────────────
+
+async function urlFlow(url) {
+  buildSteps(['Reading CV', 'Fetching job post', 'Parsing job details']);
+  setStep(0, 'ok', 'CV ready');
+  setStep(1, 'run');
+
+  let rawText;
+  try {
+    const res = await fetch('/fetch-job', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) });
+    const data = await res.json();
+    if (data.error) {
+      if (data.loginWall) {
+        setStep(1, 'warn', 'LinkedIn requires login — paste the job text below');
+        show('pasteToggleRow');
+        el('pasteArea').style.display = 'block';
+        hide('progressCard');
+        return;
+      }
+      setStep(1, 'err', data.error); return;
+    }
+    setStep(1, 'ok', 'Page fetched');
+    setStep(2, 'ok', data.job.job_title || 'Job details extracted');
+    hide('progressCard');
+    showFetchedJob(data.job);
+  } catch (err) {
+    setStep(1, 'err', err.message);
+  }
+}
+
+function showFetchedJob(job) {
+  _fetchedJob = job;
+  el('fpTitle').textContent = job.job_title || 'Job post';
+  el('fpCompany').textContent = [job.employer_name, job.job_city].filter(Boolean).join(' · ');
+  el('fpDesc').textContent = (job.job_description || '').slice(0, 280) + '…';
+  show('fetchedCard');
+}
+
+async function tailorFetched() {
+  await tailorJob(_fetchedJob, 'tailorFetchedBtn');
+}
+
+async function parseManual() {
+  const text = el('jobText').value.trim();
+  if (!text) return;
+  setGoStatus('Parsing job description…', 'info');
+  const res = await fetch('/fetch-job', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobText: text }) });
+  const data = await res.json();
+  setGoStatus('', '');
+  if (data.error) { setGoStatus(data.error, 'err'); return; }
+  hide('pasteToggleRow');
+  showFetchedJob(data.job);
+}
+
+function togglePaste() {
+  const p = el('pasteArea');
+  p.style.display = p.style.display === 'block' ? 'none' : 'block';
+}
+
+// ── Search flow ───────────────────────────────────────────────────────────────
+
+function onCountryChange() {
+  el('stateGroup').style.display = el('country').value === 'US' ? '' : 'none';
+}
+
+async function runSearch() {
+  if (!_cvPath) { setGoStatus('Please click Go first to upload your CV.', 'err'); return; }
+  const country = el('country').value;
+  const usState = country === 'US' ? el('usState').value : '';
+  const locLabel = country === 'US' && usState ? usState : (countryNames[country] || country);
+
+  hide('searchResultsCard'); hide('resultCard'); hide('coachToggleBar');
+  el('searchBtn').disabled = true;
+  show('progressCard');
+  buildSteps(['Extracting job titles from CV', 'Searching ' + locLabel, 'Ranking by AI fit']);
+  setStep(0, 'run');
+
+  const searchFd = new FormData();
+  searchFd.append('cv', el('cvFile').files[0]);
+  searchFd.append('country', country);
+  if (usState) searchFd.append('usState', usState);
+
+  const sRes = await fetch('/search/jobs', { method:'POST', body: searchFd });
+  const sData = await sRes.json();
+  if (sData.error) { setStep(0,'err',sData.error); el('searchBtn').disabled=false; return; }
+
+  setStep(0, 'ok', sData.titlesFound + ' job titles found');
+  setStep(1, 'ok', sData.count + ' jobs in ' + locLabel);
+
+  if (sData.count === 0) { setStep(1,'warn','No jobs found — try a different location'); el('searchBtn').disabled=false; return; }
+
+  setStep(2, 'run');
+  const aRes = await fetch('/search/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ country }) });
+  const aData = await aRes.json();
+  if (aData.error) { setStep(2,'err',aData.error); el('searchBtn').disabled=false; return; }
+
+  setStep(2, 'ok', aData.jobs.length + ' jobs ranked');
+  hide('progressCard');
+  el('searchBtn').disabled = false;
+
+  el('searchResultsTitle').textContent = aData.jobs.length + ' best matches in ' + locLabel;
+  el('jobList').innerHTML = aData.jobs.map((job, i) => \`
+    <div class="job-row" id="jrow-\${i}">
+      <div class="job-rank">#\${job.rank}</div>
+      <div class="job-info">
+        <div class="job-title-sm">
+          \${job.job_title}
+          <span class="badge-fit">\${job.fit_score}/10</span>
+        </div>
+        <div class="job-meta-sm">\${job.company || ''}\${job.location ? ' · ' + job.location : ''}
+          \${job.apply_link ? ' · <a href="' + job.apply_link + '" target="_blank" style="color:#185FA5;">View ↗</a>' : ''}
+        </div>
+      </div>
+      <div class="job-row-actions">
+        <button class="btn btn-ghost btn-sm" id="tailor-\${i}" onclick="tailorSearchJob(\${i})">Tailor CV</button>
+        <div id="tailor-result-\${i}"></div>
       </div>
     </div>
   \`).join('');
 
-  document.getElementById('tabs').classList.add('active');
-  showTab('jobs');
+  window._searchJobs = aData.jobs;
+  show('searchResultsCard');
+  show('coachToggleBar');
 }
 
-async function tailorCV(index) {
-  const job = window._jobs[index];
-  const btn = document.getElementById('tailor-btn-' + index);
-  const linkDiv = document.getElementById('cv-link-' + index);
-  btn.disabled = true; btn.textContent = 'Tailoring...';
+async function tailorSearchJob(i) {
+  const job = window._searchJobs[i];
+  const btn = el('tailor-' + i);
+  const resultDiv = el('tailor-result-' + i);
+  btn.disabled = true; btn.textContent = 'Tailoring…';
   try {
-    const res = await fetch('/rewrite', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ job, cvPath: window._cvPath }) });
+    const res = await fetch('/rewrite', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ job, cvPath: _cvPath }) });
     const data = await res.json();
     btn.textContent = 'Tailor CV'; btn.disabled = false;
     if (data.filePath) {
-      linkDiv.innerHTML =
-        '<a class="btn-cv-link" href="/' + data.filePath + '" target="_blank">Open CV ↗</a>' +
-        (data.pdfPath ? '<br><a class="btn-pdf-link" href="/' + data.pdfPath + '" download>Download PDF ↓</a>' : '');
-      window.open('/' + data.filePath, '_blank');
+      _currentJob = job;
+      showResult(job.job_title, job.company, data.filePath, data.pdfPath);
+      resultDiv.innerHTML = '<span style="color:#1A7A3C;font-size:11px;">✓ Done — see result below</span>';
     }
   } catch (err) {
     btn.textContent = 'Tailor CV'; btn.disabled = false;
-    linkDiv.innerHTML = '<span style="color:#cc0000;font-size:12px;">Failed</span>';
+    resultDiv.innerHTML = '<span class="err-msg">' + err.message + '</span>';
   }
+}
+
+// ── Tailor (URL flow) ─────────────────────────────────────────────────────────
+
+async function tailorJob(job, btnId) {
+  if (!_cvPath) { setGoStatus('CV not loaded — click Go first.', 'err'); return; }
+  const btn = el(btnId);
+  btn.disabled = true; btn.textContent = 'Tailoring + PDF…';
+  show('progressCard');
+  buildSteps(['Tailoring CV to this job', 'Generating PDF']);
+  setStep(0, 'run');
+
+  try {
+    const res = await fetch('/rewrite', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ job, cvPath: _cvPath }) });
+    const data = await res.json();
+    btn.textContent = 'Tailor my CV for this job'; btn.disabled = false;
+    if (data.error) { setStep(0,'err',data.error); return; }
+    setStep(0, 'ok', 'CV tailored');
+    setStep(1, 'ok', 'PDF ready');
+    hide('progressCard');
+    _currentJob = job;
+    showResult(job.job_title, job.employer_name, data.filePath, data.pdfPath);
+  } catch (err) {
+    btn.textContent = 'Tailor my CV for this job'; btn.disabled = false;
+    setStep(0, 'err', err.message);
+  }
+}
+
+// ── Result ────────────────────────────────────────────────────────────────────
+
+function showResult(title, company, filePath, pdfPath) {
+  el('resultTitle').textContent = title || 'Tailored CV';
+  el('resultCompany').textContent = company || '';
+  el('openCvBtn').href = '/' + filePath;
+  if (pdfPath) { el('downloadPdfBtn').href = '/' + pdfPath; el('downloadPdfBtn').style.display = ''; }
+  else el('downloadPdfBtn').style.display = 'none';
+  hide('hrPanel'); hide('hrStatus');
+  el('hrBtn').textContent = 'HR Review →';
+  show('resultCard');
+  show('coachToggleBar');
+  el('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── HR Review ─────────────────────────────────────────────────────────────────
+
+async function getHRReview() {
+  if (!_currentJob) return;
+  const btn = el('hrBtn');
+  btn.disabled = true; btn.textContent = 'Getting review…';
+  el('hrStatus').textContent = 'Asking HR expert…';
+  el('hrStatus').className = 'info-msg';
+  show('hrStatus');
+  hide('hrPanel');
+
+  try {
+    const res = await fetch('/review-cv', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ job: _currentJob }) });
+    const data = await res.json();
+    btn.disabled = false; btn.textContent = 'HR Review ↑';
+    hide('hrStatus');
+
+    if (data.error) { el('hrStatus').textContent = data.error; el('hrStatus').className='err-msg'; show('hrStatus'); return; }
+
+    const matchClass = data.overall_match || 'Moderate';
+    el('hrPanel').innerHTML = \`
+      <span class="hr-match \${matchClass}">Match: \${matchClass}</span>
+      <div class="hr-section">
+        <div class="hr-label">Strengths</div>
+        <ul class="hr-list">\${(data.strengths||[]).map(s=>'<li>'+s+'</li>').join('')}</ul>
+      </div>
+      <div class="hr-section">
+        <div class="hr-label">Top 3 improvements</div>
+        \${(data.top_3_improvements||[]).map((t,i)=>\`
+          <div class="hr-improve">
+            <div class="issue">\${i+1}. \${t.issue}</div>
+            <div class="fix">→ \${t.fix}</div>
+          </div>
+        \`).join('')}
+      </div>
+    \`;
+    show('hrPanel');
+  } catch (err) {
+    btn.disabled = false; btn.textContent = 'HR Review →';
+    el('hrStatus').textContent = err.message; el('hrStatus').className='err-msg'; show('hrStatus');
+  }
+}
+
+// ── Career Coach (secondary) ──────────────────────────────────────────────────
+
+function toggleCoach() {
+  const c = el('coachCard');
+  c.style.display = c.style.display === 'none' ? '' : 'none';
+}
+
+function selectDir(d) {
+  _selectedDir = d;
+  ['specialist','generalist','leadership'].forEach(x =>
+    el('dir-' + x).classList.toggle('sel', x === d)
+  );
+  el('coachBtn').disabled = false;
 }
 
 async function runCoach() {
-  if (!selectedDirection) return;
-  document.getElementById('coachBtn').disabled = true;
-  document.getElementById('coachResults').innerHTML = '';
-  document.getElementById('coachStatus').style.display = 'block';
-  [1,2].forEach(n => setCoachStep(n, 'waiting', ''));
+  if (!_selectedDir) return;
+  el('coachBtn').disabled = true;
+  el('coachResults').innerHTML = '';
+  el('coachStatus').textContent = 'Analyzing your profile…';
+  show('coachStatus');
 
-  setCoachStep(1, 'running');
-  let coachData;
-  try {
-    const res = await fetch('/coach/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ direction: selectedDirection }) });
-    coachData = await res.json();
-  } catch (err) {
-    setCoachStep(1, 'error', err.message);
-    document.getElementById('coachBtn').disabled = false;
-    return;
-  }
-  if (coachData.error) { setCoachStep(1, 'error', coachData.error); document.getElementById('coachBtn').disabled = false; return; }
+  const res = await fetch('/coach/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ direction: _selectedDir }) });
+  const data = await res.json();
+  el('coachBtn').disabled = false;
+  hide('coachStatus');
 
-  setCoachStep(1, 'done', coachData.suggestedRoles.length + ' ideal roles identified');
-  setCoachStep(2, 'done', coachData.marketMatches.length + ' market matches found');
-  document.getElementById('coachBtn').disabled = false;
+  if (data.error) { el('coachStatus').textContent = data.error; el('coachStatus').className='err-msg'; show('coachStatus'); return; }
 
-  renderCoachResults(coachData);
-}
-
-function renderCoachResults(data) {
-  const { profile, suggestedRoles, marketMatches } = data;
-
-  const profileHtml = \`
-    <div class="coach-section">
-      <div class="coach-section-title">Your Profile</div>
-      <div class="profile-grid">
-        <div class="profile-item"><div class="key">Current Level</div><div class="val">\${profile.current_level}</div></div>
-        <div class="profile-item"><div class="key">Experience</div><div class="val">\${profile.years_experience} years</div></div>
-        <div class="profile-item" style="grid-column:1/-1"><div class="key">Career Trajectory</div><div class="val">\${profile.trajectory}</div></div>
-        <div class="profile-item"><div class="key">Key Strengths</div><div class="tag-list">\${profile.key_strengths.map(s => '<span class="tag">'+s+'</span>').join('')}</div></div>
-        <div class="profile-item"><div class="key">Domain Expertise</div><div class="tag-list">\${profile.domain_expertise.map(s => '<span class="tag">'+s+'</span>').join('')}</div></div>
+  el('coachResults').innerHTML = \`
+    <div class="coach-section-title">Ideal roles for you</div>
+    \${data.suggestedRoles.map((r, i) => \`
+      <div class="role-card">
+        <div class="role-title">\${r.title}</div>
+        <div class="role-row"><strong>Why you fit:</strong> \${r.why_fit}</div>
+        <div class="role-row"><strong>Why now:</strong> \${r.why_next_step}</div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:8px;" id="pth-\${i}" onclick="getCareerPath('\${r.title.replace(/'/g,"\\\\'")}',\${i})">Career path →</button>
+        <div id="pp-\${i}"></div>
       </div>
-    </div>\`;
-
-  const rolesHtml = \`
-    <div class="coach-section">
-      <div class="coach-section-title">Ideal Roles for You</div>
-      \${suggestedRoles.map((role, i) => \`
-        <div class="role-card" id="role-card-\${i}">
-          <div class="role-title">\${role.title}</div>
-          <span class="market-tag \${role.typical_in_market ? 'common' : 'rare'}">\${role.typical_in_market ? 'Common in market' : 'Rare / emerging role'}</span>
-          <div class="role-row"><strong>Why you fit:</strong> \${role.why_fit}</div>
-          <div class="role-row"><strong>Why now:</strong> \${role.why_next_step}</div>
-          <button class="btn-coach-path" id="path-btn-\${i}" onclick="getCareerPath('\${role.title.replace(/'/g, "\\\\'")}', \${i})">Career Path →</button>
-          <div id="path-panel-\${i}"></div>
+    \`).join('')}
+    \${data.marketMatches.length ? \`
+      <div class="coach-section-title">Best available jobs for your next step</div>
+      \${data.marketMatches.map(m=>\`
+        <div class="role-card">
+          <div class="role-title">\${m.job_title} · <span style="font-weight:400;color:#888">\${m.company||''}</span></div>
+          <div class="role-row"><strong>Why it fits:</strong> \${m.why_it_fits}</div>
+          <div class="role-row"><strong>Stepping stone to:</strong> \${m.stepping_stone_to}</div>
         </div>
       \`).join('')}
-    </div>\`;
-
-  const marketHtml = marketMatches.length === 0 ? '' : \`
-    <div class="coach-section">
-      <div class="coach-section-title">Best Available Jobs for Your Next Step</div>
-      \${marketMatches.map(m => \`
-        <div class="match-card">
-          <div class="match-title">\${m.job_title}</div>
-          <div class="match-company">\${m.company}</div>
-          <span class="align-score">Alignment: \${m.alignment_score}/10</span>
-          <div class="match-row"><strong>Why it fits:</strong> \${m.why_it_fits}</div>
-          <div class="match-row"><strong>Stepping stone to:</strong> \${m.stepping_stone_to}</div>
-          \${m.caveats ? '<div class="match-row"><strong>Caveats:</strong> ' + m.caveats + '</div>' : ''}
-        </div>
-      \`).join('')}
-    </div>\`;
-
-  document.getElementById('coachResults').innerHTML = profileHtml + rolesHtml + marketHtml;
+    \` : ''}
+  \`;
 }
 
-// ── Job link import ──────────────────────────────────────────────────────────
-
-function togglePaste() {
-  const area = document.getElementById('pasteArea');
-  area.style.display = area.style.display === 'block' ? 'none' : 'block';
-}
-
-function showImportStatus(msg) {
-  const el = document.getElementById('importStatus');
-  el.textContent = msg;
-  el.style.display = msg ? 'block' : 'none';
-}
-
-function renderImportedJob(job) {
-  window._importedJob = job;
-  document.getElementById('irTitle').textContent = job.job_title || 'Unknown title';
-  document.getElementById('irCompany').textContent = [job.employer_name, job.job_city].filter(Boolean).join(' · ');
-  document.getElementById('irDesc').textContent = (job.job_description || '').slice(0, 300) + '...';
-  document.getElementById('importResult').style.display = 'block';
-  document.getElementById('importCvLink').innerHTML = '';
-}
-
-async function fetchJob() {
-  const url = document.getElementById('jobUrl').value.trim();
-  if (!url) { alert('Please enter a job URL'); return; }
-  document.getElementById('fetchBtn').disabled = true;
-  document.getElementById('importResult').style.display = 'none';
-  showImportStatus('Fetching job page...');
-  try {
-    const res = await fetch('/fetch-job', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
-    const data = await res.json();
-    if (data.error) {
-      if (data.loginWall) {
-        showImportStatus('LinkedIn requires login for this post — paste the job description below instead.');
-        document.getElementById('pasteArea').style.display = 'block';
-      } else {
-        showImportStatus('Error: ' + data.error);
-      }
-    } else {
-      showImportStatus('');
-      renderImportedJob(data.job);
-    }
-  } catch (err) {
-    showImportStatus('Error: ' + err.message);
-  }
-  document.getElementById('fetchBtn').disabled = false;
-}
-
-async function parseManual() {
-  const text = document.getElementById('jobText').value.trim();
-  if (!text) { alert('Please paste the job description first'); return; }
-  showImportStatus('Parsing job description...');
-  document.getElementById('importResult').style.display = 'none';
-  try {
-    const res = await fetch('/fetch-job', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobText: text }) });
-    const data = await res.json();
-    if (data.error) { showImportStatus('Error: ' + data.error); return; }
-    showImportStatus('');
-    renderImportedJob(data.job);
-  } catch (err) {
-    showImportStatus('Error: ' + err.message);
-  }
-}
-
-async function tailorImported() {
-  const job = window._importedJob;
-  if (!job) return;
-  if (!window._cvPath && !appSession) {
-    alert('Please upload your CV using the search form first.');
-    return;
-  }
-  const btn = document.getElementById('importTailorBtn');
-  const linkDiv = document.getElementById('importCvLink');
-  btn.disabled = true; btn.textContent = 'Tailoring + PDF...';
-  try {
-    const res = await fetch('/rewrite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job, cvPath: window._cvPath }) });
-    const data = await res.json();
-    btn.textContent = 'Tailor CV for this Job'; btn.disabled = false;
-    if (data.filePath) {
-      linkDiv.innerHTML =
-        '<a class="btn-cv-link" href="/' + data.filePath + '" target="_blank">Open CV ↗</a>' +
-        (data.pdfPath ? '&nbsp;<a class="btn-pdf-link" href="/' + data.pdfPath + '" download>Download PDF ↓</a>' : '');
-      window.open('/' + data.filePath, '_blank');
-    }
-  } catch (err) {
-    btn.textContent = 'Tailor CV for this Job'; btn.disabled = false;
-    linkDiv.innerHTML = '<span style="color:#cc0000;font-size:12px;">' + err.message + '</span>';
-  }
-}
-
-async function getCareerPath(roleTitle, index) {
-  const btn = document.getElementById('path-btn-' + index);
-  const panel = document.getElementById('path-panel-' + index);
-  btn.disabled = true; btn.textContent = 'Loading...';
-
-  try {
-    const res = await fetch('/coach/path', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ roleTitle }) });
-    const data = await res.json();
-    btn.textContent = 'Career Path →'; btn.disabled = false;
-
-    if (data.error) { panel.innerHTML = '<p style="color:#cc0000;font-size:12px;">' + data.error + '</p>'; return; }
-
-    panel.innerHTML = \`
-      <div class="path-panel">
-        <div class="path-section"><div class="path-label">Key Challenges</div><ul>\${data.key_challenges.map(c => '<li>'+c+'</li>').join('')}</ul></div>
-        <div class="path-section"><div class="path-label">Skill Gaps to Address</div><ul>\${data.skill_gaps.map(g => '<li>'+g+'</li>').join('')}</ul></div>
-        <div class="path-section"><div class="path-label">Quick Wins</div><ul>\${data.quick_wins.map(w => '<li>'+w+'</li>').join('')}</ul></div>
-        <div class="path-section"><div class="path-label">Success at 6 Months</div><p>\${data.success_at_6_months}</p></div>
-        <div class="path-section"><div class="path-label">Success at 12 Months</div><p>\${data.success_at_12_months}</p></div>
-        <div class="path-section"><div class="path-label">Long-Term Trajectory (3–5 years)</div><p>\${data.long_term_trajectory}</p></div>
-      </div>\`;
-  } catch (err) {
-    btn.textContent = 'Career Path →'; btn.disabled = false;
-    panel.innerHTML = '<p style="color:#cc0000;font-size:12px;">' + err.message + '</p>';
-  }
+async function getCareerPath(title, i) {
+  const btn = el('pth-'+i), panel = el('pp-'+i);
+  btn.disabled=true; btn.textContent='Loading…';
+  const res = await fetch('/coach/path', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ roleTitle: title }) });
+  const d = await res.json();
+  btn.textContent='Career path →'; btn.disabled=false;
+  if (d.error) { panel.innerHTML='<p class="err-msg">'+d.error+'</p>'; return; }
+  panel.innerHTML=\`<div class="path-panel">
+    <div class="path-label">Key Challenges</div>
+    <ul class="path-list">\${d.key_challenges.map(c=>'<li>'+c+'</li>').join('')}</ul>
+    <div class="path-label">Skill Gaps</div>
+    <ul class="path-list">\${d.skill_gaps.map(g=>'<li>'+g+'</li>').join('')}</ul>
+    <div class="path-label">Success at 12 months</div>
+    <p class="path-p">\${d.success_at_12_months}</p>
+    <div class="path-label">Long-term trajectory</div>
+    <p class="path-p">\${d.long_term_trajectory}</p>
+  </div>\`;
 }
 </script>
 </body>
 </html>`);
 });
 
-app.post('/search/jobs', upload.single('cv'), async (req, res) => {
+// ── API endpoints ─────────────────────────────────────────────────────────────
+
+app.post('/upload-cv', upload.single('cv'), async (req, res) => {
   try {
     const cvPath = req.file.path;
-    const country = req.body.country || 'GB';
-    const usState = req.body.usState || '';
     const cvText = await readCV(cvPath);
+    appSession = { ...appSession, cvText, cvPath };
+    res.json({ cvPath });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/search/jobs', upload.single('cv'), async (req, res) => {
+  try {
+    const cvPath = req.file ? req.file.path : appSession.cvPath;
+    const country = req.body.country || 'US';
+    const usState = req.body.usState || '';
+    const cvText = req.file ? await readCV(cvPath) : appSession.cvText;
     const jobTitles = await extractJobTitles(cvText);
 
     let allJobs = [];
@@ -713,7 +708,6 @@ app.post('/search/jobs', upload.single('cv'), async (req, res) => {
       allJobs = [...allJobs, ...jobs];
     }
     const uniqueJobs = [...new Map(allJobs.map(j => [j.job_id, j])).entries()].map(([, j]) => j);
-
     appSession = { cvText, cvPath, jobs: uniqueJobs, rankedJobs: null };
     res.json({ count: uniqueJobs.length, cvPath, titlesFound: jobTitles.length });
   } catch (err) {
@@ -723,8 +717,8 @@ app.post('/search/jobs', upload.single('cv'), async (req, res) => {
 
 app.post('/search/analyze', async (req, res) => {
   try {
-    if (!appSession.jobs) return res.status(400).json({ error: 'No search session. Search first.' });
-    const country = req.body.country || 'GB';
+    if (!appSession.jobs) return res.status(400).json({ error: 'No search session.' });
+    const country = req.body.country || 'US';
     const rankedJobs = await analyzeJobFit(appSession.cvText, appSession.jobs, country);
     appSession.rankedJobs = rankedJobs;
     res.json({ jobs: rankedJobs });
@@ -733,48 +727,9 @@ app.post('/search/analyze', async (req, res) => {
   }
 });
 
-app.post('/coach/analyze', async (req, res) => {
-  try {
-    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded. Run a job search first.' });
-    const { direction } = req.body;
-    if (!direction) return res.status(400).json({ error: 'direction is required.' });
-
-    const coachResult = await analyzeAndSuggestRoles(appSession.cvText, direction);
-    if (!coachResult) return res.status(500).json({ error: 'Career analysis failed. Please try again.' });
-
-    const rankedJobs = appSession.rankedJobs || [];
-    const marketMatches = rankedJobs.length > 0
-      ? await matchRolesToMarket(coachResult.suggested_roles, rankedJobs)
-      : [];
-
-    res.json({
-      profile: coachResult.profile,
-      suggestedRoles: coachResult.suggested_roles,
-      marketMatches,
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/coach/path', async (req, res) => {
-  try {
-    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded. Run a job search first.' });
-    const { roleTitle } = req.body;
-    if (!roleTitle) return res.status(400).json({ error: 'roleTitle is required.' });
-
-    const path = await buildCareerPath(roleTitle, appSession.cvText);
-    if (!path) return res.status(500).json({ error: 'Career path analysis failed. Please try again.' });
-    res.json(path);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.post('/fetch-job', async (req, res) => {
   try {
     const { url, jobText } = req.body;
-
     let rawText;
     if (jobText) {
       rawText = jobText;
@@ -782,15 +737,12 @@ app.post('/fetch-job', async (req, res) => {
       try {
         rawText = await scrapeJobPage(url);
       } catch (err) {
-        if (err.message === 'LOGIN_WALL') {
-          return res.status(422).json({ error: 'LinkedIn requires login to view this post.', loginWall: true });
-        }
+        if (err.message === 'LOGIN_WALL') return res.status(422).json({ error: 'LinkedIn requires login.', loginWall: true });
         throw err;
       }
     } else {
-      return res.status(400).json({ error: 'Provide a url or jobText.' });
+      return res.status(400).json({ error: 'Provide url or jobText.' });
     }
-
     const job = await parseJobFromText(rawText, url || '');
     res.json({ job });
   } catch (err) {
@@ -801,10 +753,49 @@ app.post('/fetch-job', async (req, res) => {
 app.post('/rewrite', async (req, res) => {
   try {
     const { job, cvPath } = req.body;
-    const cvText = await readCV(cvPath);
+    const cvText = await readCV(cvPath || appSession.cvPath);
     const filePath = await rewriteCV(cvText, job);
     const pdfPath = await generatePDF(filePath);
     res.json({ filePath, pdfPath });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/review-cv', async (req, res) => {
+  try {
+    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    const { job } = req.body;
+    if (!job) return res.status(400).json({ error: 'job is required.' });
+    const review = await reviewCV(appSession.cvText, job);
+    res.json(review);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/coach/analyze', async (req, res) => {
+  try {
+    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    const { direction } = req.body;
+    if (!direction) return res.status(400).json({ error: 'direction is required.' });
+    const result = await analyzeAndSuggestRoles(appSession.cvText, direction);
+    if (!result) return res.status(500).json({ error: 'Analysis failed.' });
+    const rankedJobs = appSession.rankedJobs || [];
+    const marketMatches = rankedJobs.length > 0 ? await matchRolesToMarket(result.suggested_roles, rankedJobs) : [];
+    res.json({ profile: result.profile, suggestedRoles: result.suggested_roles, marketMatches });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/coach/path', async (req, res) => {
+  try {
+    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    const { roleTitle } = req.body;
+    const path = await buildCareerPath(roleTitle, appSession.cvText);
+    if (!path) return res.status(500).json({ error: 'Path analysis failed.' });
+    res.json(path);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
