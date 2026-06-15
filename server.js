@@ -397,8 +397,14 @@ async function urlFlow(url) {
       }
       setStep(1, 'err', data.error); return;
     }
+    if (!data.job) {
+      setStep(1, 'err', 'Could not parse job details — please paste the text below');
+      show('pasteToggleRow');
+      return;
+    }
     setStep(1, 'ok', 'Page fetched');
     setStep(2, 'ok', data.job.job_title || 'Job details extracted');
+    await new Promise(r => setTimeout(r, 700));
     hide('progressCard');
     showFetchedJob(data.job);
   } catch (err) {
@@ -412,6 +418,7 @@ function showFetchedJob(job) {
   el('fpCompany').textContent = [job.employer_name, job.job_city].filter(Boolean).join(' · ');
   el('fpDesc').textContent = (job.job_description || '').slice(0, 280) + '…';
   show('fetchedCard');
+  el('fetchedCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function tailorFetched() {
@@ -426,6 +433,7 @@ async function parseManual() {
   const data = await res.json();
   setGoStatus('', '');
   if (data.error) { setGoStatus(data.error, 'err'); return; }
+  if (!data.job) { setGoStatus('Could not parse job text — try pasting more of the description.', 'err'); return; }
   hide('pasteToggleRow');
   showFetchedJob(data.job);
 }
