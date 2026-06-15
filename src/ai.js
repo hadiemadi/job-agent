@@ -58,6 +58,9 @@ async function analyzeJobFit(cvText, jobs, countryCode = 'GB') {
 }
 
 async function rewriteCV(cvText, job) {
+  const company = job.company || job.employer_name || 'Company';
+  const description = job.description || job.job_description || '';
+
   const message = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 3000,
@@ -81,8 +84,8 @@ async function rewriteCV(cvText, job) {
 }
 
 JOB TITLE: ${job.job_title}
-COMPANY: ${job.company}
-JOB DESCRIPTION: ${job.description?.slice(0, 1000)}
+COMPANY: ${company}
+JOB DESCRIPTION: ${description.slice(0, 1000)}
 
 ORIGINAL CV:
 ${cvText}
@@ -100,7 +103,7 @@ Return ONLY the JSON, no explanation.`
   }
 
   const html = generateExecutiveTemplate(cvData, job);
-  const fileName = `output/cv_${job.company.replace(/\s+/g, '_')}.html`;
+  const fileName = `output/cv_${company.replace(/\s+/g, '_')}.html`;
   await fse.outputFile(fileName, html);
   return fileName;
 }

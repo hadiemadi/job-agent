@@ -84,7 +84,7 @@ function generateExecutiveTemplate(cv, job) {
     </div>
   </div>
   <div class="footer">
-    <span>Tailored for ${job.job_title} at ${job.company}</span>
+    <span>Tailored for ${job.job_title} at ${job.company || job.employer_name || ''}</span>
   </div>
 </div>
 </body>
