@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "jest --verbose",
+    "test:ui": "jest test.ui.js --verbose",
+    "test:content": "jest test.js --verbose",
     "start": "node server.js"
   },
   "keywords": [],
@@ -13,7 +15,8 @@
   "type": "commonjs",
   "jest": {
     "testEnvironment": "node",
-    "transform": {}
+    "transform": {},
+    "testMatch": ["**/test.js", "**/test.ui.js"]
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
@@ -26,6 +29,7 @@
     "pdf2json": "^4.0.3",
     "puppeteer": "^25.1.0",
     "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "supertest": "^7.2.2"
   }
 }

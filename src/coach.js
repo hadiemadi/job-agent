@@ -1,6 +1,18 @@
 const Anthropic = require('@anthropic-ai/sdk');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
+
+function extractJSON(text) {
+  text = text.replace(/```json|```/g, '').trim();
+  const start = text.search(/[{[]/);
+  if (start === -1) throw new Error('No JSON found in model response');
+  const openChar  = text[start];
+  const closeChar = openChar === '{' ? '}' : ']';
+  const end = text.lastIndexOf(closeChar);
+  if (end === -1) throw new Error('Unclosed JSON in model response');
+  return text.slice(start, end + 1);
+}
 
 const DIRECTION_DESCRIPTIONS = {
   specialist:  'Deep technical expert, Individual Contributor, architect, domain authority — going deeper not broader',
@@ -10,7 +22,7 @@ const DIRECTION_DESCRIPTIONS = {
 
 async function analyzeAndSuggestRoles(cvText, direction) {
   const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: MODEL,
     max_tokens: 3000,
     messages: [{
       role: 'user',
@@ -44,7 +56,7 @@ Return JSON only, no explanation:
   });
 
   try {
-    const raw = message.content[0].text.replace(/```json|```/g, '').trim();
+    const raw = extractJSON(message.content[0].text);
     return JSON.parse(raw);
   } catch (e) {
     return null;
@@ -58,7 +70,7 @@ async function matchRolesToMarket(suggestedRoles, rankedJobs) {
   ).join('\n');
 
   const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: MODEL,
     max_tokens: 2000,
     messages: [{
       role: 'user',
@@ -82,7 +94,7 @@ Return JSON only:
   });
 
   try {
-    const raw = message.content[0].text.replace(/```json|```/g, '').trim();
+    const raw = extractJSON(message.content[0].text);
     return JSON.parse(raw);
   } catch (e) {
     return [];
@@ -91,7 +103,7 @@ Return JSON only:
 
 async function buildCareerPath(roleTitle, cvText) {
   const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: MODEL,
     max_tokens: 2000,
     messages: [{
       role: 'user',
@@ -115,7 +127,7 @@ Return JSON only:
   });
 
   try {
-    const raw = message.content[0].text.replace(/```json|```/g, '').trim();
+    const raw = extractJSON(message.content[0].text);
     return JSON.parse(raw);
   } catch (e) {
     return null;
