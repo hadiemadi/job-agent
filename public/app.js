@@ -329,6 +329,13 @@ function showComparison(job, data) {
   el('openCompBtn').href = '/' + data.comparisonPath;
   el('openTailoredBtn').href = '/' + data.filePath;
   el('downloadPdfBtn').href = '/' + data.pdfPath;
+  const wordBtn = el('downloadWordBtn');
+  if (data.wordPath) {
+    wordBtn.href = '/' + data.wordPath;
+    wordBtn.style.display = '';
+  } else {
+    wordBtn.style.display = 'none';
+  }
   show('comparisonCard');
   show('coachToggleBar');
   el('comparisonCard').scrollIntoView({ behavior: 'smooth', block: 'start' });

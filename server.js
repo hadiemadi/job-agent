@@ -10,6 +10,7 @@ const {
 } = require('./agent');
 const { scrapeJobPage } = require('./src/scraper');
 const { generatePDF } = require('./src/pdf');
+const { generateWordCV } = require('./src/wordExport');
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
@@ -107,7 +108,9 @@ app.post('/rewrite', async (req, res) => {
     const comparisonHtml = generateComparisonTemplate(appSession.cvData, cvData, job, modified_sections);
     const comparisonPath = `output/comparison_${company}.html`;
     await fse.outputFile(comparisonPath, comparisonHtml);
-    res.json({ filePath, pdfPath, comparisonPath });
+    let wordPath = null;
+    try { wordPath = await generateWordCV(cvData, job); } catch (e) { console.error('Word export failed:', e.message); }
+    res.json({ filePath, pdfPath, comparisonPath, wordPath });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
