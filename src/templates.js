@@ -1,30 +1,21 @@
-function generateExecutiveTemplate(cv, job) {
-  const skills    = (cv.skills    || []).filter(s => s && String(s).trim());
-  const education = (cv.education || []).filter(e => e.degree || e.school);
-  const keyQuals  = (cv.key_qualifications  || []).filter(q => q && String(q).trim());
-  const addlSecs  = (cv.additional_sections || []).filter(s =>
-    s && s.title && (s.items || []).some(x => x && String(x).trim())
-  );
-  const experience = (cv.experience || []).filter(exp => exp.role || exp.company);
+'use strict';
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${cv.name} — CV for ${job.job_title}</title>
-<style>
+// ── Shared CSS (used by both standalone template and comparison) ───────────────
+const CV_CSS = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; color: #333; background: #f4f4f4; padding-top: 52px; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #333; background: #f4f4f4; }
   .page { max-width: 860px; margin: 40px auto; background: white; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
   .header { background: #2C2C2A; color: white; padding: 40px 48px; }
   .header h1 { font-size: 28px; font-weight: 600; letter-spacing: 1px; margin-bottom: 4px; }
-  .header .job-title { font-size: 14px; color: rgba(255,255,255,0.6); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 16px; }
+  .header .job-title { font-size: 14px; color: rgba(255,255,255,0.6); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+  .tailored-badge { display: inline-block; margin-top: 6px; background: #185FA5; color: white; font-size: 11px; padding: 3px 10px; border-radius: 12px; letter-spacing: 0.3px; }
+  .tailored-badge strong { font-weight: 600; }
   .contact-bar { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; }
   .ci { display: flex; align-items: center; gap: 5px; }
   .ci-i { font-size: 13px; color: rgba(255,255,255,0.5); flex-shrink: 0; user-select: none; }
   .contact-bar span { font-size: 13px; color: rgba(255,255,255,0.75); }
-  .contact-bar .li-url { color: #4A9FE0; }
+  .contact-bar a  { font-size: 13px; color: #4A9FE0; text-decoration: none; }
+  .li-url { color: #4A9FE0; }
   .accent-line { width: 48px; height: 3px; background: #185FA5; margin: 12px 0; }
   .body { display: grid; grid-template-columns: 1fr 2.2fr; }
   .left { background: #F8F8F7; padding: 32px 24px; border-right: 1px solid #E8E8E6; }
@@ -34,21 +25,153 @@ function generateExecutiveTemplate(cv, job) {
   .edu-item { margin-bottom: 14px; }
   .edu-item .degree { font-size: 13px; font-weight: 600; color: #2C2C2A; }
   .edu-item .school { font-size: 12px; color: #666; }
-  .edu-item .year { font-size: 11px; color: #185FA5; margin-top: 2px; }
+  .edu-item .year   { font-size: 11px; color: #185FA5; margin-top: 2px; }
   .extra-item { font-size: 12px; color: #555; line-height: 1.6; padding: 2px 0; }
   .right { padding: 32px 36px; }
   .summary { font-size: 13.5px; line-height: 1.7; color: #555; border-left: 3px solid #185FA5; padding-left: 16px; margin-bottom: 28px; }
-  .kq-list { padding-left: 16px; margin-bottom: 28px; }
-  .kq-list li { font-size: 13px; line-height: 1.6; color: #555; margin-bottom: 4px; }
+  .kq-list { padding-left: 16px; margin-bottom: 24px; }
+  .kq-list li { font-size: 13px; line-height: 1.6; color: #555; margin-bottom: 3px; }
   .exp-item { margin-bottom: 24px; }
   .exp-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
-  .exp-role { font-size: 15px; font-weight: 600; color: #2C2C2A; }
+  .exp-role   { font-size: 15px; font-weight: 600; color: #2C2C2A; }
   .exp-period { font-size: 12px; color: #185FA5; font-weight: 500; white-space: nowrap; }
   .exp-company { font-size: 13px; color: #666; margin-bottom: 8px; }
   .exp-bullets { padding-left: 16px; }
   .exp-bullets li { font-size: 13px; line-height: 1.6; color: #555; margin-bottom: 4px; }
   .footer { background: #2C2C2A; padding: 12px 48px; text-align: right; }
   .footer span { font-size: 11px; color: rgba(255,255,255,0.3); }
+`;
+
+// ── Core CV page renderer ─────────────────────────────────────────────────────
+// Single source of truth: every output (standalone, comparison) uses this function.
+// opts.editable   → add contenteditable attributes (standalone only)
+// opts.highlighted → Set of section names to highlight in yellow (comparison tailored side)
+// opts.showBadge  → show "Tailored for …" pill in the header (standalone only)
+// opts.footerText → override footer label (comparison original shows "Original CV")
+function renderCVPage(cv, job, opts = {}) {
+  const {
+    editable    = false,
+    highlighted = new Set(),
+    showBadge   = false,
+    footerText  = `Tailored for ${job.job_title || ''} at ${job.company || job.employer_name || ''}`,
+  } = opts;
+
+  const hl  = s => highlighted.has(s)
+    ? 'style="background:#fffbdd;outline:2px solid #e6a817;outline-offset:3px;border-radius:3px;padding:4px;"'
+    : '';
+
+  // Attribute helpers — return empty string when not editable
+  const sl  = (spell = true) => editable
+    ? `contenteditable="true" class="sl" spellcheck="${spell}"`
+    : '';
+  const slC = (cls, spell = true) => editable         // sl + extra CSS class on same element
+    ? `contenteditable="true" class="${cls} sl" spellcheck="${spell}"`
+    : `class="${cls}"`;
+  const ml  = () => editable ? 'contenteditable="true" spellcheck="true"' : '';
+
+  const skills    = (cv.skills    || []).filter(s => s && String(s).trim());
+  const education = (cv.education || []).filter(e => e.degree || e.school);
+  const keyQuals  = (cv.key_qualifications  || []).filter(q => q && String(q).trim());
+  const addlSecs  = (cv.additional_sections || []).filter(s =>
+    s && s.title && (s.items || []).some(x => x && String(x).trim())
+  );
+  const experience = (cv.experience || []).filter(exp => exp.role || exp.company);
+
+  return `
+<div class="page">
+  <div class="header">
+    <h1 ${sl(true)}>${cv.name || 'Your Name'}</h1>
+    <div ${slC('job-title', true)}>${cv.title || job.job_title || ''}</div>
+    ${showBadge ? `<div class="tailored-badge">Tailored for: <strong>${job.job_title || ''}${job.employer_name ? ' at ' + job.employer_name : ''}</strong></div>` : ''}
+    <div class="accent-line"></div>
+    <div class="contact-bar">
+      ${cv.email    ? `<span class="ci"><span class="ci-i">✉</span><span ${sl(false)}>${cv.email}</span></span>`             : ''}
+      ${cv.phone    ? `<span class="ci"><span class="ci-i">✆</span><span ${sl(false)}>${cv.phone}</span></span>`             : ''}
+      ${cv.location ? `<span class="ci"><span class="ci-i">📍</span><span ${sl(false)}>${cv.location}</span></span>`         : ''}
+      ${cv.linkedin ? `<span class="ci"><span ${slC('li-url', false)}>${cv.linkedin}</span></span>`                          : ''}
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="left">
+      ${skills.length ? `
+        <div ${slC('section-title', false)}>Skills</div>
+        <div ${hl('skills')}>
+          ${skills.map(s => `<span ${slC('skill-tag', true)}>${String(s)}</span>`).join('')}
+        </div>
+      ` : ''}
+      ${education.length ? `
+        <div ${slC('section-title', false)}>Education</div>
+        ${education.map(e => `
+          <div class="edu-item">
+            <div ${slC('degree edu-item-degree', true)}>${e.degree || ''}</div>
+            <div ${slC('school edu-item-school', true)}>${e.school  || ''}</div>
+            <div ${slC('year edu-item-year',     false)}>${e.year   || ''}</div>
+          </div>
+        `).join('')}
+      ` : ''}
+      ${addlSecs.map(s => `
+        <div ${slC('section-title', false)}>${s.title}</div>
+        ${(s.items || []).filter(x => x && String(x).trim()).map(x =>
+          `<div ${slC('extra-item', true)}>${x}</div>`
+        ).join('')}
+      `).join('')}
+    </div>
+
+    <div class="right">
+      ${cv.summary && cv.summary.trim() ? `
+        <div ${slC('section-title', false)}>Profile</div>
+        <div class="summary" ${ml()} ${hl('summary')}>${cv.summary}</div>
+      ` : ''}
+      ${keyQuals.length ? `
+        <div ${slC('section-title', false)}>Key Qualifications</div>
+        <ul class="kq-list" ${hl('key_qualifications')}>
+          ${keyQuals.map(q => `<li ${ml()}>${String(q)}</li>`).join('')}
+        </ul>
+      ` : ''}
+      ${experience.length ? `
+        <div ${slC('section-title', false)}>Experience</div>
+        <div ${hl('experience')}>
+          ${experience.map(exp => `
+            <div class="exp-item">
+              <div class="exp-header">
+                <div ${slC('exp-role',    true)}>${exp.role    || ''}</div>
+                <div ${slC('exp-period',  false)}>${exp.period || ''}</div>
+              </div>
+              <div ${slC('exp-company', true)}>${exp.company || ''}</div>
+              <ul class="exp-bullets">
+                ${(exp.bullets || []).filter(b => b && String(b).trim()).map(b =>
+                  `<li ${ml()}>${b}</li>`
+                ).join('')}
+              </ul>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+    </div>
+  </div>
+
+  <div class="footer">
+    <span ${sl(false)}>${footerText}</span>
+  </div>
+</div>`;
+}
+
+// ── Standalone tailored CV (editable, with toolbar) ───────────────────────────
+function generateExecutiveTemplate(cv, job) {
+  const pageHtml = renderCVPage(cv, job, { editable: true, showBadge: true });
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${cv.name} — CV for ${job.job_title}</title>
+<style>
+${CV_CSS}
+  /* Standalone: extra top padding for toolbar */
+  body { padding-top: 52px; }
+  .page { margin: 40px auto; }
 
   /* ── Inline editing ─────────────────────────────────── */
   [contenteditable] { outline: none; border-radius: 3px; min-width: 4px; cursor: text; transition: background 0.1s; }
@@ -82,6 +205,11 @@ function generateExecutiveTemplate(cv, job) {
     [contenteditable]:hover,
     [contenteditable]:focus { background: transparent !important; outline: none !important; }
   }
+
+  /* edu-item class overrides (generated with compound class names) */
+  .edu-item-degree { font-size: 13px; font-weight: 600; color: #2C2C2A; }
+  .edu-item-school { font-size: 12px; color: #666; }
+  .edu-item-year   { font-size: 11px; color: #185FA5; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -94,78 +222,7 @@ function generateExecutiveTemplate(cv, job) {
   </div>
 </div>
 
-<div class="page">
-  <div class="header">
-    <h1 contenteditable="true" class="sl" spellcheck="true">${cv.name || 'Your Name'}</h1>
-    <div class="job-title sl" contenteditable="true" spellcheck="true">${cv.title || job.job_title}</div>
-    <div class="accent-line"></div>
-    <div class="contact-bar">
-      ${cv.email    ? `<span class="ci"><span class="ci-i">✉</span><span contenteditable="true" class="sl" spellcheck="false">${cv.email}</span></span>`                  : ''}
-      ${cv.phone    ? `<span class="ci"><span class="ci-i">✆</span><span contenteditable="true" class="sl" spellcheck="false">${cv.phone}</span></span>`                  : ''}
-      ${cv.location ? `<span class="ci"><span class="ci-i">📍</span><span contenteditable="true" class="sl" spellcheck="false">${cv.location}</span></span>`              : ''}
-      ${cv.linkedin ? `<span class="ci"><span contenteditable="true" class="sl li-url" spellcheck="false">${cv.linkedin}</span></span>` : ''}
-    </div>
-  </div>
-
-  <div class="body">
-    <div class="left">
-      ${skills.length ? `
-        <div class="section-title sl" contenteditable="true" spellcheck="false">Skills</div>
-        <div>${skills.map(s => `<span class="skill-tag sl" contenteditable="true" spellcheck="true">${String(s)}</span>`).join('')}</div>
-      ` : ''}
-      ${education.length ? `
-        <div class="section-title sl" contenteditable="true" spellcheck="false">Education</div>
-        ${education.map(e => `
-          <div class="edu-item">
-            <div class="degree sl" contenteditable="true" spellcheck="true">${e.degree || ''}</div>
-            <div class="school sl" contenteditable="true" spellcheck="true">${e.school  || ''}</div>
-            <div class="year   sl" contenteditable="true" spellcheck="false">${e.year   || ''}</div>
-          </div>
-        `).join('')}
-      ` : ''}
-      ${addlSecs.map(s => `
-        <div class="section-title sl" contenteditable="true" spellcheck="false">${s.title}</div>
-        ${(s.items || []).filter(x => x && String(x).trim()).map(x =>
-          `<div class="extra-item sl" contenteditable="true" spellcheck="true">${x}</div>`
-        ).join('')}
-      `).join('')}
-    </div>
-
-    <div class="right">
-      ${cv.summary && cv.summary.trim() ? `
-        <div class="section-title sl" contenteditable="true" spellcheck="false">Profile</div>
-        <div class="summary" contenteditable="true" spellcheck="true">${cv.summary}</div>
-      ` : ''}
-      ${keyQuals.length ? `
-        <div class="section-title sl" contenteditable="true" spellcheck="false">Key Qualifications</div>
-        <ul class="kq-list">
-          ${keyQuals.map(q => `<li contenteditable="true" spellcheck="true">${String(q)}</li>`).join('')}
-        </ul>
-      ` : ''}
-      ${experience.length ? `
-        <div class="section-title sl" contenteditable="true" spellcheck="false">Experience</div>
-        ${experience.map(exp => `
-          <div class="exp-item">
-            <div class="exp-header">
-              <div class="exp-role   sl" contenteditable="true" spellcheck="true">${exp.role    || ''}</div>
-              <div class="exp-period sl" contenteditable="true" spellcheck="false">${exp.period || ''}</div>
-            </div>
-            <div class="exp-company sl" contenteditable="true" spellcheck="true">${exp.company || ''}</div>
-            <ul class="exp-bullets">
-              ${(exp.bullets || []).filter(b => b && String(b).trim()).map(b =>
-                `<li contenteditable="true" spellcheck="true">${b}</li>`
-              ).join('')}
-            </ul>
-          </div>
-        `).join('')}
-      ` : ''}
-    </div>
-  </div>
-
-  <div class="footer">
-    <span class="sl" contenteditable="true" spellcheck="false">Tailored for ${job.job_title} at ${job.company || job.employer_name || ''}</span>
-  </div>
-</div>
+${pageHtml}
 
 <script>
   // Single-line fields (.sl): block Enter, just commit on blur instead
@@ -203,99 +260,23 @@ function generateExecutiveTemplate(cv, job) {
 }
 
 // ── Comparison page ───────────────────────────────────────────────────────────
-// generateExecutiveTemplate is never touched here.
-// renderCVForComparison is a clone of that template, extended for the original CV side
-// (adds key_qualifications and additional_sections). The tailored side uses the same
-// clone with yellow highlights on modified sections.
-
+// Both sides use renderCVPage — same sections, same content as standalone CV.
+// Only difference: no editability, original side has no badge, tailored side gets highlights.
 function generateComparisonTemplate(originalCv, tailoredCv, job, modifiedSections = []) {
   const highlighted = new Set(modifiedSections);
 
-  function hl(section) {
-    return highlighted.has(section)
-      ? 'style="background:#fffbdd;outline:2px solid #e6a817;outline-offset:3px;border-radius:3px;padding:4px;"'
-      : '';
-  }
+  const origPage = renderCVPage(originalCv, job, {
+    editable:   false,
+    showBadge:  false,
+    footerText: 'Original CV',
+  });
 
-  // Clone of the executive template — extended for comparison, never modifies the original
-  function renderCVForComparison(cv, isRight, footerLabel) {
-    const skills     = (cv.skills     || []).filter(s => s && String(s).trim());
-    const education  = (cv.education  || []).filter(e => e.degree || e.school);
-    const experience = (cv.experience || []).filter(exp => exp.role || exp.company);
-    const keyQuals   = !isRight ? (cv.key_qualifications  || []).filter(q => q && String(q).trim()) : [];
-    const addlSecs   = !isRight ? (cv.additional_sections || []).filter(s =>
-      s && s.title && (s.items || []).some(x => x && String(x).trim())
-    ) : [];
-
-    return `
-<div class="page">
-  <div class="header">
-    <h1>${cv.name || 'Your Name'}</h1>
-    <div class="job-title">${cv.title || job.job_title || ''}</div>
-    <div class="accent-line"></div>
-    <div class="contact-bar">
-      ${cv.email    ? `<span>✉ ${cv.email}</span>`           : ''}
-      ${cv.phone    ? `<span>✆ ${cv.phone}</span>`           : ''}
-      ${cv.location ? `<span>📍 ${cv.location}</span>`       : ''}
-      ${cv.linkedin ? `<a href="${cv.linkedin}">LinkedIn</a>` : ''}
-    </div>
-  </div>
-  <div class="body">
-    <div class="left">
-      ${skills.length ? `
-        <div class="section-title">Skills</div>
-        <div ${isRight ? hl('skills') : ''}>
-          ${skills.map(s => `<span class="skill-tag">${String(s)}</span>`).join('')}
-        </div>
-      ` : ''}
-      ${education.length ? `
-        <div class="section-title">Education</div>
-        ${education.map(e => `
-          <div class="edu-item">
-            <div class="degree">${e.degree || ''}</div>
-            <div class="school">${e.school  || ''}</div>
-            <div class="year">${e.year    || ''}</div>
-          </div>
-        `).join('')}
-      ` : ''}
-      ${addlSecs.map(s => `
-        <div class="section-title">${s.title}</div>
-        ${(s.items || []).filter(x => x && String(x).trim()).map(item => `<div class="extra-item">${item}</div>`).join('')}
-      `).join('')}
-    </div>
-    <div class="right">
-      ${cv.summary && cv.summary.trim() ? `
-        <div class="section-title">Profile</div>
-        <div class="summary" ${isRight ? hl('summary') : ''}>${cv.summary}</div>
-      ` : ''}
-      ${keyQuals.length ? `
-        <div class="section-title">Key Qualifications</div>
-        <ul class="kq-list">
-          ${keyQuals.map(q => `<li>${String(q)}</li>`).join('')}
-        </ul>
-      ` : ''}
-      ${experience.length ? `
-        <div class="section-title">Experience</div>
-        <div ${isRight ? hl('experience') : ''}>
-          ${experience.map(exp => `
-            <div class="exp-item">
-              <div class="exp-header">
-                <div class="exp-role">${exp.role    || ''}</div>
-                <div class="exp-period">${exp.period || ''}</div>
-              </div>
-              <div class="exp-company">${exp.company || ''}</div>
-              <ul class="exp-bullets">
-                ${(exp.bullets || []).filter(b => b && String(b).trim()).map(b => `<li>${b}</li>`).join('')}
-              </ul>
-            </div>
-          `).join('')}
-        </div>
-      ` : ''}
-    </div>
-  </div>
-  <div class="footer"><span>${footerLabel}</span></div>
-</div>`;
-  }
+  const tailPage = renderCVPage(tailoredCv, job, {
+    editable:    false,
+    highlighted,
+    showBadge:   false,
+    footerText:  `Tailored for ${job.job_title || ''} at ${job.employer_name || job.company || ''}`,
+  });
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -304,52 +285,27 @@ function generateComparisonTemplate(originalCv, tailoredCv, job, modifiedSection
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CV Comparison — ${job.job_title || ''}</title>
 <style>
-  /* Executive template CSS — exact copy, never shared with generateExecutiveTemplate */
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; color: #333; background: #e8e8e6; }
-  .page { max-width: 860px; background: white; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
-  .header { background: #2C2C2A; color: white; padding: 40px 48px; }
-  .header h1 { font-size: 28px; font-weight: 600; letter-spacing: 1px; margin-bottom: 4px; }
-  .header .job-title { font-size: 14px; color: rgba(255,255,255,0.6); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 16px; }
-  .contact-bar { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; }
-  .contact-bar span { font-size: 13px; color: rgba(255,255,255,0.7); }
-  .contact-bar a { color: #4A9FE0; text-decoration: none; font-size: 13px; }
-  .accent-line { width: 48px; height: 3px; background: #185FA5; margin: 12px 0; }
-  .body { display: grid; grid-template-columns: 1fr 2.2fr; }
-  .left { background: #F8F8F7; padding: 32px 24px; border-right: 1px solid #E8E8E6; }
-  .section-title { font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: #185FA5; margin-bottom: 12px; margin-top: 28px; }
-  .left .section-title:first-child { margin-top: 0; }
-  .skill-tag { display: inline-block; background: white; border: 1px solid #E0E0E0; border-radius: 4px; padding: 4px 10px; font-size: 12px; margin: 3px 3px 3px 0; color: #444; }
-  .edu-item { margin-bottom: 14px; }
-  .edu-item .degree { font-size: 13px; font-weight: 600; color: #2C2C2A; }
-  .edu-item .school { font-size: 12px; color: #666; }
-  .edu-item .year { font-size: 11px; color: #185FA5; margin-top: 2px; }
-  .right { padding: 32px 36px; }
-  .summary { font-size: 13.5px; line-height: 1.7; color: #555; border-left: 3px solid #185FA5; padding-left: 16px; margin-bottom: 28px; }
-  .exp-item { margin-bottom: 24px; }
-  .exp-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
-  .exp-role { font-size: 15px; font-weight: 600; color: #2C2C2A; }
-  .exp-period { font-size: 12px; color: #185FA5; font-weight: 500; white-space: nowrap; }
-  .exp-company { font-size: 13px; color: #666; margin-bottom: 8px; }
-  .exp-bullets { padding-left: 16px; }
-  .exp-bullets li { font-size: 13px; line-height: 1.6; color: #555; margin-bottom: 4px; }
-  .footer { background: #2C2C2A; padding: 12px 48px; text-align: right; }
-  .footer span { font-size: 11px; color: rgba(255,255,255,0.3); }
-  /* Extra fields shown on original CV side only */
-  .kq-list { padding-left: 16px; margin-bottom: 24px; }
-  .kq-list li { font-size: 13px; line-height: 1.6; color: #555; margin-bottom: 3px; }
-  .extra-item { font-size: 12px; color: #555; line-height: 1.6; padding: 2px 0; }
-  /* Comparison layout */
+${CV_CSS}
+  /* Comparison overrides */
+  body { background: #e8e8e6; padding: 0; }
+  .page { margin: 0; }
+
+  /* edu-item class overrides */
+  .edu-item-degree { font-size: 13px; font-weight: 600; color: #2C2C2A; }
+  .edu-item-school { font-size: 12px; color: #666; }
+  .edu-item-year   { font-size: 11px; color: #185FA5; margin-top: 2px; }
+
+  /* Comparison chrome */
   .comp-header { background: #2C2C2A; color: white; padding: 14px 32px; }
   .comp-header h1 { font-size: 15px; font-weight: 500; }
   .col-labels { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 1380px; margin: 14px auto 4px; padding: 0 24px; }
-  .col-label { font-size: 11px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: #999; text-align: center; }
+  .col-label  { font-size: 11px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: #999; text-align: center; }
   .col-label.right { color: #185FA5; }
-  .legend { max-width: 1380px; margin: 0 auto 8px; padding: 0 24px; display: flex; align-items: center; gap: 8px; }
+  .legend     { max-width: 1380px; margin: 0 auto 8px; padding: 0 24px; display: flex; align-items: center; gap: 8px; }
   .legend-box { width: 14px; height: 14px; background: #fffbdd; border: 2px solid #e6a817; border-radius: 2px; flex-shrink: 0; }
   .legend-text { font-size: 12px; color: #666; }
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 1380px; margin: 0 auto 40px; padding: 0 24px; }
-  .col { zoom: 0.62; }
+  .col  { zoom: 0.62; }
 </style>
 </head>
 <body>
@@ -365,8 +321,8 @@ function generateComparisonTemplate(originalCv, tailoredCv, job, modifiedSection
   <span class="legend-text">Section modified from original</span>
 </div>
 <div class="cols">
-  <div class="col">${renderCVForComparison(originalCv, false, 'Original CV')}</div>
-  <div class="col">${renderCVForComparison(tailoredCv, true,  `Tailored for ${job.job_title} at ${job.employer_name || job.company || ''}`)}</div>
+  <div class="col">${origPage}</div>
+  <div class="col">${tailPage}</div>
 </div>
 </body>
 </html>`;
