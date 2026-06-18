@@ -9,7 +9,6 @@ const {
   analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath,
 } = require('./agent');
 const { scrapeJobPage } = require('./src/scraper');
-const { generatePDF } = require('./src/pdf');
 const { generateWordCV } = require('./src/wordExport');
 
 const app = express();
@@ -103,14 +102,22 @@ app.post('/rewrite', async (req, res) => {
     const recommendedSections = (appSession.hrReview || {}).recommended_sections;
     const originalName = (appSession.cvData || {}).name;
     const { filePath, cvData, modified_sections } = await rewriteCVWithChanges(cvText, job, autoChanges || [], confirmedChanges || [], recommendedSections, originalName, appSession.confirmedContact);
-    const pdfPath = await generatePDF(filePath);
     const company = (job.employer_name || job.company || 'Company').replace(/\s+/g, '_');
     const comparisonHtml = generateComparisonTemplate(appSession.cvData, cvData, job, modified_sections);
     const comparisonPath = `output/comparison_${company}.html`;
     await fse.outputFile(comparisonPath, comparisonHtml);
-    let wordPath = null;
-    try { wordPath = await generateWordCV(cvData, job); } catch (e) { console.error('Word export failed:', e.message); }
-    res.json({ filePath, pdfPath, comparisonPath, wordPath });
+    res.json({ filePath, comparisonPath });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/export-word', async (req, res) => {
+  try {
+    const { cvData, job } = req.body;
+    if (!cvData || !job) return res.status(400).json({ error: 'cvData and job are required.' });
+    const wordPath = await generateWordCV(cvData, job);
+    res.json({ wordPath });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

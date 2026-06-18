@@ -98,6 +98,6 @@ See `.env.example` for all required keys.
 
 - [ ] Career Coach — AI career advisor
 - [ ] Ghost job detection
-- [ ] PDF export of rewritten CV
+- [x] Word export of tailored CV (on-demand, reflects live edits)
 - [ ] Multiple CV templates
 - [ ] Cover letter generator

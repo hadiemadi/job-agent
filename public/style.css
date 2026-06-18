@@ -31,8 +31,6 @@ textarea { resize:vertical; height:100px; }
 .btn-blue:disabled { background:#bbb; cursor:not-allowed; }
 .btn-green { background:#1A7A3C; color:white; text-decoration:none; display:inline-block; }
 .btn-green:hover { background:#145c2d; }
-.btn-word { background:#2B579A; color:white; text-decoration:none; display:inline-block; }
-.btn-word:hover { background:#1f3f6e; }
 .btn-ghost { background:white; color:#185FA5; border:1px solid #185FA5; }
 .btn-ghost:hover { background:#f0f7ff; }
 .btn-ghost:disabled { opacity:0.5; cursor:not-allowed; }

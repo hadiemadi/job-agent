@@ -9,7 +9,7 @@
 2. System finds available jobs in the US, filtered by state
 3. AI ranks jobs by fit against the CV
 4. Client picks a job → CV is automatically tailored to that job
-5. Client downloads a professional PDF of the tailored CV
+5. Client edits the tailored CV in-browser and exports it to Word
 6. Client clicks directly to the job application page
 
 **Secondary goals (layered on top):**
@@ -19,7 +19,7 @@
 **Current blocker:** JSearch API has poor US coverage and no reliable state-level filtering. Need a better job data source.
 
 ## What we're building
-An AI-powered job application assistant — find US jobs by state, tailor CV, export PDF, apply.
+An AI-powered job application assistant — find US jobs by state, tailor CV, export to Word, apply.
 
 ## Tech Stack
 - Runtime: Node.js v24 (WSL/Ubuntu 24.04)
@@ -64,7 +64,7 @@ An AI-powered job application assistant — find US jobs by state, tailor CV, ex
 - **Country/location filter**: JSearch coverage too weak for reliable geo-filtering — ✅ resolved by switching to Jooble with US state filtering.
 - **CV re-read on country change**: If only the country changes (same CV), the app re-reads and re-analyzes the CV unnecessarily — cache CV text + job titles in the session so only the job search step reruns
 - **Executive mismatch analysis**: After ranking, generate a short AI summary explaining WHY the found jobs are not a strong fit overall (e.g. "Market shows mostly mid-level roles; your profile is senior TPM with RF specialization — low overlap with available listings"). Shown above the job cards as a coach-level insight.
-- **LinkedIn job post import**: User should be able to paste a LinkedIn (or any) job post URL directly into the app and get the full service — tailored CV PDF + HR agent review — without going through the job search flow. Scrape/fetch the job post content from the URL, parse title/company/description, then feed into the existing tailor + HR review pipeline.
+- **LinkedIn job post import**: User should be able to paste a LinkedIn (or any) job post URL directly into the app and get the full service — tailored CV + HR agent review — without going through the job search flow. Scrape/fetch the job post content from the URL, parse title/company/description, then feed into the existing tailor + HR review pipeline.
 - **Career-shift job title expansion**: Currently we extract 3 job titles directly from the CV (what the person has done). For career shift scenarios, Claude should also suggest adjacent or target role titles the candidate could realistically move into — e.g. an RF TPM could target "Product Manager - Hardware", "Director of Engineering", "Solutions Architect". These expanded titles feed the job search so we surface transition opportunities, not just more of the same.
 - **Semantic CV-to-market mapping (computationally expensive)**: Job titles differ by country and company — a "Technical Program Manager" in the US may be listed as "Delivery Manager" or "Engineering Lead" in other markets. Instead of relying only on title matching, embed the candidate's CV skills/experience and compare against actual job description text using semantic similarity. Computationally costly (embedding + vector search) — defer until job volume justifies it, but keep as a long-term quality improvement.
 - **Frontend extraction**: The entire HTML/CSS/JS frontend is embedded as a template string inside `server.js`. Move it to `public/index.html` served statically (`app.use(express.static('public'))`). This makes UI changes trivial — edit an HTML file directly instead of navigating a 600-line monolith.
@@ -92,7 +92,7 @@ An AI-powered job application assistant — find US jobs by state, tailor CV, ex
 |---|------|-----|
 | 9 | **Find better US job source** | JSearch has no reliable US/state coverage — evaluate Adzuna, Indeed, LinkedIn |
 | 10 | **State-level filtering** | Client needs to filter jobs by US state (e.g. California, Texas) |
-| 11 | **PDF export of tailored CV** | Client needs a downloadable PDF to attach to job applications |
+| 11 | **Word export of tailored CV** ✅ | On-demand export from the editable tailored CV page — reflects live edits |
 | 12 | **Direct apply link** | One-click to job application page from the tailored CV result |
 
 ### Career Coach — Feature Spec
@@ -146,7 +146,7 @@ After a CV is tailored for a specific job, an HR expert AI reviews it and gives 
 ### Phase 3 — CV Features
 | # | Task | Why |
 |---|------|-----|
-| 9 | PDF export of rewritten CV | Professional output |
+| 9 | Word export of tailored CV ✅ | On-demand export reflecting live in-browser edits |
 | 10 | Multiple CV templates | Modern, Classic, Executive |
 | 11 | Result-oriented CV restructuring | Stronger CV |
 | 12 | Writing style tuning | More personalized CV |

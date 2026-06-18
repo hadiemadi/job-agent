@@ -103,7 +103,7 @@ pdfParser.on('pdfParser_dataReady', (pdfData) => {
 ### `src/templates.js`
 Completely rewrote `generateExecutiveTemplate()` to add full inline editing capability:
 - `contenteditable="true"` + `.sl` class on every text field
-- Floating `.cv-toolbar` div (dark bar at top: "Save as HTML" + "Print / Save PDF")
+- Floating `.cv-toolbar` div (dark bar at top: "Save as HTML" + "Export to Word")
 - Edit-mode CSS (blue dashed outline on focus, subtle highlight on hover)
 - Print CSS (hides toolbar and edit indicators)
 - Embedded JS: Enter prevention for single-line fields, plain-text paste handling, `saveHTML()` download
@@ -128,9 +128,9 @@ Split `go()` into three functions:
 Added `.contact-hint` style: `{ font-size:12px; color:#888; margin-bottom:18px; line-height:1.6; border-left:3px solid #185FA5; padding-left:10px; }`
 
 ### `test.ui.js`
-- 19 fast mocked tests, run via `npm run test:ui`
-- All external modules (Claude, pdf, scraper, jobs) are Jest-mocked
-- Tests confirmed 19/19 passing in ~2.7 seconds
+- 22 fast mocked tests, run via `npm run test:ui`
+- All external modules (Claude, wordExport, scraper, jobs) are Jest-mocked
+- Tests confirmed 22/22 passing
 
 ### `package.json`
 - Scripts: `test`, `test:ui`, `test:content`, `start`
@@ -170,7 +170,7 @@ From CLAUDE.md bug backlog — not yet started:
 - **Career-shift job title expansion**: Suggest adjacent/target roles beyond what's on the CV
 - **Frontend extraction**: Move inline HTML/CSS/JS from `server.js` to `public/index.html` ← already done
 - **Semantic CV-to-market mapping**: Embedding + vector search — deferred (expensive)
-- **PDF export**: Downloadable PDF of tailored CV (Phase 3 priority)
+- **Word export**: ✅ done — on-demand "Export to Word" button inside the editable tailored CV page, reflects live edits (PDF export was dropped entirely)
 - **US job source**: JSearch has poor US/state coverage — evaluate Adzuna, Indeed, LinkedIn
 - **State-level filtering**: Filter jobs by US state (e.g. California, Texas)
 - **Update `test.ui.js`**: Add `POST /confirm-contact` to session-dependent `beforeAll`

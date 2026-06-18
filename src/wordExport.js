@@ -91,13 +91,20 @@ function skillsSection(skills) {
   return [sectionHeading('SKILLS'), ...skills.map(s => bullet(typeof s === 'string' ? s : String(s)))];
 }
 
+function keyQualificationsSection(keyQuals) {
+  if (!Array.isArray(keyQuals) || keyQuals.length === 0) return [];
+  const items = keyQuals.filter(q => q && String(q).trim());
+  if (!items.length) return [];
+  return [sectionHeading('KEY QUALIFICATIONS'), ...items.map(q => bullet(String(q)))];
+}
+
 function experienceSection(experience) {
   if (!Array.isArray(experience) || experience.length === 0) return [];
   const rows = [];
   for (const exp of experience) {
     const role    = exp.role || exp.title || '';
     const company = exp.company || '';
-    const dates   = exp.dates || exp.date_range || '';
+    const dates   = exp.dates || exp.date_range || exp.period || '';
     const loc     = exp.location || '';
     const bullets = exp.bullets || exp.responsibilities || [];
 
@@ -128,7 +135,7 @@ function experienceSection(experience) {
 function educationSection(education) {
   if (!Array.isArray(education) || education.length === 0) return [];
   const rows = education.map(edu => {
-    const parts = [edu.degree || edu.field, edu.institution, edu.year].filter(Boolean);
+    const parts = [edu.degree || edu.field, edu.institution || edu.school, edu.year].filter(Boolean);
     const children = [];
     parts.forEach((p, i) => {
       const isFirst = i === 0;
@@ -138,6 +145,19 @@ function educationSection(education) {
     return new Paragraph({ children, spacing: { after: 80 } });
   });
   return [sectionHeading('EDUCATION'), ...rows];
+}
+
+function additionalSections(sections) {
+  if (!Array.isArray(sections) || sections.length === 0) return [];
+  const rows = [];
+  for (const sec of sections) {
+    if (!sec || !sec.title || !String(sec.title).trim()) continue;
+    const items = (sec.items || []).filter(x => x && String(x).trim());
+    if (!items.length) continue;
+    rows.push(sectionHeading(String(sec.title).toUpperCase()));
+    items.forEach(x => rows.push(bullet(String(x))));
+  }
+  return rows;
 }
 
 function certificationsSection(certifications) {
@@ -189,9 +209,11 @@ async function generateWordCV(cvData, job, outputDir = 'output') {
 
         // Sections
         ...summarySection(cv.summary),
+        ...keyQualificationsSection(cv.key_qualifications),
         ...skillsSection(cv.skills),
         ...experienceSection(cv.experience),
         ...educationSection(cv.education),
+        ...additionalSections(cv.additional_sections),
         ...certificationsSection(cv.certifications),
       ],
     }],

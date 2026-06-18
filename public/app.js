@@ -289,7 +289,7 @@ async function applyChanges() {
   el('applyBtn').disabled = true;
   hide('changesCard');
   show('progressCard');
-  buildSteps(['Tailoring CV', 'Generating PDF', 'Building comparison']);
+  buildSteps(['Tailoring CV', 'Building comparison']);
   setStep(0, 'run');
   el('progressCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -311,8 +311,7 @@ async function applyChanges() {
       el('applyBtn').disabled=false; show('changesCard'); return;
     }
     setStep(0, 'ok', 'CV tailored');
-    setStep(1, 'ok', 'PDF ready');
-    setStep(2, 'ok', 'Comparison ready');
+    setStep(1, 'ok', 'Comparison ready');
     await new Promise(r => setTimeout(r, 800));
     hide('progressCard');
     showComparison(_currentJob, data);
@@ -328,14 +327,6 @@ function showComparison(job, data) {
   el('compCompany').textContent = job.employer_name || '';
   el('openCompBtn').href = '/' + data.comparisonPath;
   el('openTailoredBtn').href = '/' + data.filePath;
-  el('downloadPdfBtn').href = '/' + data.pdfPath;
-  const wordBtn = el('downloadWordBtn');
-  if (data.wordPath) {
-    wordBtn.href = '/' + data.wordPath;
-    wordBtn.style.display = '';
-  } else {
-    wordBtn.style.display = 'none';
-  }
   show('comparisonCard');
   show('coachToggleBar');
   el('comparisonCard').scrollIntoView({ behavior: 'smooth', block: 'start' });

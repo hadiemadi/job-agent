@@ -27,11 +27,11 @@ jest.mock('./src/ai', () => ({
 jest.mock('./src/cv',       () => ({ readCV: jest.fn() }));
 jest.mock('./src/jobs',     () => ({ searchAllLocations: jest.fn() }));
 jest.mock('./src/scraper',  () => ({ scrapeJobPage: jest.fn() }));
-jest.mock('./src/pdf',      () => ({ generatePDF: jest.fn() }));
 jest.mock('./src/templates', () => ({
   generateExecutiveTemplate:  jest.fn().mockReturnValue('<html>cv</html>'),
   generateComparisonTemplate: jest.fn().mockReturnValue('<html>compare</html>'),
 }));
+jest.mock('./src/wordExport', () => ({ generateWordCV: jest.fn() }));
 jest.mock('./src/coach', () => ({
   analyzeAndSuggestRoles: jest.fn(),
   matchRolesToMarket:     jest.fn(),
@@ -80,7 +80,7 @@ const { parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineW
 const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath } = require('./src/coach');
 const { readCV }        = require('./src/cv');
 const { scrapeJobPage } = require('./src/scraper');
-const { generatePDF }   = require('./src/pdf');
+const { generateWordCV } = require('./src/wordExport');
 const fse               = require('fs-extra');
 const request           = require('supertest');
 const app               = require('./server');
@@ -104,7 +104,7 @@ beforeEach(() => {
     result: { refined_description: 'Add PMP certification', rationale: 'JD prefers it', verdict: 'candidate_decides' },
     history: [],
   });
-  generatePDF.mockResolvedValue('output/cv_Apple.pdf');
+  generateWordCV.mockResolvedValue('output/cv_word_Apple.docx');
   fse.outputFile.mockResolvedValue(undefined);
   scrapeJobPage.mockResolvedValue('Technical Program Manager at Apple. Requirements: RF, ASIC.');
   analyzeAndSuggestRoles.mockResolvedValue({
@@ -247,7 +247,7 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(Array.isArray(res.body.confirm_changes)).toBe(true);
   });
 
-  test('POST /rewrite returns 200 with filePath, pdfPath, and comparisonPath', async () => {
+  test('POST /rewrite returns 200 with filePath and comparisonPath', async () => {
     const res = await request(app).post('/rewrite').send({
       job: MOCK_JOB,
       cvPath: 'cv.pdf',
@@ -256,7 +256,6 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('filePath');
-    expect(res.body).toHaveProperty('pdfPath');
     expect(res.body).toHaveProperty('comparisonPath');
   });
 
@@ -303,5 +302,27 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(res.body).toHaveProperty('key_challenges');
     expect(res.body).toHaveProperty('skill_gaps');
     expect(res.body).toHaveProperty('long_term_trajectory');
+  });
+});
+
+// ── 6. POST /export-word (stateless — no session needed) ──────────────────────
+
+describe('POST /export-word', () => {
+  test('returns 200 with wordPath when cvData and job are provided', async () => {
+    const res = await request(app).post('/export-word').send({ cvData: MOCK_CV_DATA, job: MOCK_JOB });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('wordPath');
+  });
+
+  test('returns 400 when cvData is missing', async () => {
+    const res = await request(app).post('/export-word').send({ job: MOCK_JOB });
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+  });
+
+  test('returns 400 when job is missing', async () => {
+    const res = await request(app).post('/export-word').send({ cvData: MOCK_CV_DATA });
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
   });
 });
