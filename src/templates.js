@@ -158,7 +158,8 @@ function renderCVPage(cv, job, opts = {}) {
 }
 
 // ── Standalone tailored CV (editable, with toolbar) ───────────────────────────
-function generateExecutiveTemplate(cv, job) {
+function generateExecutiveTemplate(cv, job, opts = {}) {
+  const { hrDisplayHistory = [] } = opts;
   const pageHtml = renderCVPage(cv, job, { editable: true, showBadge: true });
 
   return `<!DOCTYPE html>
@@ -201,26 +202,50 @@ ${CV_CSS}
   .tb-link { font-size: 11px; color: rgba(255,255,255,0.55); text-decoration: underline; cursor: pointer; }
   .tb-link:hover { color: white; }
   .tb-status { font-size: 11px; color: rgba(255,255,255,0.55); margin-left: 4px; }
+  .cv-toolbar { right: 20%; transition: right 0.2s; }
+  .cv-toolbar.full { right: 0; }
 
-  /* ── HR Expert sidebar ───────────────────────────────── */
+  /* ── Main CV area — shares the screen 80/20 with the HR sidebar ───── */
+  .cv-main { margin-right: 20%; transition: margin-right 0.2s; }
+  .cv-main.full { margin-right: 0; }
+
+  /* ── HR Expert sidebar — visible by default, occupies 20% of the screen ── */
   .hr-sidebar {
-    position: fixed; top: 0; right: -340px; width: 340px; height: 100%; z-index: 9998;
+    position: fixed; top: 0; right: 0; width: 20%; height: 100%; z-index: 9998;
     background: white; border-left: 1px solid #E0E0E0; box-shadow: -4px 0 16px rgba(0,0,0,0.12);
-    display: flex; flex-direction: column; transition: right 0.2s;
+    display: flex; flex-direction: column; transition: transform 0.2s;
     font-family: 'Segoe UI', Arial, sans-serif;
   }
-  .hr-sidebar.open { right: 0; }
+  .hr-sidebar.collapsed { transform: translateX(100%); }
   .hr-sb-header { padding: 56px 16px 12px; border-bottom: 1px solid #eee; display: flex; flex-direction: column; gap: 8px; }
   .hr-sb-title { font-size: 13px; font-weight: 600; color: #2C2C2A; }
   .hr-sb-model { padding: 6px 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; font-family: inherit; }
   .hr-sb-messages { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
-  .hr-sb-bubble { padding: 8px 12px; border-radius: 10px; font-size: 13px; line-height: 1.5; max-width: 90%; }
+  .hr-sb-bubble { padding: 10px 13px; border-radius: 10px; font-size: 13.5px; line-height: 1.6; max-width: 90%; word-wrap: break-word; }
+  .hr-sb-bubble p { margin: 0 0 8px; }
+  .hr-sb-bubble p:last-child { margin-bottom: 0; }
+  .hr-sb-bubble ul { margin: 0 0 8px 18px; padding: 0; }
+  .hr-sb-bubble ul:last-child { margin-bottom: 0; }
+  .hr-sb-bubble li { margin-bottom: 4px; }
   .hr-sb-bubble.user { background: #185FA5; color: white; align-self: flex-end; }
-  .hr-sb-bubble.expert { background: #f0f0ee; color: #333; align-self: flex-start; }
+  .hr-sb-bubble.expert { background: #f0f0ee; color: #222; align-self: flex-start; }
   .hr-sb-input-row { padding: 12px 16px; border-top: 1px solid #eee; display: flex; gap: 8px; }
   .hr-sb-input-row textarea { flex: 1; resize: none; height: 44px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 13px; }
   .hr-sb-send { border: none; background: #185FA5; color: white; border-radius: 6px; padding: 0 14px; cursor: pointer; font-size: 13px; }
   .hr-sb-send:disabled { background: #bbb; cursor: not-allowed; }
+
+  /* ── Cover letter modal ─────────────────────────────── */
+  .cl-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 10001; display: none; align-items: center; justify-content: center; font-family: 'Segoe UI', Arial, sans-serif; }
+  .cl-modal-overlay.open { display: flex; }
+  .cl-modal { background: white; width: 600px; max-width: 90%; max-height: 85vh; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column; overflow: hidden; }
+  .cl-modal-header { padding: 16px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+  .cl-modal-header h2 { font-size: 15px; color: #2C2C2A; }
+  .cl-modal-close { border: none; background: none; font-size: 20px; cursor: pointer; color: #999; line-height: 1; }
+  .cl-modal-close:hover { color: #333; }
+  .cl-modal-body { padding: 20px; overflow-y: auto; font-size: 13.5px; line-height: 1.7; color: #333; }
+  .cl-modal-body p { margin: 0 0 12px; }
+  .cl-modal-body p:last-child { margin-bottom: 0; }
+  .cl-modal-footer { padding: 14px 20px; border-top: 1px solid #eee; display: flex; gap: 8px; justify-content: flex-end; }
 
   /* ── Print: remove toolbar + edit indicators ────────── */
   @media print {
@@ -253,9 +278,18 @@ ${CV_CSS}
     <input type="file" id="templateFile" accept=".docx" hidden onchange="uploadTemplate()">
     <button class="tb-btn tb-save" onclick="document.getElementById('templateFile').click()">Upload template…</button>
     <a class="tb-link" href="/templates/word/starter_template.docx" download>Download starter template ↓</a>
+    <select class="tb-select" id="languageLevel" title="How polished should the CV's wording be?">
+      <option value="1">Wording: Original</option>
+      <option value="2" selected>Wording: Slightly polished</option>
+      <option value="3">Wording: Professional</option>
+      <option value="4">Wording: Highly professional</option>
+      <option value="5">Wording: Senior expert</option>
+    </select>
+    <button class="tb-btn tb-save" id="regenWordingBtn" onclick="regenerateWording()">Regenerate wording</button>
     <button class="tb-btn tb-print" id="exportWordBtn" onclick="exportWord()">Export to Word</button>
+    <button class="tb-btn tb-save" id="coverLetterBtn" onclick="generateCoverLetterPanel()">Generate Cover Letter</button>
     <span class="tb-status" id="templateStatus"></span>
-    <button class="tb-btn tb-save" onclick="toggleHrSidebar()">Ask HR Expert</button>
+    <button class="tb-btn tb-save" id="hrToggleBtn" onclick="toggleHrSidebar()">Hide HR Expert</button>
   </div>
 </div>
 
@@ -270,15 +304,32 @@ ${CV_CSS}
   </div>
   <div class="hr-sb-messages" id="hrSbMessages"></div>
   <div class="hr-sb-input-row">
-    <textarea id="hrSbInput" placeholder="Ask about your CV, this job, or your edits…"></textarea>
+    <textarea id="hrSbInput" placeholder="Ask about your CV, this job, or your edits…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendHrMessage();}"></textarea>
     <button class="hr-sb-send" id="hrSbSend" onclick="sendHrMessage()">Send</button>
   </div>
 </div>
 
+<div class="cv-main" id="cvMain">
 ${pageHtml}
+</div>
+
+<div class="cl-modal-overlay" id="clModalOverlay">
+  <div class="cl-modal">
+    <div class="cl-modal-header">
+      <h2>Cover Letter</h2>
+      <button class="cl-modal-close" onclick="closeCoverLetterModal()">&times;</button>
+    </div>
+    <div class="cl-modal-body" id="clModalBody">Generating…</div>
+    <div class="cl-modal-footer">
+      <button class="tb-btn tb-save" onclick="copyCoverLetter()">Copy text</button>
+      <button class="tb-btn tb-print" onclick="downloadCoverLetterWord()">Download as Word</button>
+    </div>
+  </div>
+</div>
 
 <script>
   const JOB_DATA = ${JSON.stringify(job).replace(/<\/script/gi, '<\\/script')};
+  const HR_DISPLAY_HISTORY = ${JSON.stringify(hrDisplayHistory).replace(/<\/script/gi, '<\\/script')};
 
   // Single-line fields (.sl): block Enter, just commit on blur instead
   document.querySelectorAll('.sl').forEach(el => {
@@ -382,6 +433,29 @@ ${pageHtml}
     }
   }
 
+  // Sends the live-edited CV content back to HR for a wording-only rewrite at the chosen
+  // language level, then reloads this same page so the new wording shows up in place.
+  async function regenerateWording() {
+    const btn = document.getElementById('regenWordingBtn');
+    const original = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Regenerating…';
+    try {
+      const languageLevel = parseInt(document.getElementById('languageLevel').value, 10);
+      const res = await fetch('/adjust-language', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cvData: extractCvData(), job: JOB_DATA, languageLevel }),
+      });
+      const data = await res.json();
+      if (!data.filePath) throw new Error(data.error || 'Regeneration failed');
+      if (data.templateSuggestion) alert('HR note: ' + data.templateSuggestion);
+      location.reload();
+    } catch (err) {
+      alert('Regenerate wording failed: ' + err.message);
+      btn.disabled = false; btn.textContent = original;
+    }
+  }
+
   async function exportWord() {
     const btn = document.getElementById('exportWordBtn');
     const original = btn.textContent;
@@ -408,19 +482,100 @@ ${pageHtml}
     }
   }
 
+  // Cover letter is generated ONLY on explicit button press — never automatically — using
+  // whatever is currently on screen (including live edits) so its tone/content matches the
+  // latest tailored CV exactly.
+  let lastCoverLetterText = '';
+
+  async function generateCoverLetterPanel() {
+    const overlay = document.getElementById('clModalOverlay');
+    const body = document.getElementById('clModalBody');
+    const btn = document.getElementById('coverLetterBtn');
+    overlay.classList.add('open');
+    body.textContent = 'Generating…';
+    btn.disabled = true;
+    try {
+      const res = await fetch('/generate-cover-letter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cvData: extractCvData(), job: JOB_DATA }),
+      });
+      const data = await res.json();
+      if (!data.coverLetter) throw new Error(data.error || 'Generation failed');
+      lastCoverLetterText = data.coverLetter;
+      body.innerHTML = renderChatMarkdown(data.coverLetter);
+    } catch (err) {
+      body.textContent = 'Failed to generate cover letter: ' + err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function closeCoverLetterModal() {
+    document.getElementById('clModalOverlay').classList.remove('open');
+  }
+
+  async function copyCoverLetter() {
+    if (!lastCoverLetterText) return;
+    await navigator.clipboard.writeText(lastCoverLetterText);
+    alert('Cover letter copied to clipboard.');
+  }
+
+  async function downloadCoverLetterWord() {
+    if (!lastCoverLetterText) return;
+    try {
+      const res = await fetch('/export-cover-letter-word', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverLetter: lastCoverLetterText, cvData: extractCvData(), job: JOB_DATA }),
+      });
+      const data = await res.json();
+      if (!data.wordPath) throw new Error(data.error || 'Export failed');
+      const a = Object.assign(document.createElement('a'), { href: '/' + data.wordPath, download: '' });
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      alert('Download failed: ' + err.message);
+    }
+  }
+
   function toggleHrSidebar() {
-    document.getElementById('hrSidebar').classList.toggle('open');
+    const collapsed = document.getElementById('hrSidebar').classList.toggle('collapsed');
+    document.getElementById('cvMain').classList.toggle('full', collapsed);
+    document.querySelector('.cv-toolbar').classList.toggle('full', collapsed);
+    document.getElementById('hrToggleBtn').textContent = collapsed ? 'Ask HR Expert' : 'Hide HR Expert';
+  }
+
+  // Renders a small subset of markdown (paragraphs, "- " bullet lists, **bold**) into safe
+  // HTML — chat replies come back as markdown-ish text, and dumping it as textContent left
+  // raw "**"/"-" characters visible instead of actually formatting the text.
+  function renderChatMarkdown(text) {
+    const esc  = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const bold = s => s.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
+    return text.split(/\\n\\s*\\n/).map(block => {
+      const lines = block.split('\\n').map(l => l.trim()).filter(Boolean);
+      if (!lines.length) return '';
+      const isList = lines.every(l => /^[-*>]\\s+/.test(l));
+      if (isList) {
+        return '<ul>' + lines.map(l => '<li>' + bold(esc(l.replace(/^[-*>]\\s+/, ''))) + '</li>').join('') + '</ul>';
+      }
+      return '<p>' + lines.map(l => bold(esc(l.replace(/^>\\s+/, '')))).join('<br>') + '</p>';
+    }).join('');
   }
 
   function addHrBubble(role, text) {
     const messages = document.getElementById('hrSbMessages');
     const bubble = Object.assign(document.createElement('div'), {
       className: 'hr-sb-bubble ' + (role === 'user' ? 'user' : 'expert'),
-      textContent: text,
+      innerHTML: renderChatMarkdown(text),
     });
     messages.appendChild(bubble);
     messages.scrollTop = messages.scrollHeight;
   }
+
+  // Sidebar should never start empty — open with the HR expert explaining what just changed
+  HR_DISPLAY_HISTORY.forEach(m => addHrBubble(m.role, m.text));
 
   async function sendHrMessage() {
     const input = document.getElementById('hrSbInput');

@@ -6,12 +6,12 @@ const fse = require('fs-extra');
 const PizZip = require('pizzip');
 const {
   readCV, extractJobTitles, searchAllLocations, analyzeJobFit,
-  parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, chatWithHRExpert,
+  parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, chatWithHRExpert, adjustLanguageLevel, generateCoverLetter,
   generateComparisonTemplate,
   analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath,
 } = require('./agent');
 const { scrapeJobPage } = require('./src/scraper');
-const { generateWordCV, generateWordCVAlt } = require('./src/wordExport');
+const { generateWordCV, generateWordCVAlt, generateCoverLetterWord } = require('./src/wordExport');
 const { generateWordFromTemplate } = require('./src/wordTemplateExport');
 
 const app = express();
@@ -33,9 +33,9 @@ let appSession = {
   cvText: null, cvPath: null, cvData: null,
   jobs: null, rankedJobs: null,
   currentJob: null, hrReview: null,
-  coachHistory: [], hrThread: [],
+  coachHistory: [], hrThread: [], hrDisplayHistory: [],
   confirmedContact: null,
-  clientPreferences: { tone: 4, customInstructions: '' },
+  clientPreferences: { tone: 4, customInstructions: '', languageLevel: 2 },
 };
 
 // ── API endpoints ─────────────────────────────────────────────────────────────
@@ -114,8 +114,9 @@ app.post('/rewrite', async (req, res) => {
     const cvText = await readCV(cvPath || appSession.cvPath);
     const recommendedSections = (appSession.hrReview || {}).recommended_sections;
     const originalName = (appSession.cvData || {}).name;
-    const { filePath, cvData, modified_sections, thread } = await rewriteCVWithChanges(cvText, job, autoChanges || [], confirmedChanges || [], recommendedSections, originalName, appSession.confirmedContact, appSession.hrThread, appSession.clientPreferences);
+    const { filePath, cvData, modified_sections, thread, hrDisplayHistory } = await rewriteCVWithChanges(cvText, job, autoChanges || [], confirmedChanges || [], recommendedSections, originalName, appSession.confirmedContact, appSession.hrThread, appSession.clientPreferences, appSession.hrDisplayHistory);
     appSession.hrThread = thread;
+    appSession.hrDisplayHistory = hrDisplayHistory;
     const company = (job.employer_name || job.company || 'Company').replace(/\s+/g, '_');
     const comparisonHtml = generateComparisonTemplate(appSession.cvData, cvData, job, modified_sections);
     const comparisonPath = `output/comparison_${company}.html`;
@@ -153,6 +154,51 @@ app.post('/export-word', async (req, res) => {
   }
 });
 
+app.post('/adjust-language', async (req, res) => {
+  try {
+    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    const { cvData, job, languageLevel } = req.body;
+    if (!cvData || !job) return res.status(400).json({ error: 'cvData and job are required.' });
+    const level = languageLevel || 2;
+    const { cvData: updatedCv, templateSuggestion, filePath, thread, hrDisplayHistory } = await adjustLanguageLevel(
+      appSession.cvText, job, cvData, level, appSession.hrThread, appSession.clientPreferences, appSession.hrDisplayHistory
+    );
+    appSession.hrThread = thread;
+    appSession.hrDisplayHistory = hrDisplayHistory;
+    appSession.clientPreferences = { ...appSession.clientPreferences, languageLevel: level };
+    res.json({ cvData: updatedCv, templateSuggestion, filePath });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/generate-cover-letter', async (req, res) => {
+  try {
+    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    const { cvData, job } = req.body;
+    if (!cvData || !job) return res.status(400).json({ error: 'cvData and job are required.' });
+    const { coverLetter, thread, hrDisplayHistory } = await generateCoverLetter(
+      appSession.cvText, job, cvData, appSession.hrThread, appSession.clientPreferences, appSession.hrDisplayHistory
+    );
+    appSession.hrThread = thread;
+    appSession.hrDisplayHistory = hrDisplayHistory;
+    res.json({ coverLetter });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/export-cover-letter-word', async (req, res) => {
+  try {
+    const { coverLetter, cvData, job } = req.body;
+    if (!coverLetter || !cvData || !job) return res.status(400).json({ error: 'coverLetter, cvData and job are required.' });
+    const wordPath = await generateCoverLetterWord(coverLetter, cvData, job);
+    res.json({ wordPath });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/upload-template', templateUpload.single('template'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No .docx template file uploaded.' });
@@ -179,7 +225,6 @@ app.post('/review-cv', async (req, res) => {
     const { review, thread } = await reviewCV(appSession.cvText, job, [], appSession.clientPreferences);
     appSession.currentJob = job;
     appSession.hrReview = review;
-    appSession.coachHistory = [];
     appSession.hrThread = thread;
     res.json(review);
   } catch (err) {
@@ -229,6 +274,7 @@ app.post('/hr/chat', async (req, res) => {
       appSession.cvText, appSession.currentJob, appSession.hrThread, message, model, appSession.clientPreferences
     );
     appSession.hrThread = thread;
+    appSession.hrDisplayHistory = [...appSession.hrDisplayHistory, { role: 'user', text: message }, { role: 'expert', text: reply }];
     res.json({ reply });
   } catch (err) {
     res.status(500).json({ error: err.message });

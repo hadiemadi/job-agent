@@ -20,6 +20,7 @@ jest.mock('./src/ai', () => ({
   chatWithCoach:        jest.fn(),
   refineWithHR:         jest.fn(),
   chatWithHRExpert:     jest.fn(),
+  adjustLanguageLevel:  jest.fn(),
   parseJobFromText:     jest.fn(),
   extractJobTitles:     jest.fn(),
   analyzeJobFit:        jest.fn(),
@@ -83,7 +84,7 @@ const MOCK_REVIEW = {
 
 // ── Module references (for setting return values in beforeEach / beforeAll) ────
 
-const { parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, chatWithHRExpert, parseJobFromText } = require('./src/ai');
+const { parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, chatWithHRExpert, adjustLanguageLevel, parseJobFromText } = require('./src/ai');
 const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath } = require('./src/coach');
 const { readCV }        = require('./src/cv');
 const { scrapeJobPage } = require('./src/scraper');
@@ -106,14 +107,27 @@ beforeEach(() => {
     cvData: MOCK_CV_DATA,
     modified_sections: ['summary', 'skills'],
     thread: [],
+    hrDisplayHistory: [],
   });
   parseJobFromText.mockResolvedValue(MOCK_JOB);
-  chatWithCoach.mockResolvedValue({ reply: 'Highlight your RF work on 5G programs.', history: [] });
+  // Mirrors real behavior of growing the thread (instead of a static value) so tests can
+  // detect whether the server is still wiping appSession.coachHistory between calls.
+  chatWithCoach.mockImplementation((cvText, job, hrReview, history, userMessage) => Promise.resolve({
+    reply: 'Highlight your RF work on 5G programs.',
+    history: [...(history || []), { role: 'user', content: userMessage }, { role: 'assistant', content: 'Highlight your RF work on 5G programs.' }],
+  }));
   refineWithHR.mockResolvedValue({
     result: { refined_description: 'Add PMP certification', rationale: 'JD prefers it', verdict: 'candidate_decides' },
     thread: [],
   });
   chatWithHRExpert.mockResolvedValue({ reply: 'Your PMP progress should resolve that gap.', thread: [] });
+  adjustLanguageLevel.mockResolvedValue({
+    cvData: { ...MOCK_CV_DATA, summary: 'Polished senior-level summary.' },
+    templateSuggestion: '',
+    filePath: 'output/cv_Apple.html',
+    thread: [],
+    hrDisplayHistory: [],
+  });
   generateWordCV.mockResolvedValue('output/cv_word_Apple.docx');
   generateWordCVAlt.mockResolvedValue('output/cv_word_alt_Apple.docx');
   generateWordFromTemplate.mockResolvedValue({ wordPath: 'output/cv_word_custom_Apple.docx', thread: [] });
@@ -167,6 +181,12 @@ describe('Error handling — no CV in session', () => {
 
   test('POST /coach/path → 400 when no CV is loaded', async () => {
     const res = await request(app).post('/coach/path').send({ roleTitle: 'Director of Engineering' });
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+  });
+
+  test('POST /adjust-language → 400 when no CV is loaded', async () => {
+    const res = await request(app).post('/adjust-language').send({ cvData: MOCK_CV_DATA, job: MOCK_JOB, languageLevel: 3 });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
@@ -345,6 +365,46 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(res.body).toHaveProperty('key_challenges');
     expect(res.body).toHaveProperty('skill_gaps');
     expect(res.body).toHaveProperty('long_term_trajectory');
+  });
+
+  test('POST /adjust-language returns 200 with updated cvData and filePath', async () => {
+    const res = await request(app).post('/adjust-language').send({
+      cvData: MOCK_CV_DATA, job: MOCK_JOB, languageLevel: 5,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('cvData');
+    expect(res.body).toHaveProperty('filePath');
+    expect(adjustLanguageLevel).toHaveBeenCalled();
+    const lastCall = adjustLanguageLevel.mock.calls[adjustLanguageLevel.mock.calls.length - 1];
+    expect(lastCall[3]).toBe(5); // languageLevel argument
+  });
+
+  test('POST /adjust-language → 400 when cvData or job is missing', async () => {
+    const res = await request(app).post('/adjust-language').send({ job: MOCK_JOB });
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+  });
+
+  test('HR sidebar display history survives a wording regeneration (not cleared)', async () => {
+    await request(app).post('/hr/chat').send({ message: 'Why was the summary reworded?' });
+
+    await request(app).post('/adjust-language').send({ cvData: MOCK_CV_DATA, job: MOCK_JOB, languageLevel: 3 });
+    const lastCall = adjustLanguageLevel.mock.calls[adjustLanguageLevel.mock.calls.length - 1];
+    const historyPassedIn = lastCall[6]; // hrDisplayHistory argument
+
+    // would be [] if the server reset appSession.hrDisplayHistory instead of accumulating it
+    expect(historyPassedIn.length).toBeGreaterThan(0);
+  });
+
+  test('Career Coach thread persists across /review-cv calls (not reset per job)', async () => {
+    await request(app).post('/coach/discuss').send({ message: 'I led a 12-person RF team.', gapIndex: 0 });
+    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    await request(app).post('/coach/discuss').send({ message: 'Anything else I should mention?', gapIndex: 0 });
+
+    // The history passed into this last call would be [] if /review-cv still wiped
+    // appSession.coachHistory — instead it must carry over the first exchange.
+    const lastCallArgs = chatWithCoach.mock.calls[chatWithCoach.mock.calls.length - 1];
+    expect(lastCallArgs[3].length).toBeGreaterThan(0);
   });
 });
 

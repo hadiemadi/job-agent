@@ -146,13 +146,30 @@ Return ONLY the JSON, no explanation.` }]
   return enforceContactInfo(cv, cvText);
 }
 
-// Renders the client's chosen tone (1=neutral/diplomatic .. 5=blunt) and any free-text
-// instructions they gave on the contact page into a directive block every persona appends.
+// Renders the client's chosen tone (1=neutral/diplomatic .. 5=blunt), CV wording level
+// (1=match original .. 5=senior expert), and any free-text instructions they gave on the
+// contact page into a directive block every persona appends.
 function preferencesBlock(preferences) {
-  const { tone = 4, customInstructions = '' } = preferences || {};
+  const { tone = 4, customInstructions = '', languageLevel = 2 } = preferences || {};
   const toneLabel = ['very neutral and diplomatic', 'calm and measured', 'balanced and professional', 'direct and frank', 'very blunt and brutally honest'][tone - 1] || 'direct and frank';
+  const langLabel = [
+    "match the candidate's original CV wording level exactly — do not elevate vocabulary or sophistication beyond what they already wrote",
+    "lightly polish word choice above the original while staying close to the candidate's natural register",
+    'use clearly professional CV language, moderately elevated above the original',
+    'use highly professional, polished language typical of strong corporate CVs',
+    'use the language level of a senior expert professional — sophisticated, precise, executive-caliber wording',
+  ][languageLevel - 1] || "match the candidate's original CV wording level exactly";
   return `\n\nTONE: Be ${toneLabel} (client-selected ${tone}/5) in how you phrase feedback and suggestions.` +
+    `\n\nCV WORDING LEVEL: When writing or rewriting CV content, ${langLabel} (client-selected level ${languageLevel}/5).` +
+    `\n\nFORMAT (for any free-text reply you write, e.g. chat answers — not for CV content itself, and not for JSON structure): use short, crisp, clear sentences. When you have more than one point to make, put each on its own line starting with "- ", with NO blank line between consecutive bullets (only put a blank line between separate paragraphs/sections, never between bullets in the same list). Use **double asterisks** around a word or short phrase only when you genuinely need to emphasize it — that is the only markdown you may use. Do NOT use markdown headers (#), numbered lists, or blockquotes (>).` +
     (customInstructions ? `\n\nCLIENT'S OWN INSTRUCTIONS — follow these unless they conflict with honesty/accuracy:\n${customInstructions}` : '');
+}
+
+// Writing-style directive so CV prose and cover letters read as genuinely human-written —
+// applied to every piece of free-text content the HR persona writes (CV wording, cover
+// letters), never to the facts themselves. Style only; never invents or alters substance.
+function stealthWritingDirective() {
+  return `\n\nWRITING STYLE — read naturally, like a real person wrote it: Vary sentence length and structure; avoid a uniform, metronomic rhythm. Avoid AI-cliché phrases and buzzwords ("leverage", "synergy", "passionate about", "I am writing to express my interest", "in today's fast-paced environment", "proven track record", "delve", "robust", "seamless", "unlock potential") unless genuinely the most accurate word. Avoid repeating the exact same sentence structure across consecutive bullets or lines. Use em dashes and semicolons sparingly, the way a person naturally would. Prefer concrete, specific detail (numbers, named tools, named outcomes) over generic claims. Never mention, hint at, or disclose that AI was used to write or assist with this content. All of this is about STYLE ONLY — never invent facts, achievements, or numbers not already present in the candidate's CV.`;
 }
 
 // One persona, shared by every HR-thread call (review, rewrite, refine, placement, sidebar
@@ -164,11 +181,17 @@ deciding how to place content into any Word template they use, to answering thei
 while they make final edits. Stay consistent with judgments and rationale you've already
 given earlier in this conversation.
 
+You own every aspect of how the CV is written and presented: template/layout choice, document
+format, font, color accents, section segmentation, and wording. For wording specifically, you
+offer the candidate flexibility from their own original phrasing up to senior-expert-level
+language, across 5 levels (see CV WORDING LEVEL below) — never push them past the level they've
+chosen.
+
 CANDIDATE'S TARGET JOB: ${job.job_title} at ${job.employer_name || job.company || ''}
 ${(job.job_description || job.description || '').slice(0, 800)}
 
 CANDIDATE'S CV:
-${cvText}${preferencesBlock(preferences)}`;
+${cvText}${preferencesBlock(preferences)}${stealthWritingDirective()}`;
 }
 
 // HR review — categorizes changes into auto (safe) vs confirm (needs client approval)
@@ -209,8 +232,24 @@ Return JSON only:
   return { review, thread: [...messages, { role: 'assistant', content: message.content[0].text }] };
 }
 
+// Flatten any array field Claude returned as objects instead of plain strings
+// (e.g. skills/key_qualifications grouped by category) into flat string arrays.
+function flattenStringArrayFields(cvData, fields) {
+  fields.forEach(field => {
+    if (!Array.isArray(cvData[field])) return;
+    cvData[field] = cvData[field].map(s => {
+      if (typeof s === 'string') return s;
+      if (s && typeof s === 'object') {
+        if (s.category && Array.isArray(s.items)) return `${s.category}: ${s.items.join(', ')}`;
+        return Object.values(s).filter(Boolean).join(': ');
+      }
+      return String(s);
+    }).filter(s => s && String(s).trim());
+  });
+}
+
 // Tailor CV applying specific changes from HR review + client confirmations
-async function rewriteCVWithChanges(cvText, job, autoChanges, confirmedChanges, recommendedSections, originalName, confirmedContact, thread = [], preferences) {
+async function rewriteCVWithChanges(cvText, job, autoChanges, confirmedChanges, recommendedSections, originalName, confirmedContact, thread = [], preferences, hrDisplayHistory = []) {
   const allChanges = [...(autoChanges || []), ...(confirmedChanges || [])];
   const changesText = allChanges.length
     ? allChanges.map(c => `- ${c.description}`).join('\n')
@@ -282,31 +321,86 @@ IMPORTANT: skills and key_qualifications must be flat arrays of plain strings on
     if (cvData.linkedin) cvData.linkedin = normalizeLinkedin(cvData.linkedin);
   }
 
-  // Flatten any array field that Claude returned as objects instead of strings
-  ['skills', 'key_qualifications'].forEach(field => {
-    if (!Array.isArray(cvData[field])) return;
-    cvData[field] = cvData[field].map(s => {
-      if (typeof s === 'string') return s;
-      if (s && typeof s === 'object') {
-        if (s.category && Array.isArray(s.items)) return `${s.category}: ${s.items.join(', ')}`;
-        return Object.values(s).filter(Boolean).join(': ');
-      }
-      return String(s);
-    }).filter(s => s && String(s).trim());
-  });
+  flattenStringArrayFields(cvData, ['skills', 'key_qualifications']);
+
+  // Pre-populates the editable CV page's HR sidebar so it never starts empty — built from
+  // the same change list just applied, not a separate AI call. Appended to whatever sidebar
+  // history already exists so re-tailoring/regenerating never wipes prior HR conversation.
+  const initialHrMessage = allChanges.length
+    ? "Here's what I changed on your CV for this role, and why:\n" +
+      allChanges.map(c => `- **${c.description}** — ${c.rationale || 'improves alignment with this role'}`).join('\n')
+    : "I optimized your CV for this role's keywords based on your existing experience — no major structural changes were needed.";
+  const updatedDisplayHistory = [...(hrDisplayHistory || []), { role: 'expert', text: initialHrMessage }];
 
   const company = job.employer_name || job.company || 'Company';
-  const html = generateExecutiveTemplate(cvData, job);
+  const html = generateExecutiveTemplate(cvData, job, { hrDisplayHistory: updatedDisplayHistory });
   const fileName = `output/cv_${company.replace(/\s+/g, '_')}.html`;
   await fse.outputFile(fileName, html);
 
-  return { filePath: fileName, cvData, modified_sections, thread: updatedThread };
+  return { filePath: fileName, cvData, modified_sections, thread: updatedThread, hrDisplayHistory: updatedDisplayHistory };
 }
 
-// Coach chat — history grows across the session (one coach per CV+job)
+// HR regenerates ONLY the wording of an already-tailored CV at a new language level
+// (1=match original .. 5=senior expert) — structure, facts, and section list stay untouched.
+async function adjustLanguageLevel(cvText, job, cvData, languageLevel, thread, preferences, hrDisplayHistory = []) {
+  const prefs = { ...(preferences || {}), languageLevel };
+  const userMessage = `The candidate wants their CV's wording regenerated at a different
+professionalism level (see CV WORDING LEVEL above), with nothing else changed.
+
+RULES:
+- Do NOT add, remove, or reorder sections, bullets, skills, experience entries, or education entries
+- Do NOT change any facts, numbers, dates, names, job titles, or contact details
+- ONLY adjust word choice, phrasing, and sentence sophistication in "summary", "key_qualifications", and experience "bullets" to match the CV WORDING LEVEL
+- Return the exact same fields, in the exact same order and count, as the CV below — wording is the only thing that may change
+
+CURRENT CV:
+${JSON.stringify(cvData)}
+
+Return JSON only:
+{
+  "cv": { /* same shape and fields as the CURRENT CV above, only wording changed */ },
+  "template_suggestion": "one sentence if a different template style would suit this wording level better, otherwise empty string"
+}`;
+
+  const messages = [...(thread || []), { role: 'user', content: userMessage }];
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 3500,
+    system: hrSystemPrompt(cvText, job, prefs),
+    messages,
+  });
+
+  const raw = extractJSON(message.content[0].text);
+  const result = JSON.parse(raw);
+  const updatedThread = [...messages, { role: 'assistant', content: message.content[0].text }];
+  const { cv: updatedCv, template_suggestion = '' } = result;
+
+  enforceContactInfo(updatedCv, cvText);
+  cleanBulletPrefixes(updatedCv);
+  flattenStringArrayFields(updatedCv, ['skills', 'key_qualifications']);
+
+  const initialHrMessage = `I rewrote your CV's wording at level ${languageLevel}/5 — everything else (facts, structure, sections) stayed exactly the same.` +
+    (template_suggestion ? `\n- ${template_suggestion}` : '');
+  const updatedDisplayHistory = [...(hrDisplayHistory || []), { role: 'expert', text: initialHrMessage }];
+
+  const company = job.employer_name || job.company || 'Company';
+  const html = generateExecutiveTemplate(updatedCv, job, { hrDisplayHistory: updatedDisplayHistory });
+  const filePath = `output/cv_${company.replace(/\s+/g, '_')}.html`;
+  await fse.outputFile(filePath, html);
+
+  return { cvData: updatedCv, templateSuggestion: template_suggestion, filePath, thread: updatedThread, hrDisplayHistory: updatedDisplayHistory };
+}
+
+// Coach chat — the conversation persists for the whole client session (CV upload through
+// Word export), so this is the same coach throughout, exactly like the HR thread.
 async function chatWithCoach(cvText, job, hrReview, history, userMessage, gapDescription, preferences) {
   const gapContext = gapDescription ? `The candidate is currently discussing this specific gap: "${gapDescription}"\n\n` : '';
-  const systemPrompt = `You are a warm, direct Career Coach. You have already reviewed this candidate's CV and the target job.
+  const systemPrompt = `You are a senior Career Coach with deep, hands-on industry experience in this
+candidate's field — you've worked at both large companies and high-growth startups, and you
+possess the technical and leadership skills relevant to this domain. You are working with this
+one candidate continuously, from your first assessment of their fit for this role through every
+follow-up conversation, all the way to CV export. Stay consistent with judgments you've already
+given earlier in this conversation.
 
 CV (summary):
 ${cvText.slice(0, 1500)}
@@ -318,8 +412,10 @@ GAPS IDENTIFIED BY HR:
 ${(hrReview.confirm_changes || []).map(c => '- ' + c.description).join('\n')}
 
 Your role:
+- Assess whether the candidate's previous assignments and accomplishments genuinely align with what this job requires
+- Identify concrete skill gaps between the candidate's CV and the job description, including gaps in seniority/scope (e.g. led a team of 3 vs. this role expects leading 20+)
+- When you don't have enough information to judge a gap or alignment confidently, ask the candidate a specific clarifying question instead of guessing
 - Help the client discover capabilities they may have forgotten or are too shy to mention
-- Ask one specific probing question to uncover relevant experience
 - Build confidence for legitimate skills the client genuinely has
 - Be honest — if a skill is a real gap, acknowledge it and suggest a realistic short path to fill it
 - Keep every response to 2-4 sentences maximum${preferencesBlock(preferences)}`;
@@ -327,7 +423,7 @@ Your role:
   const messages = [...history, { role: 'user', content: gapContext + userMessage }];
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 300,
+    max_tokens: 600,
     system: systemPrompt,
     messages,
   });
@@ -459,6 +555,45 @@ ${JSON.stringify(fields, null, 2)}`;
   return { plan, thread: [...messages, { role: 'assistant', content: message.content[0].text }] };
 }
 
+// Cover letter — written by the same HR persona, only on explicit client request (button
+// press on the tailored CV page). Tone/wording must mirror the LATEST tailored CV exactly,
+// so cvData (the live, possibly-edited content) is passed in fresh each time rather than
+// re-deriving it from the original CV text.
+async function generateCoverLetter(cvText, job, cvData, thread = [], preferences, hrDisplayHistory = []) {
+  const userMessage = `Using the tailored CV content below — this is the CURRENT, latest version the candidate is looking at, including any edits they've made — write a cover letter for this role.
+
+REQUIREMENTS:
+- Address it to the hiring manager (use "Dear Hiring Manager," if no specific name is known)
+- Short, clear, crisp — 3 to 4 short paragraphs, no filler, no generic opening like "I am writing to apply for..."
+- Tone and language sophistication must match the tailored CV below exactly — same register, same level of formality, same vocabulary level
+- Pull only facts, achievements, and wording that already exist in the tailored CV — do not invent or exaggerate anything
+- Focus on why this candidate fits THIS specific role, referencing 2-3 of their strongest, most relevant achievements from the CV
+- End with a brief, confident closing line, then "Sincerely," then the candidate's name on its own line
+${stealthWritingDirective()}
+
+TAILORED CV (latest version, use this for tone/content/wording):
+${JSON.stringify(cvData)}
+
+Return JSON only:
+{ "cover_letter": "full cover letter text, with paragraphs separated by a blank line" }`;
+
+  const messages = [...thread, { role: 'user', content: userMessage }];
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 1200,
+    system: hrSystemPrompt(cvText, job, preferences),
+    messages,
+  });
+  const raw = extractJSON(message.content[0].text);
+  const { cover_letter } = JSON.parse(raw);
+  const updatedThread = [...messages, { role: 'assistant', content: message.content[0].text }];
+
+  const initialHrMessage = "I've drafted a cover letter to match your tailored CV's tone and content — take a look and let me know if you'd like adjustments.";
+  const updatedDisplayHistory = [...(hrDisplayHistory || []), { role: 'expert', text: initialHrMessage }];
+
+  return { coverLetter: cover_letter, thread: updatedThread, hrDisplayHistory: updatedDisplayHistory };
+}
+
 // Sidebar Q&A on the editable tailored CV page — continues the same HR thread, so the
 // expert remembers everything discussed during review/rewrite/placement. `model` lets the
 // sidebar's picker override the default model for this turn only.
@@ -466,7 +601,7 @@ async function chatWithHRExpert(cvText, job, thread, userMessage, model, prefere
   const messages = [...(thread || []), { role: 'user', content: userMessage }];
   const response = await client.messages.create({
     model: model || MODEL,
-    max_tokens: 400,
+    max_tokens: 900,
     system: hrSystemPrompt(cvText, job, preferences),
     messages,
   });
@@ -474,4 +609,4 @@ async function chatWithHRExpert(cvText, job, thread, userMessage, model, prefere
   return { reply, thread: [...messages, { role: 'assistant', content: reply }] };
 }
 
-module.exports = { extractJobTitles, analyzeJobFit, parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, planDocxPlacement, chatWithHRExpert };
+module.exports = { extractJobTitles, analyzeJobFit, parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, planDocxPlacement, chatWithHRExpert, adjustLanguageLevel, generateCoverLetter };

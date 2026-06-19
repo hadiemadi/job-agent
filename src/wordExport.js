@@ -282,4 +282,45 @@ async function generateWordCVAlt(cvData, job, outputDir = 'output') {
   return filePath.replace(/\\/g, '/');
 }
 
-module.exports = { generateWordCV, generateWordCVAlt };
+// Cover letter — plain header (name + contact, reusing the same builders as the CV) followed
+// by the letter body as one paragraph per blank-line-separated block.
+async function generateCoverLetterWord(coverLetterText, cvData, job, outputDir = 'output') {
+  const cv    = cvData || {};
+  const slug  = (job && (job.job_title || job.title) || 'Cover_Letter')
+    .replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 40);
+  const fileName = `cover_letter_${slug}.docx`;
+  const filePath = path.join(outputDir, fileName);
+
+  await fse.ensureDir(outputDir);
+
+  const paragraphs = String(coverLetterText || '')
+    .split(/\n\s*\n/)
+    .map(p => p.trim())
+    .filter(Boolean);
+
+  const doc = new Document({
+    styles: {
+      default: { document: { run: { font: FONT, size: 22, color: DARK } } },
+    },
+    sections: [{
+      properties: {
+        page: { margin: { top: 720, bottom: 720, left: 1080, right: 1080 } },
+      },
+      children: [
+        new Paragraph({
+          children: [run(cv.name || 'Your Name', { bold: true, size: 28, color: DARK })],
+          spacing: { after: 20 },
+        }),
+        ...contactLine(cv),
+        empty(160),
+        ...paragraphs.map(p => new Paragraph({ children: [run(p)], spacing: { after: 200 } })),
+      ],
+    }],
+  });
+
+  const buffer = await Packer.toBuffer(doc);
+  await fse.writeFile(filePath, buffer);
+  return filePath.replace(/\\/g, '/');
+}
+
+module.exports = { generateWordCV, generateWordCVAlt, generateCoverLetterWord };

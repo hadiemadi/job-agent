@@ -46,6 +46,7 @@ async function go() {
   if (!jobText) { setGoStatus('Please paste the job description.', 'err'); show('goStatus'); return; }
 
   el('goBtn').disabled = true;
+  hide('goBtn');
   hide('changesCard'); hide('comparisonCard'); hide('searchResultsCard');
   hide('coachToggleBar'); hide('coachCard'); hide('goStatus'); hide('contactCard');
 
@@ -59,7 +60,7 @@ async function go() {
   try {
     const upRes = await fetch('/upload-cv', { method:'POST', body: fd });
     const upData = await upRes.json();
-    if (upData.error) { setStep(0,'err', upData.error); el('goBtn').disabled=false; return; }
+    if (upData.error) { setStep(0,'err', upData.error); el('goBtn').disabled=false; show('goBtn'); return; }
     _cvPath = upData.cvPath;
     setStep(0, 'ok', 'CV ready');
 
@@ -75,7 +76,7 @@ async function go() {
     el('ci-linkedin').value = d.linkedin || '';
     show('contactCard');
     el('contactCard').scrollIntoView({ behavior:'smooth', block:'start' });
-  } catch (err) { setStep(0,'err', err.message); el('goBtn').disabled=false; }
+  } catch (err) { setStep(0,'err', err.message); el('goBtn').disabled=false; show('goBtn'); }
 }
 
 // Saves confirmed contact to server, then continues with job + HR steps
@@ -116,23 +117,23 @@ async function continueToJobAndHR() {
   try {
     const res = await fetch('/fetch-job', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobText }) });
     const data = await res.json();
-    if (data.error || !data.job) { setStep(1,'err', data.error || 'Could not parse job'); el('goBtn').disabled=false; return; }
+    if (data.error || !data.job) { setStep(1,'err', data.error || 'Could not parse job'); el('goBtn').disabled=false; show('goBtn'); return; }
     _currentJob = data.job;
     setStep(1, 'ok', (data.job.job_title || 'Job') + (data.job.employer_name ? ' at ' + data.job.employer_name : ''));
-  } catch (err) { setStep(1,'err', err.message); el('goBtn').disabled=false; return; }
+  } catch (err) { setStep(1,'err', err.message); el('goBtn').disabled=false; show('goBtn'); return; }
 
   // Step 2: HR Review
   setStep(2, 'run');
   try {
     const res = await fetch('/review-cv', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ job: _currentJob }) });
     const data = await res.json();
-    if (data.error) { setStep(2,'err', data.error); el('goBtn').disabled=false; return; }
+    if (data.error) { setStep(2,'err', data.error); el('goBtn').disabled=false; show('goBtn'); return; }
     _hrReview = data;
     setStep(2, 'ok', (data.overall_match || 'Moderate') + ' match');
     await new Promise(r => setTimeout(r, 600));
     hide('progressCard');
     showChanges(data);
-  } catch (err) { setStep(2,'err', err.message); el('goBtn').disabled=false; return; }
+  } catch (err) { setStep(2,'err', err.message); el('goBtn').disabled=false; show('goBtn'); return; }
 
   el('goBtn').disabled = false;
 }
@@ -216,11 +217,28 @@ function toggleDiscuss(i) {
   }
 }
 
+// Renders a small subset of markdown (paragraphs, "- " bullet lists, **bold**) into safe
+// HTML — chat replies come back as markdown-ish text, and dumping it as textContent left
+// raw "**"/"-" characters visible instead of actually formatting the text.
+function renderChatMarkdown(text) {
+  const esc  = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const bold = s => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  return text.split(/\n\s*\n/).map(block => {
+    const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return '';
+    const isList = lines.every(l => /^[-*>]\s+/.test(l));
+    if (isList) {
+      return '<ul>' + lines.map(l => '<li>' + bold(esc(l.replace(/^[-*>]\s+/, ''))) + '</li>').join('') + '</ul>';
+    }
+    return '<p>' + lines.map(l => bold(esc(l.replace(/^>\s+/, '')))).join('<br>') + '</p>';
+  }).join('');
+}
+
 function appendBubble(i, type, text) {
   const msgs = el('chat-msgs-' + i);
   const div = document.createElement('div');
   div.className = 'chat-bubble ' + (type === 'user' ? 'user' : type === 'hr' ? 'hr-msg' : 'coach');
-  div.textContent = text;
+  div.innerHTML = renderChatMarkdown(text);
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
 }
