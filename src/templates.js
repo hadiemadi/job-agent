@@ -196,10 +196,36 @@ ${CV_CSS}
   .tb-save:hover  { background: rgba(255,255,255,0.18); }
   .tb-print { background: #185FA5; color: white; }
   .tb-print:hover { background: #0C447C; }
+  .tb-select { border: none; padding: 7px 10px; border-radius: 6px; font-size: 12px; font-family: inherit; background: rgba(255,255,255,0.1); color: white; }
+  .tb-select option { color: #2C2C2A; }
+  .tb-link { font-size: 11px; color: rgba(255,255,255,0.55); text-decoration: underline; cursor: pointer; }
+  .tb-link:hover { color: white; }
+  .tb-status { font-size: 11px; color: rgba(255,255,255,0.55); margin-left: 4px; }
+
+  /* ── HR Expert sidebar ───────────────────────────────── */
+  .hr-sidebar {
+    position: fixed; top: 0; right: -340px; width: 340px; height: 100%; z-index: 9998;
+    background: white; border-left: 1px solid #E0E0E0; box-shadow: -4px 0 16px rgba(0,0,0,0.12);
+    display: flex; flex-direction: column; transition: right 0.2s;
+    font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  .hr-sidebar.open { right: 0; }
+  .hr-sb-header { padding: 56px 16px 12px; border-bottom: 1px solid #eee; display: flex; flex-direction: column; gap: 8px; }
+  .hr-sb-title { font-size: 13px; font-weight: 600; color: #2C2C2A; }
+  .hr-sb-model { padding: 6px 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; font-family: inherit; }
+  .hr-sb-messages { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .hr-sb-bubble { padding: 8px 12px; border-radius: 10px; font-size: 13px; line-height: 1.5; max-width: 90%; }
+  .hr-sb-bubble.user { background: #185FA5; color: white; align-self: flex-end; }
+  .hr-sb-bubble.expert { background: #f0f0ee; color: #333; align-self: flex-start; }
+  .hr-sb-input-row { padding: 12px 16px; border-top: 1px solid #eee; display: flex; gap: 8px; }
+  .hr-sb-input-row textarea { flex: 1; resize: none; height: 44px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 13px; }
+  .hr-sb-send { border: none; background: #185FA5; color: white; border-radius: 6px; padding: 0 14px; cursor: pointer; font-size: 13px; }
+  .hr-sb-send:disabled { background: #bbb; cursor: not-allowed; }
 
   /* ── Print: remove toolbar + edit indicators ────────── */
   @media print {
     .cv-toolbar { display: none !important; }
+    .hr-sidebar { display: none !important; }
     body { background: white; padding-top: 0; }
     .page { box-shadow: none; margin: 0; }
     [contenteditable]:hover,
@@ -218,7 +244,34 @@ ${CV_CSS}
   <span class="tb-hint"><strong>✏ Edit mode</strong> — click any text to modify it &nbsp;·&nbsp; Enter on bullet points adds a new bullet</span>
   <div class="tb-actions">
     <button class="tb-btn tb-save"  onclick="saveHTML()">Save as HTML</button>
+    <select class="tb-select" id="templateChoice">
+      <option value="default" selected>Default template</option>
+      <option value="alternate">Alternate template</option>
+      <option value="original" disabled title="Coming soon — requires your original CV to be a Word file">Similar to original CV</option>
+      <option value="custom" disabled>Custom uploaded template</option>
+    </select>
+    <input type="file" id="templateFile" accept=".docx" hidden onchange="uploadTemplate()">
+    <button class="tb-btn tb-save" onclick="document.getElementById('templateFile').click()">Upload template…</button>
+    <a class="tb-link" href="/templates/word/starter_template.docx" download>Download starter template ↓</a>
     <button class="tb-btn tb-print" id="exportWordBtn" onclick="exportWord()">Export to Word</button>
+    <span class="tb-status" id="templateStatus"></span>
+    <button class="tb-btn tb-save" onclick="toggleHrSidebar()">Ask HR Expert</button>
+  </div>
+</div>
+
+<div class="hr-sidebar" id="hrSidebar">
+  <div class="hr-sb-header">
+    <span class="hr-sb-title">Ask your HR Expert</span>
+    <select class="hr-sb-model" id="hrModelChoice">
+      <option value="claude-sonnet-4-6" selected>Sonnet 4.6</option>
+      <option value="claude-opus-4-8">Opus 4.8</option>
+      <option value="claude-haiku-4-5">Haiku 4.5</option>
+    </select>
+  </div>
+  <div class="hr-sb-messages" id="hrSbMessages"></div>
+  <div class="hr-sb-input-row">
+    <textarea id="hrSbInput" placeholder="Ask about your CV, this job, or your edits…"></textarea>
+    <button class="hr-sb-send" id="hrSbSend" onclick="sendHrMessage()">Send</button>
   </div>
 </div>
 
@@ -304,15 +357,43 @@ ${pageHtml}
     };
   }
 
+  let customTemplatePath = null;
+
+  async function uploadTemplate() {
+    const fileInput = document.getElementById('templateFile');
+    const status = document.getElementById('templateStatus');
+    const file = fileInput.files[0];
+    if (!file) return;
+    status.textContent = 'Uploading…';
+    try {
+      const formData = new FormData();
+      formData.append('template', file);
+      const res = await fetch('/upload-template', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!data.templatePath) throw new Error(data.error || 'Upload failed');
+      customTemplatePath = data.templatePath;
+      const choice = document.getElementById('templateChoice');
+      choice.querySelector('option[value="custom"]').disabled = false;
+      choice.value = 'custom';
+      status.textContent = 'Template uploaded ✓';
+    } catch (err) {
+      status.textContent = '';
+      alert('Template upload failed: ' + err.message);
+    }
+  }
+
   async function exportWord() {
     const btn = document.getElementById('exportWordBtn');
     const original = btn.textContent;
     btn.disabled = true; btn.textContent = 'Exporting…';
     try {
+      const templateStyle = document.getElementById('templateChoice').value;
+      const body = { cvData: extractCvData(), job: JOB_DATA, templateStyle };
+      if (templateStyle === 'custom' && customTemplatePath) body.templatePath = customTemplatePath;
       const res = await fetch('/export-word', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cvData: extractCvData(), job: JOB_DATA }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!data.wordPath) throw new Error(data.error || 'Export failed');
@@ -324,6 +405,45 @@ ${pageHtml}
       alert('Export to Word failed: ' + err.message);
     } finally {
       btn.disabled = false; btn.textContent = original;
+    }
+  }
+
+  function toggleHrSidebar() {
+    document.getElementById('hrSidebar').classList.toggle('open');
+  }
+
+  function addHrBubble(role, text) {
+    const messages = document.getElementById('hrSbMessages');
+    const bubble = Object.assign(document.createElement('div'), {
+      className: 'hr-sb-bubble ' + (role === 'user' ? 'user' : 'expert'),
+      textContent: text,
+    });
+    messages.appendChild(bubble);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  async function sendHrMessage() {
+    const input = document.getElementById('hrSbInput');
+    const sendBtn = document.getElementById('hrSbSend');
+    const message = input.value.trim();
+    if (!message) return;
+    const model = document.getElementById('hrModelChoice').value;
+    addHrBubble('user', message);
+    input.value = '';
+    sendBtn.disabled = true;
+    try {
+      const res = await fetch('/hr/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, model }),
+      });
+      const data = await res.json();
+      if (!data.reply) throw new Error(data.error || 'No reply');
+      addHrBubble('expert', data.reply);
+    } catch (err) {
+      addHrBubble('expert', 'Sorry, something went wrong: ' + err.message);
+    } finally {
+      sendBtn.disabled = false;
     }
   }
 </script>

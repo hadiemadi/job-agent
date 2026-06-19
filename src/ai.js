@@ -146,12 +146,34 @@ Return ONLY the JSON, no explanation.` }]
   return enforceContactInfo(cv, cvText);
 }
 
+// Renders the client's chosen tone (1=neutral/diplomatic .. 5=blunt) and any free-text
+// instructions they gave on the contact page into a directive block every persona appends.
+function preferencesBlock(preferences) {
+  const { tone = 4, customInstructions = '' } = preferences || {};
+  const toneLabel = ['very neutral and diplomatic', 'calm and measured', 'balanced and professional', 'direct and frank', 'very blunt and brutally honest'][tone - 1] || 'direct and frank';
+  return `\n\nTONE: Be ${toneLabel} (client-selected ${tone}/5) in how you phrase feedback and suggestions.` +
+    (customInstructions ? `\n\nCLIENT'S OWN INSTRUCTIONS — follow these unless they conflict with honesty/accuracy:\n${customInstructions}` : '');
+}
+
+// One persona, shared by every HR-thread call (review, rewrite, refine, placement, sidebar
+// chat) so the same "expert" carries context and judgment from upload through Word export.
+function hrSystemPrompt(cvText, job, preferences) {
+  return `You are a Senior HR Manager and CV expert. You are working with this one candidate
+continuously — from your initial CV review, through tailoring the CV for this role, through
+deciding how to place content into any Word template they use, to answering their questions
+while they make final edits. Stay consistent with judgments and rationale you've already
+given earlier in this conversation.
+
+CANDIDATE'S TARGET JOB: ${job.job_title} at ${job.employer_name || job.company || ''}
+${(job.job_description || job.description || '').slice(0, 800)}
+
+CANDIDATE'S CV:
+${cvText}${preferencesBlock(preferences)}`;
+}
+
 // HR review — categorizes changes into auto (safe) vs confirm (needs client approval)
-async function reviewCV(cvText, job) {
-  const message = await client.messages.create({
-    model: MODEL,
-    max_tokens: 3000,
-    messages: [{ role: 'user', content: `You are a senior HR manager and CV expert. Review this CV against the job description.
+async function reviewCV(cvText, job, thread = [], preferences) {
+  const userMessage = `Review this candidate's CV against the job description above.
 
 Categorize all recommended changes into two groups:
 - auto_changes: safe to apply because they are directly evidenced in the CV (skills mentioned in experience but missing from the skills list, keyword optimization that matches existing experience, restructuring/reordering)
@@ -173,20 +195,22 @@ Return JSON only:
   "section_rationale": "",
   "auto_changes": [{ "description": "", "rationale": "" }],
   "confirm_changes": [{ "description": "", "rationale": "" }]
-}
+}`;
 
-JOB: ${job.job_title} at ${job.employer_name || job.company || ''}
-${(job.job_description || job.description || '').slice(0, 800)}
-
-CV:
-${cvText}` }]
+  const messages = [...thread, { role: 'user', content: userMessage }];
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 3000,
+    system: hrSystemPrompt(cvText, job, preferences),
+    messages,
   });
   const raw = extractJSON(message.content[0].text);
-  return JSON.parse(raw);
+  const review = JSON.parse(raw);
+  return { review, thread: [...messages, { role: 'assistant', content: message.content[0].text }] };
 }
 
 // Tailor CV applying specific changes from HR review + client confirmations
-async function rewriteCVWithChanges(cvText, job, autoChanges, confirmedChanges, recommendedSections, originalName, confirmedContact) {
+async function rewriteCVWithChanges(cvText, job, autoChanges, confirmedChanges, recommendedSections, originalName, confirmedContact, thread = [], preferences) {
   const allChanges = [...(autoChanges || []), ...(confirmedChanges || [])];
   const changesText = allChanges.length
     ? allChanges.map(c => `- ${c.description}`).join('\n')
@@ -209,10 +233,7 @@ async function rewriteCVWithChanges(cvText, job, autoChanges, confirmedChanges, 
     customSections.length                   ? `"additional_sections": [{ "title": "", "items": [""] }]` : null,
   ].filter(Boolean).join(',\n    ');
 
-  const message = await client.messages.create({
-    model: MODEL,
-    max_tokens: 3500,
-    messages: [{ role: 'user', content: `You are an expert CV writer. Rewrite this CV applying the specific changes listed below.
+  const userMessage = `Rewrite this candidate's CV applying the specific changes listed below.
 
 RULES:
 - Apply every listed change exactly as described
@@ -228,12 +249,6 @@ ${customSections.length ? `Custom sections to add under "additional_sections": $
 CHANGES TO APPLY:
 ${changesText}
 
-JOB: ${job.job_title} at ${job.employer_name || job.company || ''}
-${(job.job_description || job.description || '').slice(0, 800)}
-
-ORIGINAL CV:
-${cvText}
-
 Return JSON only:
 {
   "cv": {
@@ -242,11 +257,19 @@ Return JSON only:
   "modified_sections": []
 }
 
-IMPORTANT: skills and key_qualifications must be flat arrays of plain strings only — no objects, no nested arrays.` }]
+IMPORTANT: skills and key_qualifications must be flat arrays of plain strings only — no objects, no nested arrays.`;
+
+  const messages = [...thread, { role: 'user', content: userMessage }];
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 3500,
+    system: hrSystemPrompt(cvText, job, preferences),
+    messages,
   });
 
   const raw = extractJSON(message.content[0].text);
   const result = JSON.parse(raw);
+  const updatedThread = [...messages, { role: 'assistant', content: message.content[0].text }];
   const { cv: cvData, modified_sections = [] } = result;
   enforceContactInfo(cvData, cvText);
   cleanBulletPrefixes(cvData);
@@ -277,11 +300,11 @@ IMPORTANT: skills and key_qualifications must be flat arrays of plain strings on
   const fileName = `output/cv_${company.replace(/\s+/g, '_')}.html`;
   await fse.outputFile(fileName, html);
 
-  return { filePath: fileName, cvData, modified_sections };
+  return { filePath: fileName, cvData, modified_sections, thread: updatedThread };
 }
 
 // Coach chat — history grows across the session (one coach per CV+job)
-async function chatWithCoach(cvText, job, hrReview, history, userMessage, gapDescription) {
+async function chatWithCoach(cvText, job, hrReview, history, userMessage, gapDescription, preferences) {
   const gapContext = gapDescription ? `The candidate is currently discussing this specific gap: "${gapDescription}"\n\n` : '';
   const systemPrompt = `You are a warm, direct Career Coach. You have already reviewed this candidate's CV and the target job.
 
@@ -299,7 +322,7 @@ Your role:
 - Ask one specific probing question to uncover relevant experience
 - Build confidence for legitimate skills the client genuinely has
 - Be honest — if a skill is a real gap, acknowledge it and suggest a realistic short path to fill it
-- Keep every response to 2-4 sentences maximum`;
+- Keep every response to 2-4 sentences maximum${preferencesBlock(preferences)}`;
 
   const messages = [...history, { role: 'user', content: gapContext + userMessage }];
   const response = await client.messages.create({
@@ -313,19 +336,14 @@ Your role:
 }
 
 // HR agent refines a gap suggestion based on what the coach + client discussed
-async function refineWithHR(cvText, job, hrReview, gap, conversation, hrHistory) {
+async function refineWithHR(cvText, job, hrReview, gap, conversation, thread, preferences) {
   const conversationText = conversation.map(m =>
     `${m.role === 'user' ? 'Candidate' : 'Coach'}: ${m.content}`
   ).join('\n');
 
-  const systemPrompt = `You are a Senior HR Manager. You already reviewed this CV for the role of ${job.job_title} at ${job.employer_name || job.company || ''}.
+  const userMessage = `Your initial HR review identified this gap: ${gap.description}
 
-CV (summary):
-${cvText.slice(0, 1000)}
-
-Your initial HR review identified: ${gap.description}`;
-
-  const userMessage = `The candidate discussed this gap with their career coach. Here is the conversation:
+The candidate discussed this gap with their career coach. Here is the conversation:
 
 ${conversationText}
 
@@ -340,16 +358,16 @@ Return JSON only:
 
 verdict: "add" if clearly evidenced, "skip" if not justified, "candidate_decides" if borderline.`;
 
-  const messages = [...hrHistory, { role: 'user', content: userMessage }];
+  const messages = [...thread, { role: 'user', content: userMessage }];
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 400,
-    system: systemPrompt,
+    system: hrSystemPrompt(cvText, job, preferences),
     messages,
   });
   const raw = extractJSON(response.content[0].text);
   const result = JSON.parse(raw);
-  return { result, history: [...messages, { role: 'assistant', content: response.content[0].text }] };
+  return { result, thread: [...messages, { role: 'assistant', content: response.content[0].text }] };
 }
 
 async function parseJobFromText(rawText, sourceUrl) {
@@ -384,4 +402,76 @@ ${rawText}` }]
   };
 }
 
-module.exports = { extractJobTitles, analyzeJobFit, parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText };
+// Decides WHERE candidate content should go in an uploaded Word template, never what it
+// says — the model only returns paragraph indices/labels; callers always splice the
+// candidate's own verbatim text into the document, so wording can't be altered or invented.
+async function planDocxPlacement(paragraphs, cvData, cvText, job, thread = [], preferences) {
+  const paragraphList = paragraphs.map(p => `${p.index}: ${p.text}`).join('\n');
+  const fields = {
+    name: cvData.name, title: cvData.title,
+    email: cvData.email, phone: cvData.phone, location: cvData.location, linkedin: cvData.linkedin,
+    summary: cvData.summary,
+    skills: cvData.skills, key_qualifications: cvData.key_qualifications,
+    experience: (cvData.experience || []).map(e => ({ role: e.role, company: e.company })),
+    education: (cvData.education || []).map(e => ({ degree: e.degree, school: e.school })),
+    additional_sections: (cvData.additional_sections || []).map(s => s.title),
+  };
+
+  const userMessage = `Below is a Word CV template the candidate uploaded, listed paragraph-by-paragraph by index, and the candidate's tailored CV field summary.
+
+Decide where each candidate field should be placed in the template, reusing the template's existing section headings wherever a matching section already exists. Do NOT include or invent any candidate wording yourself — you are only choosing placement, never writing content.
+
+Return JSON only:
+{
+  "header_replacements": [
+    { "field": "name|title|email|phone|location|linkedin", "paragraph_index": 0 }
+  ],
+  "replacements": [
+    { "field": "summary|skills|key_qualifications|experience|education", "heading_paragraph_index": 0, "content_start_index": 0, "content_end_index": 0 }
+  ],
+  "new_sections": [
+    { "field": "key_qualifications|additional_sections name", "insert_after_index": 0, "heading_text": "" }
+  ]
+}
+
+Rules:
+- "header_replacements": the template's opening lines usually show the original CV owner's name, title, and contact details as standalone paragraphs (often near the top, no section heading above them) — point each candidate header field at the single paragraph index currently holding that piece of info.
+- "replacements": for each candidate field that has a matching section already in the template, give the heading paragraph's index (kept as-is, untouched) and the inclusive paragraph index range of that section's current body content (to be replaced with the candidate's data).
+- "new_sections": for any candidate field with no matching section anywhere in the template (e.g. key_qualifications, or a named additional_sections entry not present), specify the paragraph index to insert after and a short heading label.
+- Only use fields that have actual content in the candidate data below.
+- additional_sections entries should each become their own "new_sections" item using their title as heading_text, unless a matching section already exists in the template (then use "replacements" with field set to the section's title).
+
+TEMPLATE PARAGRAPHS:
+${paragraphList}
+
+CANDIDATE FIELD SUMMARY (for placement decisions only — do not transcribe):
+${JSON.stringify(fields, null, 2)}`;
+
+  const messages = [...thread, { role: 'user', content: userMessage }];
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 1500,
+    system: hrSystemPrompt(cvText, job, preferences),
+    messages,
+  });
+  const raw = extractJSON(message.content[0].text);
+  const plan = JSON.parse(raw);
+  return { plan, thread: [...messages, { role: 'assistant', content: message.content[0].text }] };
+}
+
+// Sidebar Q&A on the editable tailored CV page — continues the same HR thread, so the
+// expert remembers everything discussed during review/rewrite/placement. `model` lets the
+// sidebar's picker override the default model for this turn only.
+async function chatWithHRExpert(cvText, job, thread, userMessage, model, preferences) {
+  const messages = [...(thread || []), { role: 'user', content: userMessage }];
+  const response = await client.messages.create({
+    model: model || MODEL,
+    max_tokens: 400,
+    system: hrSystemPrompt(cvText, job, preferences),
+    messages,
+  });
+  const reply = response.content[0].text;
+  return { reply, thread: [...messages, { role: 'assistant', content: reply }] };
+}
+
+module.exports = { extractJobTitles, analyzeJobFit, parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, planDocxPlacement, chatWithHRExpert };

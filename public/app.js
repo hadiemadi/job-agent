@@ -87,6 +87,8 @@ async function confirmContact() {
     phone:    el('ci-phone').value.trim(),
     location: el('ci-location').value.trim(),
     linkedin: el('ci-linkedin').value.trim(),
+    customInstructions: el('ci-instructions').value.trim(),
+    tone:     parseInt(el('ci-tone').value, 10),
   };
   hide('contactStatus');
   try {

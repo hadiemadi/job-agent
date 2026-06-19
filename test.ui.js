@@ -19,6 +19,7 @@ jest.mock('./src/ai', () => ({
   rewriteCVWithChanges: jest.fn(),
   chatWithCoach:        jest.fn(),
   refineWithHR:         jest.fn(),
+  chatWithHRExpert:     jest.fn(),
   parseJobFromText:     jest.fn(),
   extractJobTitles:     jest.fn(),
   analyzeJobFit:        jest.fn(),
@@ -31,13 +32,19 @@ jest.mock('./src/templates', () => ({
   generateExecutiveTemplate:  jest.fn().mockReturnValue('<html>cv</html>'),
   generateComparisonTemplate: jest.fn().mockReturnValue('<html>compare</html>'),
 }));
-jest.mock('./src/wordExport', () => ({ generateWordCV: jest.fn() }));
+jest.mock('./src/wordExport', () => ({ generateWordCV: jest.fn(), generateWordCVAlt: jest.fn() }));
+jest.mock('./src/wordTemplateExport', () => ({ generateWordFromTemplate: jest.fn() }));
 jest.mock('./src/coach', () => ({
   analyzeAndSuggestRoles: jest.fn(),
   matchRolesToMarket:     jest.fn(),
   buildCareerPath:        jest.fn(),
 }));
-jest.mock('fs-extra', () => ({ outputFile: jest.fn() }));
+jest.mock('fs-extra', () => ({
+  outputFile: jest.fn(),
+  ensureDirSync: jest.fn(),
+  readFile: jest.fn().mockResolvedValue(Buffer.from('')),
+}));
+jest.mock('pizzip', () => jest.fn().mockImplementation(() => ({})));
 
 // ── Test fixtures ──────────────────────────────────────────────────────────────
 
@@ -76,11 +83,12 @@ const MOCK_REVIEW = {
 
 // ── Module references (for setting return values in beforeEach / beforeAll) ────
 
-const { parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText } = require('./src/ai');
+const { parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, chatWithHRExpert, parseJobFromText } = require('./src/ai');
 const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath } = require('./src/coach');
 const { readCV }        = require('./src/cv');
 const { scrapeJobPage } = require('./src/scraper');
-const { generateWordCV } = require('./src/wordExport');
+const { generateWordCV, generateWordCVAlt } = require('./src/wordExport');
+const { generateWordFromTemplate } = require('./src/wordTemplateExport');
 const fse               = require('fs-extra');
 const request           = require('supertest');
 const app               = require('./server');
@@ -92,20 +100,25 @@ beforeEach(() => {
 
   readCV.mockResolvedValue('Hadi Emadi\nTPM\nh@test.com\n+1 555 0000\nlinkedin.com/in/hadi');
   parseCVStructure.mockResolvedValue(MOCK_CV_DATA);
-  reviewCV.mockResolvedValue(MOCK_REVIEW);
+  reviewCV.mockResolvedValue({ review: MOCK_REVIEW, thread: [] });
   rewriteCVWithChanges.mockResolvedValue({
     filePath: 'output/cv_Apple.html',
     cvData: MOCK_CV_DATA,
     modified_sections: ['summary', 'skills'],
+    thread: [],
   });
   parseJobFromText.mockResolvedValue(MOCK_JOB);
   chatWithCoach.mockResolvedValue({ reply: 'Highlight your RF work on 5G programs.', history: [] });
   refineWithHR.mockResolvedValue({
     result: { refined_description: 'Add PMP certification', rationale: 'JD prefers it', verdict: 'candidate_decides' },
-    history: [],
+    thread: [],
   });
+  chatWithHRExpert.mockResolvedValue({ reply: 'Your PMP progress should resolve that gap.', thread: [] });
   generateWordCV.mockResolvedValue('output/cv_word_Apple.docx');
+  generateWordCVAlt.mockResolvedValue('output/cv_word_alt_Apple.docx');
+  generateWordFromTemplate.mockResolvedValue({ wordPath: 'output/cv_word_custom_Apple.docx', thread: [] });
   fse.outputFile.mockResolvedValue(undefined);
+  fse.readFile.mockResolvedValue(Buffer.from(''));
   scrapeJobPage.mockResolvedValue('Technical Program Manager at Apple. Requirements: RF, ASIC.');
   analyzeAndSuggestRoles.mockResolvedValue({
     profile: { current_level: 'Senior', key_strengths: ['RF'], domain_expertise: ['Hardware'], years_experience: 10, trajectory: 'Leadership' },
@@ -136,6 +149,12 @@ describe('Error handling — no CV in session', () => {
 
   test('POST /hr/refine → 400 when no CV is loaded', async () => {
     const res = await request(app).post('/hr/refine').send({ gapIndex: 0, conversation: [] });
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+  });
+
+  test('POST /hr/chat → 400 when no CV is loaded', async () => {
+    const res = await request(app).post('/hr/chat').send({ message: 'Hello' });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
@@ -231,7 +250,7 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   beforeAll(async () => {
     readCV.mockResolvedValue('Hadi Emadi\nTPM\nh@test.com\n+1 555 0000');
     parseCVStructure.mockResolvedValue(MOCK_CV_DATA);
-    reviewCV.mockResolvedValue(MOCK_REVIEW);
+    reviewCV.mockResolvedValue({ review: MOCK_REVIEW, thread: [] });
     await request(app).post('/upload-cv').attach('cv', 'cv.pdf');
     await request(app).post('/review-cv').send({ job: MOCK_JOB });
   });
@@ -245,6 +264,17 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(res.body).toHaveProperty('confirm_changes');
     expect(Array.isArray(res.body.auto_changes)).toBe(true);
     expect(Array.isArray(res.body.confirm_changes)).toBe(true);
+  });
+
+  test('POST /confirm-contact stores clientPreferences and /review-cv passes them through', async () => {
+    const contactRes = await request(app).post('/confirm-contact').send({
+      name: 'Hadi Emadi', customInstructions: 'Never mention my current employer by name', tone: 2,
+    });
+    expect(contactRes.status).toBe(200);
+
+    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    const lastCall = reviewCV.mock.calls[reviewCV.mock.calls.length - 1];
+    expect(lastCall[3]).toEqual({ tone: 2, customInstructions: 'Never mention my current employer by name' });
   });
 
   test('POST /rewrite returns 200 with filePath and comparisonPath', async () => {
@@ -288,6 +318,19 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(res.status).toBe(400);
   });
 
+  test('POST /hr/chat returns 200 with a reply string', async () => {
+    const res = await request(app).post('/hr/chat').send({ message: 'Why was PMP flagged as a gap?' });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('reply');
+    expect(typeof res.body.reply).toBe('string');
+  });
+
+  test('POST /hr/chat → 400 when message is missing', async () => {
+    const res = await request(app).post('/hr/chat').send({});
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+  });
+
   test('POST /coach/analyze returns 200 with profile and suggestedRoles array', async () => {
     const res = await request(app).post('/coach/analyze').send({ direction: 'leadership' });
     expect(res.status).toBe(200);
@@ -322,6 +365,61 @@ describe('POST /export-word', () => {
 
   test('returns 400 when job is missing', async () => {
     const res = await request(app).post('/export-word').send({ cvData: MOCK_CV_DATA });
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+  });
+
+  test('uses the custom template renderer when templatePath is provided', async () => {
+    const res = await request(app).post('/export-word').send({
+      cvData: MOCK_CV_DATA, job: MOCK_JOB, templatePath: 'uploads/templates/fake.docx',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('wordPath', 'output/cv_word_custom_Apple.docx');
+    expect(generateWordFromTemplate).toHaveBeenCalled();
+    expect(generateWordCV).not.toHaveBeenCalled();
+  });
+
+  test('returns 400 when templatePath escapes uploads/templates', async () => {
+    const res = await request(app).post('/export-word').send({
+      cvData: MOCK_CV_DATA, job: MOCK_JOB, templatePath: '../../etc/passwd',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+  });
+
+  test('uses the alternate built-in template when templateStyle is "alternate"', async () => {
+    const res = await request(app).post('/export-word').send({
+      cvData: MOCK_CV_DATA, job: MOCK_JOB, templateStyle: 'alternate',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('wordPath', 'output/cv_word_alt_Apple.docx');
+    expect(generateWordCVAlt).toHaveBeenCalled();
+    expect(generateWordCV).not.toHaveBeenCalled();
+  });
+
+  test('returns 501 when templateStyle is "original"', async () => {
+    const res = await request(app).post('/export-word').send({
+      cvData: MOCK_CV_DATA, job: MOCK_JOB, templateStyle: 'original',
+    });
+    expect(res.status).toBe(501);
+    expect(res.body).toHaveProperty('error');
+  });
+});
+
+// ── 7. POST /upload-template (stateless — no session needed) ──────────────────
+
+describe('POST /upload-template', () => {
+  test('returns 200 with templatePath for a valid .docx upload', async () => {
+    const res = await request(app)
+      .post('/upload-template')
+      .attach('template', 'templates/word/starter_template.docx');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('templatePath');
+    expect(res.body.templatePath).toMatch(/\.docx$/);
+  });
+
+  test('returns 400 when no file is attached', async () => {
+    const res = await request(app).post('/upload-template');
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });

@@ -224,4 +224,62 @@ async function generateWordCV(cvData, job, outputDir = 'output') {
   return filePath.replace(/\\/g, '/');
 }
 
-module.exports = { generateWordCV };
+// Alternate built-in style: left-aligned header, skills-first ordering — a visually
+// distinct second choice in the template picker, reusing the same section builders.
+async function generateWordCVAlt(cvData, job, outputDir = 'output') {
+  const cv     = cvData || {};
+  const slug   = (job && (job.job_title || job.title) || 'CV')
+    .replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 40);
+  const fileName  = `cv_word_alt_${slug}.docx`;
+  const filePath  = path.join(outputDir, fileName);
+
+  await fse.ensureDir(outputDir);
+
+  const doc = new Document({
+    styles: {
+      default: {
+        document: { run: { font: FONT, size: 22, color: DARK } },
+      },
+    },
+    sections: [{
+      properties: {
+        page: {
+          margin: { top: 720, bottom: 720, left: 1080, right: 1080 },
+        },
+      },
+      children: [
+        // Name
+        new Paragraph({
+          children: [run(cv.name || 'Your Name', { bold: true, size: 48, color: BRAND })],
+          alignment: AlignmentType.LEFT,
+          spacing: { after: 60 },
+        }),
+        // Title
+        ...(cv.title ? [new Paragraph({
+          children: [run(cv.title, { size: 24, color: DARK, bold: true })],
+          alignment: AlignmentType.LEFT,
+          spacing: { after: 100 },
+        })] : []),
+        // Contact — one line per item instead of pipe-joined
+        ...[cv.location, cv.phone, cv.email, cv.linkedin].filter(Boolean).map(line =>
+          new Paragraph({ children: [run(line, { size: 20, color: GREY })], spacing: { after: 30 } })),
+        empty(120),
+
+        // Sections — skills-first ordering for visual variety
+        ...skillsSection(cv.skills),
+        ...keyQualificationsSection(cv.key_qualifications),
+        ...summarySection(cv.summary),
+        ...experienceSection(cv.experience),
+        ...educationSection(cv.education),
+        ...additionalSections(cv.additional_sections),
+        ...certificationsSection(cv.certifications),
+      ],
+    }],
+  });
+
+  const buffer = await Packer.toBuffer(doc);
+  await fse.writeFile(filePath, buffer);
+  return filePath.replace(/\\/g, '/');
+}
+
+module.exports = { generateWordCV, generateWordCVAlt };

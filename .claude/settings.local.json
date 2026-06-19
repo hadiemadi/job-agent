@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(npm test *)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(node test-tailor.js)",
+      "Bash(node -e ' *)",
+      "Bash(node _extract.js)",
+      "Bash(node _split.js)",
+      "Bash(node --check public_app.js)",
+      "Bash(sed -i '27,644d' server.js)",
+      "Bash(node --check server.js)",
+      "Bash(node record-fixture.js)"
     ]
   }
 }

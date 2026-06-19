@@ -24,6 +24,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
     "docx": "^9.7.1",
+    "docxtemplater": "^3.69.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "fs-extra": "^11.3.5",
@@ -31,6 +32,7 @@
     "multer": "^2.1.1",
     "node-fetch": "^3.3.2",
     "pdf2json": "^4.0.3",
+    "pizzip": "^3.2.0",
     "puppeteer": "^25.1.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",

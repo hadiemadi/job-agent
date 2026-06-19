@@ -68,6 +68,15 @@
         <input type="text" id="ci-linkedin" placeholder="https://www.linkedin.com/in/username" />
       </div>
     </div>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label>Anything you'd like the AI to know? <span class="opt">(optional)</span></label>
+      <textarea id="ci-instructions" rows="3" placeholder="e.g. emphasize my leadership experience, avoid mentioning my current employer by name…"></textarea>
+    </div>
+    <div class="form-group" style="margin-bottom:6px;">
+      <label>Tone — how direct should feedback be?</label>
+      <input type="range" id="ci-tone" min="1" max="5" value="4" oninput="el('ci-tone-label').textContent = ['Very neutral','Calm','Balanced','Direct (default)','Very blunt'][this.value-1]">
+      <div class="opt" id="ci-tone-label" style="text-align:center;">Direct (default)</div>
+    </div>
     <button class="btn btn-go" onclick="confirmContact()" style="margin-top:6px;">Confirm &amp; continue →</button>
     <div id="contactStatus" style="display:none;margin-top:8px;"></div>
   </div>

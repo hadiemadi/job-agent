@@ -1,28 +1,41 @@
 require('dotenv').config();
+const path = require('path');
 const express = require('express');
 const multer = require('multer');
 const fse = require('fs-extra');
+const PizZip = require('pizzip');
 const {
   readCV, extractJobTitles, searchAllLocations, analyzeJobFit,
-  parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText,
+  parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, chatWithHRExpert,
   generateComparisonTemplate,
   analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath,
 } = require('./agent');
 const { scrapeJobPage } = require('./src/scraper');
-const { generateWordCV } = require('./src/wordExport');
+const { generateWordCV, generateWordCVAlt } = require('./src/wordExport');
+const { generateWordFromTemplate } = require('./src/wordTemplateExport');
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
+const templateUpload = multer({
+  storage: multer.diskStorage({
+    destination: 'uploads/templates/',
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}.docx`),
+  }),
+  fileFilter: (req, file, cb) => cb(null, /\.docx$/i.test(file.originalname)),
+});
 app.use(express.json());
 app.use(express.static('public'));
 app.use('/output', express.static('output'));
+app.use('/templates', express.static('templates'));
+fse.ensureDirSync('uploads/templates');
 
 let appSession = {
   cvText: null, cvPath: null, cvData: null,
   jobs: null, rankedJobs: null,
   currentJob: null, hrReview: null,
-  coachHistory: [], hrHistory: [],
+  coachHistory: [], hrThread: [],
   confirmedContact: null,
+  clientPreferences: { tone: 4, customInstructions: '' },
 };
 
 // ── API endpoints ─────────────────────────────────────────────────────────────
@@ -101,7 +114,8 @@ app.post('/rewrite', async (req, res) => {
     const cvText = await readCV(cvPath || appSession.cvPath);
     const recommendedSections = (appSession.hrReview || {}).recommended_sections;
     const originalName = (appSession.cvData || {}).name;
-    const { filePath, cvData, modified_sections } = await rewriteCVWithChanges(cvText, job, autoChanges || [], confirmedChanges || [], recommendedSections, originalName, appSession.confirmedContact);
+    const { filePath, cvData, modified_sections, thread } = await rewriteCVWithChanges(cvText, job, autoChanges || [], confirmedChanges || [], recommendedSections, originalName, appSession.confirmedContact, appSession.hrThread, appSession.clientPreferences);
+    appSession.hrThread = thread;
     const company = (job.employer_name || job.company || 'Company').replace(/\s+/g, '_');
     const comparisonHtml = generateComparisonTemplate(appSession.cvData, cvData, job, modified_sections);
     const comparisonPath = `output/comparison_${company}.html`;
@@ -114,8 +128,24 @@ app.post('/rewrite', async (req, res) => {
 
 app.post('/export-word', async (req, res) => {
   try {
-    const { cvData, job } = req.body;
+    const { cvData, job, templatePath, templateStyle } = req.body;
     if (!cvData || !job) return res.status(400).json({ error: 'cvData and job are required.' });
+
+    if (templateStyle === 'alternate') {
+      const wordPath = await generateWordCVAlt(cvData, job);
+      return res.json({ wordPath });
+    }
+    if (templateStyle === 'original') {
+      return res.status(501).json({ error: "Style mimicry from your original CV isn't available yet — your CV was read as a PDF, and this feature needs a Word-format source. Use 'Upload your own template' instead." });
+    }
+    if (templatePath) {
+      const resolved = path.resolve(templatePath);
+      const templatesDir = path.resolve('uploads/templates');
+      if (!resolved.startsWith(templatesDir)) return res.status(400).json({ error: 'Invalid template path.' });
+      const { wordPath, thread } = await generateWordFromTemplate(cvData, job, resolved, appSession.cvText, appSession.hrThread, appSession.clientPreferences);
+      appSession.hrThread = thread;
+      return res.json({ wordPath });
+    }
     const wordPath = await generateWordCV(cvData, job);
     res.json({ wordPath });
   } catch (err) {
@@ -123,9 +153,20 @@ app.post('/export-word', async (req, res) => {
   }
 });
 
+app.post('/upload-template', templateUpload.single('template'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No .docx template file uploaded.' });
+    new PizZip(await fse.readFile(req.file.path));
+    res.json({ templatePath: req.file.path.replace(/\\/g, '/') });
+  } catch (err) {
+    res.status(400).json({ error: 'Invalid Word template file.' });
+  }
+});
+
 app.post('/confirm-contact', (req, res) => {
-  const { name, title, email, phone, location, linkedin } = req.body;
+  const { name, title, email, phone, location, linkedin, customInstructions, tone } = req.body;
   appSession.confirmedContact = { name, title, email, phone, location, linkedin };
+  appSession.clientPreferences = { tone: tone || 4, customInstructions: customInstructions || '' };
   if (appSession.cvData) Object.assign(appSession.cvData, appSession.confirmedContact);
   res.json({ ok: true });
 });
@@ -135,11 +176,11 @@ app.post('/review-cv', async (req, res) => {
     if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
     const { job } = req.body;
     if (!job) return res.status(400).json({ error: 'job is required.' });
-    const review = await reviewCV(appSession.cvText, job);
+    const { review, thread } = await reviewCV(appSession.cvText, job, [], appSession.clientPreferences);
     appSession.currentJob = job;
     appSession.hrReview = review;
     appSession.coachHistory = [];
-    appSession.hrHistory = [];
+    appSession.hrThread = thread;
     res.json(review);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -153,7 +194,7 @@ app.post('/coach/discuss', async (req, res) => {
     const gap = appSession.hrReview?.confirm_changes?.[gapIndex];
     const { reply, history } = await chatWithCoach(
       appSession.cvText, appSession.currentJob, appSession.hrReview,
-      appSession.coachHistory, message, gap?.description
+      appSession.coachHistory, message, gap?.description, appSession.clientPreferences
     );
     appSession.coachHistory = history;
     res.json({ reply });
@@ -168,12 +209,27 @@ app.post('/hr/refine', async (req, res) => {
     const { gapIndex, conversation } = req.body;
     const gap = appSession.hrReview?.confirm_changes?.[gapIndex];
     if (!gap) return res.status(400).json({ error: 'Gap not found.' });
-    const { result, history } = await refineWithHR(
+    const { result, thread } = await refineWithHR(
       appSession.cvText, appSession.currentJob, appSession.hrReview,
-      gap, conversation, appSession.hrHistory
+      gap, conversation, appSession.hrThread, appSession.clientPreferences
     );
-    appSession.hrHistory = history;
+    appSession.hrThread = thread;
     res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/hr/chat', async (req, res) => {
+  try {
+    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    const { message, model } = req.body;
+    if (!message) return res.status(400).json({ error: 'message is required.' });
+    const { reply, thread } = await chatWithHRExpert(
+      appSession.cvText, appSession.currentJob, appSession.hrThread, message, model, appSession.clientPreferences
+    );
+    appSession.hrThread = thread;
+    res.json({ reply });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
