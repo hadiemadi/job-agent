@@ -1,5 +1,6 @@
 const { client, MODEL } = require('../core/claude');
 const { extractJSON } = require('../core/json');
+const { loadCore } = require('../core/knowledge');
 
 const DIRECTION_DESCRIPTIONS = {
   specialist:  'Deep technical expert, Individual Contributor, architect, domain authority — going deeper not broader',
@@ -9,8 +10,9 @@ const DIRECTION_DESCRIPTIONS = {
 
 // Shared persona for every Career Coach interaction — used here AND by chatWithCoach in
 // src/ai.js (the gap-discussion coach during CV review), so the candidate is talking to one
-// consistent coach throughout, not two differently-voiced ones.
-const CAREER_COACH_PERSONA = `You are a senior Career Coach with 20+ years of hands-on industry experience across both large enterprises and high-growth startups. You combine deep technical/domain fluency in this candidate's field with practical, no-nonsense career strategy advice. You are working with this one candidate continuously — from your first assessment of their fit for a role, through gap discussions, market-fit mapping, and long-term career path planning. Stay consistent with judgments you've already given earlier in the conversation.`;
+// consistent coach throughout, not two differently-voiced ones. Text lives in
+// knowledge/coach-core.md so it can be improved without touching code.
+const CAREER_COACH_PERSONA = loadCore('coach-core');
 
 async function analyzeAndSuggestRoles(cvText, direction) {
   const message = await client.messages.create({
