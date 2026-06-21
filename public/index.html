@@ -22,68 +22,76 @@
   <!-- ── Input card ─────────────────────────────── -->
   <div class="card" id="inputCard">
     <h2>Tailor your CV to a job</h2>
-    <div class="form-group" style="margin-bottom:14px;">
+    <div class="form-group" id="cvPickerGroup" style="margin-bottom:14px;">
       <label>Your CV <span class="opt">(PDF)</span></label>
       <input type="file" id="cvFile" accept=".pdf" />
     </div>
-    <div class="form-group">
+    <div class="file-chosen" id="fileChosenDisplay" style="display:none;"></div>
+
+    <div class="form-group" id="jobTextGroup">
       <label>Job description — copy &amp; paste from LinkedIn or any job posting</label>
       <textarea id="jobText" rows="9" placeholder="Paste the full job description here — title, company, requirements, responsibilities…"></textarea>
     </div>
+    <div class="job-desc-display" id="jobDescDisplay" style="display:none;"></div>
+
     <button class="btn btn-go" id="goBtn" onclick="go()" style="margin-top:14px;">Tailor my CV →</button>
     <div id="goStatus" style="display:none;margin-top:10px;"></div>
   </div>
 
-  <!-- ── Contact review card ───────────────────── -->
-  <div class="card" id="contactCard" style="display:none;">
-    <h2>Check your contact info</h2>
-    <p class="contact-hint">We read this from your CV — correct anything that looks wrong. These values will be used on every tailored CV, exactly as you type them here.</p>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Full name</label>
-        <input type="text" id="ci-name" />
+  <!-- ── Contact review pop-up ───────────────────── -->
+  <div class="modal-overlay" id="contactCard" style="display:none;">
+    <div class="card modal-box">
+      <h2>Check your contact info</h2>
+      <p class="contact-hint">We read this from your CV — correct anything that looks wrong. These values will be used on every tailored CV, exactly as you type them here.</p>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Full name</label>
+          <input type="text" id="ci-name" />
+        </div>
+        <div class="form-group">
+          <label>Job title</label>
+          <input type="text" id="ci-title" />
+        </div>
       </div>
-      <div class="form-group">
-        <label>Job title</label>
-        <input type="text" id="ci-title" />
+      <div class="form-row">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="ci-email" />
+        </div>
+        <div class="form-group">
+          <label>Phone</label>
+          <input type="tel" id="ci-phone" />
+        </div>
       </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" id="ci-location" />
+        </div>
+        <div class="form-group">
+          <label>LinkedIn URL</label>
+          <input type="text" id="ci-linkedin" placeholder="https://www.linkedin.com/in/username" />
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:14px;">
+        <label>Anything you'd like the AI to know? <span class="opt">(optional)</span></label>
+        <textarea id="ci-instructions" rows="3" placeholder="e.g. emphasize my leadership experience, avoid mentioning my current employer by name…"></textarea>
+      </div>
+      <div class="form-group" style="margin-bottom:6px;">
+        <label>Tone — how direct should feedback be?</label>
+        <input type="range" id="ci-tone" min="1" max="5" value="4" oninput="el('ci-tone-label').textContent = ['Very neutral','Calm','Balanced','Direct (default)','Very blunt'][this.value-1]">
+        <div class="opt" id="ci-tone-label" style="text-align:center;">Direct (default)</div>
+      </div>
+      <button class="btn btn-go" onclick="confirmContact()" style="margin-top:6px;">Confirm &amp; continue →</button>
+      <div id="contactStatus" style="display:none;margin-top:8px;"></div>
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Email</label>
-        <input type="email" id="ci-email" />
-      </div>
-      <div class="form-group">
-        <label>Phone</label>
-        <input type="tel" id="ci-phone" />
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Location</label>
-        <input type="text" id="ci-location" />
-      </div>
-      <div class="form-group">
-        <label>LinkedIn URL</label>
-        <input type="text" id="ci-linkedin" placeholder="https://www.linkedin.com/in/username" />
-      </div>
-    </div>
-    <div class="form-group" style="margin-bottom:14px;">
-      <label>Anything you'd like the AI to know? <span class="opt">(optional)</span></label>
-      <textarea id="ci-instructions" rows="3" placeholder="e.g. emphasize my leadership experience, avoid mentioning my current employer by name…"></textarea>
-    </div>
-    <div class="form-group" style="margin-bottom:6px;">
-      <label>Tone — how direct should feedback be?</label>
-      <input type="range" id="ci-tone" min="1" max="5" value="4" oninput="el('ci-tone-label').textContent = ['Very neutral','Calm','Balanced','Direct (default)','Very blunt'][this.value-1]">
-      <div class="opt" id="ci-tone-label" style="text-align:center;">Direct (default)</div>
-    </div>
-    <button class="btn btn-go" onclick="confirmContact()" style="margin-top:6px;">Confirm &amp; continue →</button>
-    <div id="contactStatus" style="display:none;margin-top:8px;"></div>
   </div>
 
-  <!-- ── Progress card ──────────────────────────── -->
-  <div class="card" id="progressCard" style="display:none;">
-    <div class="steps" id="steps"></div>
+  <!-- ── Progress pop-up ──────────────────────────── -->
+  <div class="modal-overlay" id="progressCard" style="display:none;">
+    <div class="card modal-box">
+      <div class="steps" id="steps"></div>
+    </div>
   </div>
 
   <!-- ── Search results (search flow — disabled) ── -->
@@ -108,8 +116,8 @@
     <div class="result-job" id="compTitle"></div>
     <div class="result-company" id="compCompany"></div>
     <div class="result-actions">
-      <a class="btn btn-blue btn-sm" id="openCompBtn" href="#" target="_blank">View comparison ↗</a>
       <a class="btn btn-green btn-sm" id="openTailoredBtn" href="#" target="_blank">Open tailored CV ↗</a>
+      <button class="btn btn-blue btn-sm" id="openCompBtn" onclick="viewComparison()">View comparison ↗</button>
     </div>
   </div>
 

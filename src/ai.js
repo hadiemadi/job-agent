@@ -1,9 +1,33 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const fse = require('fs-extra');
 const { generateExecutiveTemplate } = require('./templates');
+const { CAREER_COACH_PERSONA } = require('./coach');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
+
+// Claude sometimes writes a real newline/tab inside a JSON string value (e.g. a multi-
+// paragraph cover letter or a multi-sentence answer) instead of escaping it as \n — that's
+// invalid JSON and makes JSON.parse fail mid-string with a confusing "Expected ',' or ']'"
+// error. Walk the text tracking string/escape state and escape any raw control character
+// found inside a string literal, leaving structural whitespace (between tokens) untouched.
+function sanitizeJsonControlChars(raw) {
+  let result = '';
+  let inString = false;
+  let escapeNext = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escapeNext) { result += ch; escapeNext = false; continue; }
+    if (ch === '\\' && inString) { result += ch; escapeNext = true; continue; }
+    if (ch === '"') { inString = !inString; result += ch; continue; }
+    if (inString && (ch === '\n' || ch === '\r' || ch === '\t')) {
+      result += ch === '\n' ? '\\n' : ch === '\r' ? '\\r' : '\\t';
+      continue;
+    }
+    result += ch;
+  }
+  return result;
+}
 
 // Extracts the first complete JSON object or array from a model response,
 // ignoring any preamble or postamble text the model may have added.
@@ -15,7 +39,7 @@ function extractJSON(text) {
   const closeChar = openChar === '{' ? '}' : ']';
   const end = text.lastIndexOf(closeChar);
   if (end === -1) throw new Error('Unclosed JSON in model response');
-  return text.slice(start, end + 1);
+  return sanitizeJsonControlChars(text.slice(start, end + 1));
 }
 
 // Extract contact info directly from raw CV text via regex — never trust the LLM
@@ -173,19 +197,62 @@ function stealthWritingDirective() {
 }
 
 // One persona, shared by every HR-thread call (review, rewrite, refine, placement, sidebar
-// chat) so the same "expert" carries context and judgment from upload through Word export.
+// chat, cover letter, interview prep) so the same "expert" carries context and judgment from
+// upload through Word export. Modeled on a top-tier US executive recruiter/resume strategist
+// so output is consistent and decisive run-to-run, rather than re-deciding style each call.
 function hrSystemPrompt(cvText, job, preferences) {
-  return `You are a Senior HR Manager and CV expert. You are working with this one candidate
-continuously — from your initial CV review, through tailoring the CV for this role, through
-deciding how to place content into any Word template they use, to answering their questions
-while they make final edits. Stay consistent with judgments and rationale you've already
-given earlier in this conversation.
+  return `You are a top-tier Senior HR Manager and CV strategist — 18+ years leading talent
+acquisition and resume strategy for Fortune 500 companies and high-growth US tech firms, with
+deep ATS (Applicant Tracking System) expertise and a track record of getting candidates past
+automated screens and in front of hiring managers. You think like the hiring manager AND the
+recruiter at once: you know exactly what makes a reviewer stop scrolling, and exactly what
+makes a parser choke.
+
+You are working with this one candidate continuously — from your initial CV review, through
+tailoring the CV for this role, through deciding how to place content into any Word template
+they use, to answering their questions while they make final edits, drafting their cover
+letter, and prepping them for the interview. Stay consistent with judgments and rationale
+you've already given earlier in this conversation.
 
 You own every aspect of how the CV is written and presented: template/layout choice, document
 format, font, color accents, section segmentation, and wording. For wording specifically, you
 offer the candidate flexibility from their own original phrasing up to senior-expert-level
 language, across 5 levels (see CV WORDING LEVEL below) — never push them past the level they've
 chosen.
+
+YOUR CORE PRINCIPLES — apply these the same way every time for the same CV/job pair; your
+judgment should not vary between attempts:
+- Evidence-based only: every claim, skill, and achievement traces back to something the
+  candidate actually wrote or confirmed. Never invent, embellish, or round up.
+- Quantify impact wherever the original CV gives you a number, scope, or outcome to work with
+  (%, $, team size, timeline, scale) — vague "responsible for X" phrasing is a defect, not a
+  style choice.
+- Every bullet leads with a strong action verb in the correct tense (past tense for past
+  roles, present tense for the current role) — never "Responsible for," "Worked on," or other
+  passive framing.
+- Keyword-match the target job description wherever the candidate's real experience supports
+  it, for ATS parsing — but never insert a skill or keyword the candidate hasn't demonstrated.
+- Section inclusion is decided by what's objectively true of the CV, not by re-guessing
+  relevance each time: any section already present in the candidate's original CV with real
+  content (certifications, languages, publications, awards, volunteer work, side projects,
+  etc.) stays in unless it is genuinely irrelevant to professional credibility — you do not
+  silently drop credentials a candidate already has just because this specific job doesn't
+  emphasize them. You only decide case-by-case for sections that do NOT already exist in the
+  original CV.
+- No filler, no clichés, no generic statements that could apply to any candidate.
+
+US RESUME CONVENTIONS — this candidate is applying to US-based roles; follow current 2024/2025
+US hiring norms, not UK/EU CV conventions:
+- Reverse-chronological order, most recent role first.
+- Length: 1 page for under ~10 years of experience, max 2 pages beyond that — never longer.
+- No photo, no age, no date of birth, no marital status, no nationality, no "References
+  available upon request."
+- Header: name, phone, email, city + state, LinkedIn — no full street address.
+- Consistent date format throughout (e.g. "Jan 2022 – Present").
+- First-person pronouns ("I", "my") never appear — every bullet is an implied-subject fragment.
+- Prefer a clean, single-column, ATS-parseable layout unless the candidate has explicitly
+  chosen a more visual/designer template for a creative role.
+- US spelling and terminology throughout.
 
 CANDIDATE'S TARGET JOB: ${job.job_title} at ${job.employer_name || job.company || ''}
 ${(job.job_description || job.description || '').slice(0, 800)}
@@ -194,21 +261,34 @@ CANDIDATE'S CV:
 ${cvText}${preferencesBlock(preferences)}${stealthWritingDirective()}`;
 }
 
-// HR review — categorizes changes into auto (safe) vs confirm (needs client approval)
+// HR review — auto_changes (safe, directly evidenced) + section decisions. Gap-finding
+// (confirm_changes) is handled separately by the Career Coach's analyzeGaps (src/coach.js)
+// and merged in by the /review-cv route — splitting "what's safe to auto-apply" from "what's
+// worth flagging to the candidate" keeps each judgment call narrower and more consistent.
 async function reviewCV(cvText, job, thread = [], preferences) {
   const userMessage = `Review this candidate's CV against the job description above.
 
-Categorize all recommended changes into two groups:
-- auto_changes: safe to apply because they are directly evidenced in the CV (skills mentioned in experience but missing from the skills list, keyword optimization that matches existing experience, restructuring/reordering)
-- confirm_changes: go beyond what the CV states — skills gaps, certifications not mentioned, claims that need the candidate to confirm they actually have them
+List the auto_changes you'd apply automatically — safe to apply because they are directly
+evidenced in the CV (skills mentioned in experience but missing from the skills list, keyword
+optimization that matches existing experience, restructuring/reordering). Apply the same bar
+every time — the same CV and job must produce the same list every time.
 
-Also decide which CV sections to include in the tailored version. Apply current best practices (2024/2025):
+Also decide which CV sections to include in the tailored version. Apply current US resume best
+practices (2024/2025) — and apply them consistently: the same CV and job must produce the same
+section decisions every time, never a different outcome between attempts.
 - "summary": include for most roles — strong 3-5 sentence professional profile targeting this specific job
 - "key_qualifications": include for senior, specialist, or leadership roles where a quick highlight reel adds value before experience; skip for junior/generalist roles
 - "skills": include when technical skills are key differentiators for this role; skip if skills are already embedded in experience bullets and adding a list adds no value
 - "experience": always include
 - "education": always include
-- Additional sections (e.g. "certifications", "languages", "publications", "awards"): only if directly relevant to this specific role
+- Any additional section already present in the candidate's ORIGINAL CV with real content
+  (e.g. "certifications", "languages", "publications", "awards", "volunteer", "side projects"):
+  ALWAYS include it in recommended_sections under its original name — do not drop a credential
+  the candidate already has just because this specific job doesn't emphasize it. Only omit an
+  existing section if it is genuinely irrelevant to professional credibility (e.g. unrelated
+  personal hobbies with no bearing on employability).
+- A section the candidate's original CV does NOT already have: only add it if there is strong
+  direct evidence in the CV content that justifies it.
 
 Return JSON only:
 {
@@ -216,14 +296,14 @@ Return JSON only:
   "strengths": [""],
   "recommended_sections": ["summary", "skills", "experience", "education"],
   "section_rationale": "",
-  "auto_changes": [{ "description": "", "rationale": "" }],
-  "confirm_changes": [{ "description": "", "rationale": "" }]
+  "auto_changes": [{ "description": "", "rationale": "" }]
 }`;
 
   const messages = [...thread, { role: 'user', content: userMessage }];
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 3000,
+    temperature: 0, // classification, not creative writing — same CV/job must yield the same gap list every time
     system: hrSystemPrompt(cvText, job, preferences),
     messages,
   });
@@ -248,8 +328,125 @@ function flattenStringArrayFields(cvData, fields) {
   });
 }
 
+// ── Session summary (HR sidebar's opening message) ────────────────────────────────────────
+// Built deterministically from data already in scope rather than via an extra AI call, so the
+// facts (settings, section diffs, accept/skip outcomes) can never drift from what was actually
+// configured or decided. Ordered to read like a session report: settings (orient the reader),
+// then what changed (the tangible result they're looking at), then why (the coach/HR
+// discussion that led there), then what's still open (an invitation to keep talking to HR).
+function describeTone(tone) {
+  return ['Very neutral & diplomatic', 'Calm & measured', 'Balanced & professional', 'Direct & frank', 'Very blunt & candid'][tone - 1] || 'Direct & frank';
+}
+
+function describeLanguageLevel(level) {
+  return [
+    'Kept your original wording — no elevation in vocabulary or sophistication',
+    'Lightly polished above your original phrasing',
+    'Clearly professional, moderately elevated language',
+    'Highly professional, polished corporate language',
+    'Senior-expert / executive-caliber language',
+  ][level - 1] || 'Lightly polished above your original phrasing';
+}
+
+function buildSettingsLines(preferences) {
+  const { tone = 4, languageLevel = 2, customInstructions = '' } = preferences || {};
+  const lines = [
+    `- Feedback tone: ${describeTone(tone)}`,
+    `- CV wording level: ${describeLanguageLevel(languageLevel)}`,
+    `- Discreet writing mode: On — content is phrased to read as natural, human-written text while staying 100% factual to your CV`,
+  ];
+  if (customInstructions) lines.push(`- Your custom instructions: "${customInstructions}"`);
+  return lines;
+}
+
+function buildSectionChangeLines(originalCvData, tailoredCvData, modifiedSections) {
+  const orig = originalCvData || {};
+  const tailored = tailoredCvData || {};
+  const hasContent = (cv, key) => {
+    const v = cv[key];
+    if (Array.isArray(v)) return v.length > 0;
+    return !!(v && String(v).trim());
+  };
+  const origCustomNames     = (orig.additional_sections     || []).filter(s => s && s.title).map(s => s.title);
+  const tailoredCustomNames = (tailored.additional_sections || []).filter(s => s && s.title).map(s => s.title);
+
+  // Match section names loosely (case-insensitive, singular/plural-insensitive) before
+  // deciding add/remove — otherwise a section the model just renamed in passing (e.g.
+  // "Publication" -> "Publications") gets falsely reported as removed AND added.
+  const normalize = s => String(s || '').toLowerCase().trim().replace(/s$/, '');
+  const origByNorm     = new Map(origCustomNames.map(n => [normalize(n), n]));
+  const tailoredByNorm = new Map(tailoredCustomNames.map(n => [normalize(n), n]));
+
+  const standardLabels = { summary: 'Summary', key_qualifications: 'Key Qualifications', skills: 'Skills' };
+  const added = [];
+  const removed = [];
+  const renamed = [];
+  Object.keys(standardLabels).forEach(key => {
+    const inOrig     = hasContent(orig, key);
+    const inTailored = hasContent(tailored, key);
+    if (inTailored && !inOrig) added.push(standardLabels[key]);
+    if (!inTailored && inOrig) removed.push(standardLabels[key]);
+  });
+  tailoredByNorm.forEach((name, norm) => {
+    if (!origByNorm.has(norm)) added.push(name);
+    else if (origByNorm.get(norm) !== name) renamed.push(`"${origByNorm.get(norm)}" → "${name}"`);
+  });
+  origByNorm.forEach((name, norm) => { if (!tailoredByNorm.has(norm)) removed.push(name); });
+
+  const lines = [];
+  if (added.length)   lines.push(`- Added sections: ${added.join(', ')}`);
+  if (removed.length) lines.push(`- Removed sections: ${removed.join(', ')}`);
+  if (renamed.length) lines.push(`- Renamed sections (same content): ${renamed.join(', ')}`);
+  if (!added.length && !removed.length && !renamed.length) lines.push('- Same sections as your original CV — no sections added or removed');
+  if (modifiedSections && modifiedSections.length) lines.push(`- Rewritten/edited within existing sections: ${modifiedSections.join(', ')}`);
+  return lines;
+}
+
+function buildChangesAppliedLines(allChanges) {
+  if (!allChanges.length) return ["- Wording optimized for this job's keywords based on your existing experience — no structural changes were needed"];
+  return allChanges.map(c => `- **${c.description}** — ${c.rationale || 'improves alignment with this role'}`);
+}
+
+// gapDiscussions (from the client): one entry per confirm_changes gap, carrying the coach
+// conversation transcript (if the candidate discussed it) and the final accept/skip/refine
+// outcome — so "what was discussed" and "the outcome" can both be reported accurately.
+function buildGapDiscussionLines(gapDiscussions) {
+  if (!gapDiscussions || !gapDiscussions.length) return null;
+  return gapDiscussions.map(g => {
+    const discussed = g.coachConversation && g.coachConversation.length > 0;
+    let outcome;
+    if (g.status === 'accepted') {
+      outcome = g.refinedDescription ? `added to your CV as: "${g.refinedDescription}"` : 'added to your CV';
+    } else if (g.status === 'skipped') {
+      outcome = 'skipped — not added';
+    } else {
+      outcome = 'left undecided';
+    }
+    const discussedNote = discussed ? ' (after discussing it with your Career Coach)' : '';
+    return `- **${g.description}** — ${outcome}${discussedNote}`;
+  });
+}
+
+function buildSuggestionLines(gapDiscussions) {
+  const skipped = (gapDiscussions || []).filter(g => g.status === 'skipped' && g.rationale);
+  if (!skipped.length) return null;
+  return skipped.map(g => `- ${g.description} — ${g.rationale} (you can revisit this anytime in the sidebar)`);
+}
+
+function buildSessionSummary(preferences, originalCvData, tailoredCvData, modifiedSections, allChanges, gapDiscussions) {
+  const sections = [];
+  sections.push('**Settings used for this CV**', buildSettingsLines(preferences).join('\n'));
+  sections.push('**What changed vs. your original CV**',
+    [...buildSectionChangeLines(originalCvData, tailoredCvData, modifiedSections), ...buildChangesAppliedLines(allChanges)].join('\n'));
+  const gapLines = buildGapDiscussionLines(gapDiscussions);
+  if (gapLines) sections.push('**What we discussed with your Coach & HR**', gapLines.join('\n'));
+  const suggestionLines = buildSuggestionLines(gapDiscussions);
+  if (suggestionLines) sections.push('**Other suggestions worth revisiting**', suggestionLines.join('\n'));
+  return sections.join('\n\n');
+}
+
 // Tailor CV applying specific changes from HR review + client confirmations
-async function rewriteCVWithChanges(cvText, job, autoChanges, confirmedChanges, recommendedSections, originalName, confirmedContact, thread = [], preferences, hrDisplayHistory = []) {
+async function rewriteCVWithChanges(cvText, job, autoChanges, confirmedChanges, recommendedSections, originalName, confirmedContact, thread = [], preferences, hrDisplayHistory = [], originalCvData = null, gapDiscussions = []) {
   const allChanges = [...(autoChanges || []), ...(confirmedChanges || [])];
   const changesText = allChanges.length
     ? allChanges.map(c => `- ${c.description}`).join('\n')
@@ -324,12 +521,9 @@ IMPORTANT: skills and key_qualifications must be flat arrays of plain strings on
   flattenStringArrayFields(cvData, ['skills', 'key_qualifications']);
 
   // Pre-populates the editable CV page's HR sidebar so it never starts empty — built from
-  // the same change list just applied, not a separate AI call. Appended to whatever sidebar
-  // history already exists so re-tailoring/regenerating never wipes prior HR conversation.
-  const initialHrMessage = allChanges.length
-    ? "Here's what I changed on your CV for this role, and why:\n" +
-      allChanges.map(c => `- **${c.description}** — ${c.rationale || 'improves alignment with this role'}`).join('\n')
-    : "I optimized your CV for this role's keywords based on your existing experience — no major structural changes were needed.";
+  // data already in scope, not a separate AI call. Appended to whatever sidebar history
+  // already exists so re-tailoring/regenerating never wipes prior HR conversation.
+  const initialHrMessage = buildSessionSummary(preferences, originalCvData, cvData, modified_sections, allChanges, gapDiscussions);
   const updatedDisplayHistory = [...(hrDisplayHistory || []), { role: 'expert', text: initialHrMessage }];
 
   const company = job.employer_name || job.company || 'Company';
@@ -395,12 +589,7 @@ Return JSON only:
 // Word export), so this is the same coach throughout, exactly like the HR thread.
 async function chatWithCoach(cvText, job, hrReview, history, userMessage, gapDescription, preferences) {
   const gapContext = gapDescription ? `The candidate is currently discussing this specific gap: "${gapDescription}"\n\n` : '';
-  const systemPrompt = `You are a senior Career Coach with deep, hands-on industry experience in this
-candidate's field — you've worked at both large companies and high-growth startups, and you
-possess the technical and leadership skills relevant to this domain. You are working with this
-one candidate continuously, from your first assessment of their fit for this role through every
-follow-up conversation, all the way to CV export. Stay consistent with judgments you've already
-given earlier in this conversation.
+  const systemPrompt = `${CAREER_COACH_PERSONA}
 
 CV (summary):
 ${cvText.slice(0, 1500)}
@@ -414,11 +603,15 @@ ${(hrReview.confirm_changes || []).map(c => '- ' + c.description).join('\n')}
 Your role:
 - Assess whether the candidate's previous assignments and accomplishments genuinely align with what this job requires
 - Identify concrete skill gaps between the candidate's CV and the job description, including gaps in seniority/scope (e.g. led a team of 3 vs. this role expects leading 20+)
-- When you don't have enough information to judge a gap or alignment confidently, ask the candidate a specific clarifying question instead of guessing
+- When you don't have enough information to judge a gap or alignment confidently, ask the candidate a SHORT, SPECIFIC clarifying question instead of guessing
 - Help the client discover capabilities they may have forgotten or are too shy to mention
 - Build confidence for legitimate skills the client genuinely has
 - Be honest — if a skill is a real gap, acknowledge it and suggest a realistic short path to fill it
-- Keep every response to 2-4 sentences maximum${preferencesBlock(preferences)}`;
+
+KEEP THIS SHORT — this is a quick check on one specific gap, not an open-ended interview:
+- Ask at most 1-3 follow-up questions total for this gap, then converge on a clear verdict
+- The moment you have enough to judge the gap, say so plainly instead of asking more questions
+- Every response is 2-3 sentences maximum, no filler, no restating what the candidate just said${preferencesBlock(preferences)}`;
 
   const messages = [...history, { role: 'user', content: gapContext + userMessage }];
   const response = await client.messages.create({
@@ -594,6 +787,51 @@ Return JSON only:
   return { coverLetter: cover_letter, thread: updatedThread, hrDisplayHistory: updatedDisplayHistory };
 }
 
+// Interview prep — generated only on explicit sidebar button press. Both answer proposals per
+// question must be grounded strictly in what's already in the tailored CV; the HR persona
+// crafts the questions an interviewer for THIS role would actually ask THIS candidate.
+async function generateInterviewQuestions(cvText, job, cvData, thread = [], preferences, hrDisplayHistory = []) {
+  const userMessage = `Based on the tailored CV below and the target job, prepare the candidate for their interview.
+
+Generate the TOP 10 interview questions a hiring manager or interview panel would realistically
+ask for THIS specific role, given THIS candidate's background — mix in role-specific/technical
+questions, behavioral questions tied to strengths or gaps in their CV, and at least one question
+probing the area most likely to draw scrutiny (e.g. a gap, a transition, or an ambiguous claim).
+
+For each question, provide 2 different strong answer proposals the candidate could give:
+- Both answers must be built ONLY from real achievements, experience, and facts already in the tailored CV below — never invent anything
+- The two proposals should take genuinely different angles (e.g. one leads with a technical/quantitative example, the other leads with a leadership/collaboration example; or one is more concise and direct, the other gives more narrative context) — not just reworded versions of the same answer
+- Each answer should be interview-ready: spoken naturally, structured (STAR-style where it fits), specific, and concise (3-5 sentences)
+${stealthWritingDirective()}
+
+TAILORED CV (latest version):
+${JSON.stringify(cvData)}
+
+Return JSON only:
+{
+  "questions": [
+    { "question": "", "answer_1": "", "answer_2": "" }
+  ]
+}
+Return exactly 10 items in "questions".`;
+
+  const messages = [...thread, { role: 'user', content: userMessage }];
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 4000,
+    system: hrSystemPrompt(cvText, job, preferences),
+    messages,
+  });
+  const raw = extractJSON(message.content[0].text);
+  const { questions } = JSON.parse(raw);
+  const updatedThread = [...messages, { role: 'assistant', content: message.content[0].text }];
+
+  const initialHrMessage = "I've put together your top 10 likely interview questions for this role, each with two different ways to answer — take a look in the panel.";
+  const updatedDisplayHistory = [...(hrDisplayHistory || []), { role: 'expert', text: initialHrMessage }];
+
+  return { questions, hrMessage: initialHrMessage, thread: updatedThread, hrDisplayHistory: updatedDisplayHistory };
+}
+
 // Sidebar Q&A on the editable tailored CV page — continues the same HR thread, so the
 // expert remembers everything discussed during review/rewrite/placement. `model` lets the
 // sidebar's picker override the default model for this turn only.
@@ -609,4 +847,37 @@ async function chatWithHRExpert(cvText, job, thread, userMessage, model, prefere
   return { reply, thread: [...messages, { role: 'assistant', content: reply }] };
 }
 
-module.exports = { extractJobTitles, analyzeJobFit, parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, planDocxPlacement, chatWithHRExpert, adjustLanguageLevel, generateCoverLetter };
+// Surgical regeneration — the candidate selected one specific snippet of the tailored CV and
+// discussed it with HR in the sidebar (that conversation already lives in `thread`). This
+// rewrites ONLY the one field/bullet/sentence that snippet belongs to, per the conclusion of
+// that discussion — never the rest of the CV.
+async function applyConcernChange(cvText, job, fieldText, selectedText, thread = [], preferences) {
+  const userMessage = `The candidate selected this exact snippet from their tailored CV: "${selectedText}"
+
+That snippet is part of this single piece of CV content (one field/bullet/sentence):
+"${fieldText}"
+
+Based on everything just discussed above in this conversation, rewrite ONLY this one piece of
+CV content to reflect the agreed conclusion. Keep its length, tone, and voice close to the
+original — change only what was actually discussed and agreed; do not invent new facts or
+alter anything that wasn't raised in the conversation. Return the FULL revised text of this
+piece (not just the changed words), since it will directly replace the original.
+${stealthWritingDirective()}
+
+Return JSON only:
+{ "revised_text": "" }`;
+
+  const messages = [...thread, { role: 'user', content: userMessage }];
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 500,
+    system: hrSystemPrompt(cvText, job, preferences),
+    messages,
+  });
+  const raw = extractJSON(message.content[0].text);
+  const { revised_text } = JSON.parse(raw);
+  const updatedThread = [...messages, { role: 'assistant', content: message.content[0].text }];
+  return { revisedText: revised_text, thread: updatedThread };
+}
+
+module.exports = { extractJobTitles, analyzeJobFit, parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, planDocxPlacement, chatWithHRExpert, adjustLanguageLevel, generateCoverLetter, generateInterviewQuestions, applyConcernChange };

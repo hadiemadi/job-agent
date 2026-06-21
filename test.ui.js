@@ -24,6 +24,7 @@ jest.mock('./src/ai', () => ({
   parseJobFromText:     jest.fn(),
   extractJobTitles:     jest.fn(),
   analyzeJobFit:        jest.fn(),
+  applyConcernChange:   jest.fn(),
 }));
 
 jest.mock('./src/cv',       () => ({ readCV: jest.fn() }));
@@ -39,6 +40,8 @@ jest.mock('./src/coach', () => ({
   analyzeAndSuggestRoles: jest.fn(),
   matchRolesToMarket:     jest.fn(),
   buildCareerPath:        jest.fn(),
+  analyzeGaps:            jest.fn(),
+  selectTopGaps:          jest.fn(),
 }));
 jest.mock('fs-extra', () => ({
   outputFile: jest.fn(),
@@ -79,13 +82,19 @@ const MOCK_REVIEW = {
   recommended_sections: ['summary', 'skills', 'experience', 'education'],
   section_rationale: 'Standard structure works well for senior hardware TPM roles.',
   auto_changes: [{ description: 'Move ASIC to top of skills list', rationale: 'First keyword in JD' }],
-  confirm_changes: [{ description: 'Mention PMP certification', rationale: 'Listed as preferred in JD' }],
 };
+
+// confirm_changes now comes from the Coach's analyzeGaps + selectTopGaps, not reviewCV —
+// selectTopGaps is mocked as an identity passthrough below, so this is what ends up in
+// review.confirm_changes.
+const MOCK_GAPS = [
+  { description: 'Mention PMP certification', rationale: 'Listed as preferred in JD', severity: 'mild' },
+];
 
 // ── Module references (for setting return values in beforeEach / beforeAll) ────
 
-const { parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, chatWithHRExpert, adjustLanguageLevel, parseJobFromText } = require('./src/ai');
-const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath } = require('./src/coach');
+const { parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, chatWithHRExpert, adjustLanguageLevel, parseJobFromText, applyConcernChange } = require('./src/ai');
+const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps } = require('./src/coach');
 const { readCV }        = require('./src/cv');
 const { scrapeJobPage } = require('./src/scraper');
 const { generateWordCV, generateWordCVAlt } = require('./src/wordExport');
@@ -102,6 +111,8 @@ beforeEach(() => {
   readCV.mockResolvedValue('Hadi Emadi\nTPM\nh@test.com\n+1 555 0000\nlinkedin.com/in/hadi');
   parseCVStructure.mockResolvedValue(MOCK_CV_DATA);
   reviewCV.mockResolvedValue({ review: MOCK_REVIEW, thread: [] });
+  analyzeGaps.mockResolvedValue(MOCK_GAPS);
+  selectTopGaps.mockImplementation(gaps => gaps);
   rewriteCVWithChanges.mockResolvedValue({
     filePath: 'output/cv_Apple.html',
     cvData: MOCK_CV_DATA,
@@ -173,6 +184,12 @@ describe('Error handling — no CV in session', () => {
     expect(res.body).toHaveProperty('error');
   });
 
+  test('POST /hr/apply-concern → 400 when no CV is loaded', async () => {
+    const res = await request(app).post('/hr/apply-concern').send({ fieldText: 'x', selectedText: 'x' });
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+  });
+
   test('POST /coach/analyze → 400 when no CV is loaded', async () => {
     const res = await request(app).post('/coach/analyze').send({ direction: 'leadership' });
     expect(res.status).toBe(400);
@@ -187,6 +204,12 @@ describe('Error handling — no CV in session', () => {
 
   test('POST /adjust-language → 400 when no CV is loaded', async () => {
     const res = await request(app).post('/adjust-language').send({ cvData: MOCK_CV_DATA, job: MOCK_JOB, languageLevel: 3 });
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+  });
+
+  test('POST /build-comparison → 400 when no CV has been tailored yet', async () => {
+    const res = await request(app).post('/build-comparison').send({ job: MOCK_JOB });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
@@ -271,6 +294,8 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     readCV.mockResolvedValue('Hadi Emadi\nTPM\nh@test.com\n+1 555 0000');
     parseCVStructure.mockResolvedValue(MOCK_CV_DATA);
     reviewCV.mockResolvedValue({ review: MOCK_REVIEW, thread: [] });
+    analyzeGaps.mockResolvedValue(MOCK_GAPS);
+    selectTopGaps.mockImplementation(gaps => gaps);
     await request(app).post('/upload-cv').attach('cv', 'cv.pdf');
     await request(app).post('/review-cv').send({ job: MOCK_JOB });
   });
@@ -297,7 +322,7 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(lastCall[3]).toEqual({ tone: 2, customInstructions: 'Never mention my current employer by name' });
   });
 
-  test('POST /rewrite returns 200 with filePath and comparisonPath', async () => {
+  test('POST /rewrite returns 200 with filePath only — comparison is built lazily, not here', async () => {
     const res = await request(app).post('/rewrite').send({
       job: MOCK_JOB,
       cvPath: 'cv.pdf',
@@ -306,6 +331,15 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('filePath');
+    expect(res.body).not.toHaveProperty('comparisonPath');
+  });
+
+  test('POST /build-comparison returns 200 with comparisonPath after a CV has been tailored', async () => {
+    await request(app).post('/rewrite').send({
+      job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [],
+    });
+    const res = await request(app).post('/build-comparison').send({ job: MOCK_JOB });
+    expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('comparisonPath');
   });
 
@@ -347,6 +381,31 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
 
   test('POST /hr/chat → 400 when message is missing', async () => {
     const res = await request(app).post('/hr/chat').send({});
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+  });
+
+  test('POST /hr/chat with a concern injects the selected excerpt and first-turn quote instruction', async () => {
+    await request(app).post('/hr/chat').send({
+      message: 'Should I mention this differently?',
+      concern: { selectedText: 'led RF integration', isFirst: true },
+    });
+    const lastCall = chatWithHRExpert.mock.calls[chatWithHRExpert.mock.calls.length - 1];
+    expect(lastCall[3]).toContain('led RF integration');
+    expect(lastCall[3]).toContain('quote or restate');
+  });
+
+  test('POST /hr/apply-concern returns 200 with revisedText', async () => {
+    applyConcernChange.mockResolvedValue({ revisedText: 'Led RF integration across 3 product lines.', thread: [] });
+    const res = await request(app).post('/hr/apply-concern').send({
+      job: MOCK_JOB, fieldText: 'Led RF integration.', selectedText: 'RF integration',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('revisedText');
+  });
+
+  test('POST /hr/apply-concern → 400 when fieldText or selectedText is missing', async () => {
+    const res = await request(app).post('/hr/apply-concern').send({ job: MOCK_JOB });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });

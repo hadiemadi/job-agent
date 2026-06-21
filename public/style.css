@@ -12,6 +12,25 @@ body { font-family:'Segoe UI',Arial,sans-serif; background:#f0f0ee; color:#333; 
 .card h2 { font-size:15px; font-weight:600; color:#2C2C2A; margin-bottom:18px; }
 .card h3 { font-size:13px; font-weight:600; color:#2C2C2A; margin-bottom:14px; }
 
+/* Pop-up phases (progress + contact info) — float over the input card instead of
+   pushing it out of the page, so the chosen file / job description stay visible
+   underneath and the user never loses their place. */
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:500; display:flex; align-items:center; justify-content:center; padding:24px; }
+.modal-box { width:100%; max-width:560px; max-height:86vh; overflow-y:auto; margin:0; }
+
+/* Chosen-file readout — replaces the file input once a file is picked, so the user's
+   selection is confirmed clearly instead of staying buried in a small file picker. */
+.file-chosen { display:flex; align-items:center; gap:10px; padding:6px 2px 14px; }
+.file-chosen .fc-icon { font-size:22px; }
+.file-chosen .fc-name { font-size:17px; font-weight:600; color:#2C2C2A; }
+
+/* Job description readout — replaces the raw textarea once submitted, with a roomier
+   box and a more readable typeface, since it has to stay legible through the
+   contact-info and progress pop-ups that follow. */
+.job-desc-display { font-family:Georgia,'Times New Roman',serif; font-size:14.5px; line-height:1.8; color:#333; background:#fafafa; border:0.5px solid #E0E0E0; border-radius:8px; padding:20px 22px; max-height:380px; overflow-y:auto; margin-bottom:14px; }
+.job-desc-display p { margin:0 0 12px; }
+.job-desc-display p:last-child { margin-bottom:0; }
+
 .form-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
 .form-group { display:flex; flex-direction:column; gap:5px; }
 .form-group label { font-size:11px; color:#888; font-weight:600; letter-spacing:0.6px; text-transform:uppercase; }
@@ -41,11 +60,11 @@ input[type="range"] { width:100%; cursor:pointer; }
 .link-btn { background:none; border:none; color:#185FA5; font-size:12px; cursor:pointer; padding:0; text-decoration:underline; }
 .link-btn:hover { color:#0C447C; }
 
-/* Progress steps */
-.steps { padding:4px 0; }
-.step { display:flex; gap:12px; align-items:flex-start; padding:9px 0; border-bottom:1px solid #f5f5f5; }
-.step:last-child { border-bottom:none; }
-.step-icon { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; flex-shrink:0; margin-top:1px; }
+/* Progress steps — horizontal, left to right, connected by arrows */
+.steps { display:flex; align-items:flex-start; justify-content:center; flex-wrap:wrap; gap:2px; padding:4px 0; }
+.step { display:flex; flex-direction:column; align-items:center; text-align:center; gap:6px; min-width:90px; max-width:140px; padding:9px 4px; }
+.step-arrow { color:#ccc; font-size:16px; align-self:center; margin-top:13px; }
+.step-icon { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; flex-shrink:0; }
 .step-icon.wait { background:#f0f0f0; color:#aaa; }
 .step-icon.run { background:#E6F1FB; color:#185FA5; }
 .step-icon.ok { background:#EAF3DE; color:#1A7A3C; }
@@ -53,8 +72,8 @@ input[type="range"] { width:100%; cursor:pointer; }
 .step-icon.warn { background:#fff8e6; color:#7a5500; }
 .spinner { width:12px; height:12px; border:2px solid #ddd; border-top-color:#185FA5; border-radius:50%; animation:spin 0.8s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
-.step-label { font-size:13px; color:#333; }
-.step-detail { font-size:11px; margin-top:2px; }
+.step-label { font-size:12px; color:#333; }
+.step-detail { font-size:10.5px; margin-top:0; }
 .step-detail.ok { color:#1A7A3C; }
 .step-detail.info { color:#185FA5; }
 .step-detail.warn { color:#cc5500; }
@@ -133,6 +152,10 @@ input[type="range"] { width:100%; cursor:pointer; }
 .confirm-change.skipped { opacity:0.4; }
 .confirm-change-text { flex:1; }
 .confirm-desc { font-size:13px; color:#333; }
+.gap-severity { display:inline-block; font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; padding:2px 7px; border-radius:10px; margin-left:6px; vertical-align:middle; }
+.gap-severity.major { background:#fff0f0; color:#cc0000; }
+.gap-severity.mild { background:#fff8e6; color:#7a5500; }
+.gap-severity.minor { background:#f0f0f0; color:#888; }
 .confirm-rationale { font-size:11px; color:#999; margin-top:2px; }
 .confirm-btns { display:flex; gap:6px; flex-shrink:0; margin-top:2px; }
 

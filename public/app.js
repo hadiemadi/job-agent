@@ -9,6 +9,20 @@ function show(id) { document.getElementById(id).style.display = ''; }
 function hide(id) { document.getElementById(id).style.display = 'none'; }
 function el(id) { return document.getElementById(id); }
 
+function escapeHtml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Turns the raw pasted job text into readable paragraphs — needs to stay legible in a
+// nicer font/larger box since it remains on screen behind the contact-info and progress
+// pop-ups that follow, long after the plain textarea would have been cramped.
+function renderJobDescriptionHtml(text) {
+  return text.split(/\n\s*\n/).map(block => {
+    const esc = escapeHtml(block.trim());
+    return esc ? '<p>' + esc.replace(/\n/g, '<br>') + '</p>' : '';
+  }).filter(Boolean).join('');
+}
+
 function setGoStatus(msg, type) {
   const s = el('goStatus');
   s.textContent = msg;
@@ -18,12 +32,11 @@ function setGoStatus(msg, type) {
 
 function buildSteps(defs) {
   el('steps').innerHTML = defs.map((d, i) => `
+    ${i > 0 ? '<div class="step-arrow">→</div>' : ''}
     <div class="step" id="step${i}">
       <div class="step-icon wait" id="si${i}">${i+1}</div>
-      <div>
-        <div class="step-label">${d}</div>
-        <div class="step-detail" id="sd${i}"></div>
-      </div>
+      <div class="step-label">${d}</div>
+      <div class="step-detail" id="sd${i}"></div>
     </div>
   `).join('');
 }
@@ -45,13 +58,26 @@ async function go() {
   if (!file) { setGoStatus('Please upload your CV first.', 'err'); show('goStatus'); return; }
   if (!jobText) { setGoStatus('Please paste the job description.', 'err'); show('goStatus'); return; }
 
+  // Lock in the chosen file + job description as a clean read-only display — they need to
+  // stay legible behind the contact-info and progress pop-ups that follow, instead of being
+  // buried in a tiny file input and a cramped textarea.
+  hide('cvPickerGroup');
+  el('fileChosenDisplay').innerHTML = '<span class="fc-icon">📄</span><span class="fc-name">' + escapeHtml(file.name) + '</span>';
+  show('fileChosenDisplay');
+  hide('jobTextGroup');
+  el('jobDescDisplay').innerHTML = renderJobDescriptionHtml(jobText);
+  show('jobDescDisplay');
+
   el('goBtn').disabled = true;
   hide('goBtn');
   hide('changesCard'); hide('comparisonCard'); hide('searchResultsCard');
   hide('coachToggleBar'); hide('coachCard'); hide('goStatus'); hide('contactCard');
 
+  // Built once and reused across go() → continueToJobAndHR() → applyChanges() — the same
+  // 4-step bar stays visible (re-shown/hidden, never rebuilt) for the whole flow so the user
+  // always sees where they are relative to the full journey, not just the current phase.
   show('progressCard');
-  buildSteps(['Reading CV', 'Parsing job', 'HR Review']);
+  buildSteps(['Reading CV', 'Parsing job', 'HR Review', 'Tailor CV']);
   setStep(0, 'run');
 
   // Step 0: Upload CV
@@ -60,7 +86,11 @@ async function go() {
   try {
     const upRes = await fetch('/upload-cv', { method:'POST', body: fd });
     const upData = await upRes.json();
-    if (upData.error) { setStep(0,'err', upData.error); el('goBtn').disabled=false; show('goBtn'); return; }
+    if (upData.error) {
+      setStep(0,'err', upData.error); el('goBtn').disabled=false; show('goBtn');
+      show('cvPickerGroup'); hide('fileChosenDisplay'); show('jobTextGroup'); hide('jobDescDisplay');
+      return;
+    }
     _cvPath = upData.cvPath;
     setStep(0, 'ok', 'CV ready');
 
@@ -75,8 +105,10 @@ async function go() {
     el('ci-location').value = d.location || '';
     el('ci-linkedin').value = d.linkedin || '';
     show('contactCard');
-    el('contactCard').scrollIntoView({ behavior:'smooth', block:'start' });
-  } catch (err) { setStep(0,'err', err.message); el('goBtn').disabled=false; show('goBtn'); }
+  } catch (err) {
+    setStep(0,'err', err.message); el('goBtn').disabled=false; show('goBtn');
+    show('cvPickerGroup'); hide('fileChosenDisplay'); show('jobTextGroup'); hide('jobDescDisplay');
+  }
 }
 
 // Saves confirmed contact to server, then continues with job + HR steps
@@ -110,7 +142,6 @@ async function continueToJobAndHR() {
   const jobText = el('jobText').value.trim();
 
   show('progressCard');
-  el('progressCard').scrollIntoView({ behavior:'smooth', block:'start' });
 
   // Step 1: Parse pasted job description
   setStep(1, 'run');
@@ -166,7 +197,7 @@ function showChanges(review) {
     ${review.confirm_changes.map((c, i) => `
       <div class="confirm-change" id="cc-${i}">
         <div class="confirm-change-text">
-          <div class="confirm-desc" id="cc-desc-${i}">${c.description}</div>
+          <div class="confirm-desc" id="cc-desc-${i}">${c.description}${c.severity ? ` <span class="gap-severity ${c.severity}">${c.severity}</span>` : ''}</div>
           <div class="confirm-rationale" id="cc-rationale-${i}">${c.rationale}</div>
         </div>
         <div class="confirm-btns">
@@ -205,6 +236,7 @@ function confirmChange(i, accept) {
 // ── Coach & HR chat (per confirm-change card) ─────────────────────────────────
 
 const _cardChats = {};
+const _refinedChanges = {};
 
 function toggleDiscuss(i) {
   const panel = el('chat-' + i);
@@ -281,6 +313,7 @@ async function askHR(i) {
     const data = await res.json();
     btn.disabled = false; btn.textContent = 'Ask HR to update suggestion →';
     if (data.refined_description) {
+      _refinedChanges[i] = { refined_description: data.refined_description, rationale: data.rationale, verdict: data.verdict };
       const originalDesc = el('cc-desc-' + i).textContent;
       el('chat-' + i).style.display = 'none';
       el('cc-desc-' + i).innerHTML = `
@@ -309,34 +342,49 @@ async function applyChanges() {
   el('applyBtn').disabled = true;
   hide('changesCard');
   show('progressCard');
-  buildSteps(['Tailoring CV', 'Building comparison']);
-  setStep(0, 'run');
-  el('progressCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setStep(3, 'run');
 
   const confirmedChanges = (_hrReview.confirm_changes || []).filter((c, i) => {
     const card = el('cc-' + i);
     return card && card.classList.contains('accepted');
   });
 
+  // One entry per gap the HR review raised, carrying the coach conversation (if discussed)
+  // and the final outcome — lets the tailored CV page's HR sidebar open with an accurate
+  // "what we discussed and what happened" summary instead of just the applied change list.
+  const gapDiscussions = (_hrReview.confirm_changes || []).map((c, i) => {
+    const card = el('cc-' + i);
+    const status = card && card.classList.contains('accepted') ? 'accepted'
+      : card && card.classList.contains('skipped') ? 'skipped' : 'undecided';
+    const refined = _refinedChanges[i];
+    return {
+      description: c.description,
+      rationale: c.rationale,
+      status,
+      coachConversation: _cardChats[i] || [],
+      refinedDescription: refined ? refined.refined_description : null,
+      verdict: refined ? refined.verdict : null,
+    };
+  });
+
   try {
     const res = await fetch('/rewrite', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ job: _currentJob, cvPath: _cvPath, autoChanges: _hrReview.auto_changes || [], confirmedChanges })
+      body: JSON.stringify({ job: _currentJob, cvPath: _cvPath, autoChanges: _hrReview.auto_changes || [], confirmedChanges, gapDiscussions })
     });
     const data = await res.json();
-    if (data.error) { setStep(0,'err', data.error); el('applyBtn').disabled=false; show('changesCard'); return; }
-    if (!data.filePath || !data.comparisonPath) {
-      setStep(0,'err', 'Server returned an unexpected response — check the server terminal for errors.');
+    if (data.error) { setStep(3,'err', data.error); el('applyBtn').disabled=false; show('changesCard'); return; }
+    if (!data.filePath) {
+      setStep(3,'err', 'Server returned an unexpected response — check the server terminal for errors.');
       el('applyBtn').disabled=false; show('changesCard'); return;
     }
-    setStep(0, 'ok', 'CV tailored');
-    setStep(1, 'ok', 'Comparison ready');
-    await new Promise(r => setTimeout(r, 800));
+    setStep(3, 'ok', 'CV tailored');
+    await new Promise(r => setTimeout(r, 500));
     hide('progressCard');
     showComparison(_currentJob, data);
   } catch (err) {
-    setStep(0,'err', err.message);
+    setStep(3,'err', err.message);
     el('applyBtn').disabled = false;
     show('changesCard');
   }
@@ -345,11 +393,32 @@ async function applyChanges() {
 function showComparison(job, data) {
   el('compTitle').textContent = job.job_title || 'Tailored CV';
   el('compCompany').textContent = job.employer_name || '';
-  el('openCompBtn').href = '/' + data.comparisonPath;
   el('openTailoredBtn').href = '/' + data.filePath;
   show('comparisonCard');
   show('coachToggleBar');
   el('comparisonCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// The comparison page costs nothing on the main path (tailored CV) unless the user actually
+// asks to see it — it's only built here, on demand, instead of eagerly during /rewrite.
+async function viewComparison() {
+  const btn = el('openCompBtn');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Building comparison…';
+  try {
+    const res = await fetch('/build-comparison', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: _currentJob }),
+    });
+    const data = await res.json();
+    if (!data.comparisonPath) throw new Error(data.error || 'Failed to build comparison');
+    window.open('/' + data.comparisonPath, '_blank');
+  } catch (err) {
+    alert('Could not build comparison: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
 }
 
 // ── Career Coach (secondary) ──────────────────────────────────────────────────

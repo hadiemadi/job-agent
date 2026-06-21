@@ -6,9 +6,9 @@ const fse = require('fs-extra');
 const PizZip = require('pizzip');
 const {
   readCV, extractJobTitles, searchAllLocations, analyzeJobFit,
-  parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, chatWithHRExpert, adjustLanguageLevel, generateCoverLetter,
+  parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, chatWithHRExpert, adjustLanguageLevel, generateCoverLetter, generateInterviewQuestions, applyConcernChange,
   generateComparisonTemplate,
-  analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath,
+  analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps,
 } = require('./agent');
 const { scrapeJobPage } = require('./src/scraper');
 const { generateWordCV, generateWordCVAlt, generateCoverLetterWord } = require('./src/wordExport');
@@ -110,18 +110,34 @@ app.post('/fetch-job', async (req, res) => {
 
 app.post('/rewrite', async (req, res) => {
   try {
-    const { job, cvPath, autoChanges, confirmedChanges } = req.body;
+    const { job, cvPath, autoChanges, confirmedChanges, gapDiscussions } = req.body;
     const cvText = await readCV(cvPath || appSession.cvPath);
     const recommendedSections = (appSession.hrReview || {}).recommended_sections;
     const originalName = (appSession.cvData || {}).name;
-    const { filePath, cvData, modified_sections, thread, hrDisplayHistory } = await rewriteCVWithChanges(cvText, job, autoChanges || [], confirmedChanges || [], recommendedSections, originalName, appSession.confirmedContact, appSession.hrThread, appSession.clientPreferences, appSession.hrDisplayHistory);
+    const { filePath, cvData, modified_sections, thread, hrDisplayHistory } = await rewriteCVWithChanges(cvText, job, autoChanges || [], confirmedChanges || [], recommendedSections, originalName, appSession.confirmedContact, appSession.hrThread, appSession.clientPreferences, appSession.hrDisplayHistory, appSession.cvData, gapDiscussions || []);
     appSession.hrThread = thread;
     appSession.hrDisplayHistory = hrDisplayHistory;
+    // Comparison page is NOT built here — it's a side artifact most clients never open, and
+    // building it eagerly only slows down the main path (getting the tailored CV). Stash what
+    // /build-comparison needs and build it lazily, only if the client actually asks for it.
+    appSession.lastTailoredCvData     = cvData;
+    appSession.lastModifiedSections   = modified_sections;
+    appSession.lastTailoredJob        = job;
+    res.json({ filePath });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/build-comparison', async (req, res) => {
+  try {
+    if (!appSession.lastTailoredCvData) return res.status(400).json({ error: 'No tailored CV yet.' });
+    const job = req.body.job || appSession.lastTailoredJob;
     const company = (job.employer_name || job.company || 'Company').replace(/\s+/g, '_');
-    const comparisonHtml = generateComparisonTemplate(appSession.cvData, cvData, job, modified_sections);
+    const comparisonHtml = generateComparisonTemplate(appSession.cvData, appSession.lastTailoredCvData, job, appSession.lastModifiedSections);
     const comparisonPath = `output/comparison_${company}.html`;
     await fse.outputFile(comparisonPath, comparisonHtml);
-    res.json({ filePath, comparisonPath });
+    res.json({ comparisonPath });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -199,6 +215,22 @@ app.post('/export-cover-letter-word', async (req, res) => {
   }
 });
 
+app.post('/generate-interview-questions', async (req, res) => {
+  try {
+    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    const { cvData, job } = req.body;
+    if (!cvData || !job) return res.status(400).json({ error: 'cvData and job are required.' });
+    const { questions, hrMessage, thread, hrDisplayHistory } = await generateInterviewQuestions(
+      appSession.cvText, job, cvData, appSession.hrThread, appSession.clientPreferences, appSession.hrDisplayHistory
+    );
+    appSession.hrThread = thread;
+    appSession.hrDisplayHistory = hrDisplayHistory;
+    res.json({ questions, hrMessage });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/upload-template', templateUpload.single('template'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No .docx template file uploaded.' });
@@ -222,11 +254,19 @@ app.post('/review-cv', async (req, res) => {
     if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
     const { job } = req.body;
     if (!job) return res.status(400).json({ error: 'job is required.' });
-    const { review, thread } = await reviewCV(appSession.cvText, job, [], appSession.clientPreferences);
+    // HR review (auto_changes + section decisions) and the Coach's gap analysis run in
+    // parallel — gap-finding is the Coach's job (analyzeGaps casts wide, up to 20 candidates,
+    // severity-scored); selectTopGaps then picks at least 5 worth actually asking the
+    // candidate about, instead of HR trying to do both jobs in one pass.
+    const [{ review, thread }, gaps] = await Promise.all([
+      reviewCV(appSession.cvText, job, [], appSession.clientPreferences),
+      analyzeGaps(appSession.cvText, job),
+    ]);
+    const fullReview = { ...review, confirm_changes: selectTopGaps(gaps) };
     appSession.currentJob = job;
-    appSession.hrReview = review;
+    appSession.hrReview = fullReview;
     appSession.hrThread = thread;
-    res.json(review);
+    res.json(fullReview);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -268,14 +308,37 @@ app.post('/hr/refine', async (req, res) => {
 app.post('/hr/chat', async (req, res) => {
   try {
     if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
-    const { message, model } = req.body;
+    const { message, model, concern } = req.body;
     if (!message) return res.status(400).json({ error: 'message is required.' });
+    // When the candidate selected a CV snippet to discuss, ground every turn in that exact
+    // text and — on the first turn only — instruct HR to quote it back, confirming it
+    // understood what's being raised before responding.
+    let finalMessage = message;
+    if (concern && concern.selectedText) {
+      finalMessage = `[Discussing this CV excerpt: "${concern.selectedText}"]\n\n${message}` +
+        (concern.isFirst ? '\n\n(This is the start of this discussion — first briefly quote or restate the excerpt above to confirm you understood what they\'re referring to, then respond to their point.)' : '');
+    }
     const { reply, thread } = await chatWithHRExpert(
-      appSession.cvText, appSession.currentJob, appSession.hrThread, message, model, appSession.clientPreferences
+      appSession.cvText, appSession.currentJob, appSession.hrThread, finalMessage, model, appSession.clientPreferences
     );
     appSession.hrThread = thread;
     appSession.hrDisplayHistory = [...appSession.hrDisplayHistory, { role: 'user', text: message }, { role: 'expert', text: reply }];
     res.json({ reply });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/hr/apply-concern', async (req, res) => {
+  try {
+    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    const { job, fieldText, selectedText } = req.body;
+    if (!fieldText || !selectedText) return res.status(400).json({ error: 'fieldText and selectedText are required.' });
+    const { revisedText, thread } = await applyConcernChange(
+      appSession.cvText, job || appSession.currentJob, fieldText, selectedText, appSession.hrThread, appSession.clientPreferences
+    );
+    appSession.hrThread = thread;
+    res.json({ revisedText });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

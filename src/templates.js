@@ -204,6 +204,7 @@ ${CV_CSS}
   .tb-status { font-size: 11px; color: rgba(255,255,255,0.55); margin-left: 4px; }
   .cv-toolbar { right: 20%; transition: right 0.2s; }
   .cv-toolbar.full { right: 0; }
+  .tb-btn:disabled, .tb-select:disabled, .hr-sb-model:disabled { opacity: 0.45; cursor: not-allowed; }
 
   /* ── Main CV area — shares the screen 80/20 with the HR sidebar ───── */
   .cv-main { margin-right: 20%; transition: margin-right 0.2s; }
@@ -234,6 +235,17 @@ ${CV_CSS}
   .hr-sb-send { border: none; background: #185FA5; color: white; border-radius: 6px; padding: 0 14px; cursor: pointer; font-size: 13px; }
   .hr-sb-send:disabled { background: #bbb; cursor: not-allowed; }
 
+  /* ── CV selection → HR concern ───────────────────────── */
+  /* Highlighted text stays marked from the moment it's raised until the discussion resolves
+     (changed or kept) — so the candidate never loses track of what's still "in review". */
+  .hr-concern { background: #fffbdd; outline: 2px solid #e6a817; outline-offset: 2px; border-radius: 3px; }
+  .concern-popover { position: fixed; z-index: 10020; background: #2C2C2A; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.35); font-family: 'Segoe UI', Arial, sans-serif; }
+  .concern-popover:hover { background: #444; }
+  .concern-banner { background: #fff8e6; border-top: 1px solid #f0dca0; border-bottom: 1px solid #f0dca0; padding: 8px 16px; font-size: 11.5px; color: #7a5500; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .concern-banner span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .concern-banner button { border: none; background: none; color: #7a5500; text-decoration: underline; cursor: pointer; font-size: 11px; flex-shrink: 0; }
+  .concern-resolve-row { display: flex; gap: 8px; padding: 10px 16px; border-bottom: 1px solid #eee; }
+
   /* ── Cover letter modal ─────────────────────────────── */
   .cl-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 10001; display: none; align-items: center; justify-content: center; font-family: 'Segoe UI', Arial, sans-serif; }
   .cl-modal-overlay.open { display: flex; }
@@ -246,6 +258,14 @@ ${CV_CSS}
   .cl-modal-body p { margin: 0 0 12px; }
   .cl-modal-body p:last-child { margin-bottom: 0; }
   .cl-modal-footer { padding: 14px 20px; border-top: 1px solid #eee; display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* ── Busy overlay — shown for every in-flight request so the user is never left
+       wondering if a click registered; setBusy() also greys out every other button. ── */
+  .busy-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 10010; display: none; align-items: center; justify-content: center; font-family: 'Segoe UI', Arial, sans-serif; }
+  .busy-overlay.open { display: flex; }
+  .busy-box { background: white; padding: 22px 30px; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.35); display: flex; align-items: center; gap: 14px; font-size: 14px; color: #2C2C2A; }
+  .busy-spinner { width: 20px; height: 20px; border: 3px solid #E0E0E0; border-top-color: #185FA5; border-radius: 50%; animation: busy-spin 0.8s linear infinite; flex-shrink: 0; }
+  @keyframes busy-spin { to { transform: rotate(360deg); } }
 
   /* ── Print: remove toolbar + edit indicators ────────── */
   @media print {
@@ -288,6 +308,7 @@ ${CV_CSS}
     <button class="tb-btn tb-save" id="regenWordingBtn" onclick="regenerateWording()">Regenerate wording</button>
     <button class="tb-btn tb-print" id="exportWordBtn" onclick="exportWord()">Export to Word</button>
     <button class="tb-btn tb-save" id="coverLetterBtn" onclick="generateCoverLetterPanel()">Generate Cover Letter</button>
+    <button class="tb-btn tb-save" id="interviewQBtn" onclick="generateInterviewQuestionsPanel()">Generate Interview Questions</button>
     <span class="tb-status" id="templateStatus"></span>
     <button class="tb-btn tb-save" id="hrToggleBtn" onclick="toggleHrSidebar()">Hide HR Expert</button>
   </div>
@@ -303,6 +324,14 @@ ${CV_CSS}
     </select>
   </div>
   <div class="hr-sb-messages" id="hrSbMessages"></div>
+  <div class="concern-banner" id="concernBanner" style="display:none;">
+    <span id="concernBannerText"></span>
+    <button onclick="cancelConcern()">cancel</button>
+  </div>
+  <div class="concern-resolve-row" id="concernResolveRow" style="display:none;">
+    <button class="tb-btn tb-print" id="concernApplyBtn" onclick="applyConcernChange()" style="flex:1;">Apply this change</button>
+    <button class="tb-btn tb-save" id="concernKeepBtn" onclick="keepConcernAsIs()" style="flex:1;">Keep as-is</button>
+  </div>
   <div class="hr-sb-input-row">
     <textarea id="hrSbInput" placeholder="Ask about your CV, this job, or your edits…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendHrMessage();}"></textarea>
     <button class="hr-sb-send" id="hrSbSend" onclick="sendHrMessage()">Send</button>
@@ -320,10 +349,30 @@ ${pageHtml}
       <button class="cl-modal-close" onclick="closeCoverLetterModal()">&times;</button>
     </div>
     <div class="cl-modal-body" id="clModalBody">Generating…</div>
-    <div class="cl-modal-footer">
+    <div class="cl-modal-footer" id="clModalFooter" style="display:none;">
       <button class="tb-btn tb-save" onclick="copyCoverLetter()">Copy text</button>
-      <button class="tb-btn tb-print" onclick="downloadCoverLetterWord()">Download as Word</button>
+      <button class="tb-btn tb-print" id="clDownloadBtn" onclick="downloadCoverLetterWord()">Download as Word</button>
     </div>
+  </div>
+</div>
+
+<div class="cl-modal-overlay" id="iqModalOverlay">
+  <div class="cl-modal" style="width:680px;">
+    <div class="cl-modal-header">
+      <h2>Interview Prep — Top 10 Questions</h2>
+      <button class="cl-modal-close" onclick="closeInterviewQuestionsModal()">&times;</button>
+    </div>
+    <div class="cl-modal-body" id="iqModalBody">Generating…</div>
+    <div class="cl-modal-footer" id="iqModalFooter" style="display:none;">
+      <button class="tb-btn tb-save" onclick="copyInterviewQuestions()">Copy text</button>
+    </div>
+  </div>
+</div>
+
+<div class="busy-overlay" id="busyOverlay">
+  <div class="busy-box">
+    <div class="busy-spinner"></div>
+    <span id="busyMessage">Working…</span>
   </div>
 </div>
 
@@ -346,6 +395,24 @@ ${pageHtml}
       document.execCommand('insertText', false, text);
     });
   });
+
+  // Shows/hides the centered "working…" overlay so the user is never left wondering whether
+  // a click registered, and greys out every other toolbar/sidebar control so two requests
+  // can't be fired at once. opts.overlay:false skips the popup box (used for HR chat, where
+  // the message bubble itself already signals "in progress") while still disabling buttons.
+  function setBusy(on, message, opts) {
+    opts = opts || {};
+    const overlay = document.getElementById('busyOverlay');
+    if (on && opts.overlay !== false) {
+      document.getElementById('busyMessage').textContent = message || 'Working…';
+      overlay.classList.add('open');
+    } else {
+      overlay.classList.remove('open');
+    }
+    document.querySelectorAll('.tb-btn, .tb-select, .hr-sb-model').forEach(function(b) {
+      b.disabled = on;
+    });
+  }
 
   // Save edited CV as a standalone HTML file (toolbar + edit scripts included so it stays editable)
   function saveHTML() {
@@ -416,6 +483,7 @@ ${pageHtml}
     const file = fileInput.files[0];
     if (!file) return;
     status.textContent = 'Uploading…';
+    setBusy(true, 'Uploading your template…');
     try {
       const formData = new FormData();
       formData.append('template', file);
@@ -430,6 +498,8 @@ ${pageHtml}
     } catch (err) {
       status.textContent = '';
       alert('Template upload failed: ' + err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -439,6 +509,7 @@ ${pageHtml}
     const btn = document.getElementById('regenWordingBtn');
     const original = btn.textContent;
     btn.disabled = true; btn.textContent = 'Regenerating…';
+    setBusy(true, 'Regenerating your CV wording…');
     try {
       const languageLevel = parseInt(document.getElementById('languageLevel').value, 10);
       const res = await fetch('/adjust-language', {
@@ -453,6 +524,8 @@ ${pageHtml}
     } catch (err) {
       alert('Regenerate wording failed: ' + err.message);
       btn.disabled = false; btn.textContent = original;
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -460,6 +533,7 @@ ${pageHtml}
     const btn = document.getElementById('exportWordBtn');
     const original = btn.textContent;
     btn.disabled = true; btn.textContent = 'Exporting…';
+    setBusy(true, 'Exporting your CV to Word…');
     try {
       const templateStyle = document.getElementById('templateChoice').value;
       const body = { cvData: extractCvData(), job: JOB_DATA, templateStyle };
@@ -479,6 +553,7 @@ ${pageHtml}
       alert('Export to Word failed: ' + err.message);
     } finally {
       btn.disabled = false; btn.textContent = original;
+      setBusy(false);
     }
   }
 
@@ -490,10 +565,13 @@ ${pageHtml}
   async function generateCoverLetterPanel() {
     const overlay = document.getElementById('clModalOverlay');
     const body = document.getElementById('clModalBody');
+    const footer = document.getElementById('clModalFooter');
     const btn = document.getElementById('coverLetterBtn');
     overlay.classList.add('open');
     body.textContent = 'Generating…';
+    footer.style.display = 'none'; // no cover letter to copy/export until generation succeeds
     btn.disabled = true;
+    setBusy(true, 'Generating your cover letter…');
     try {
       const res = await fetch('/generate-cover-letter', {
         method: 'POST',
@@ -504,10 +582,12 @@ ${pageHtml}
       if (!data.coverLetter) throw new Error(data.error || 'Generation failed');
       lastCoverLetterText = data.coverLetter;
       body.innerHTML = renderChatMarkdown(data.coverLetter);
+      footer.style.display = '';
     } catch (err) {
       body.textContent = 'Failed to generate cover letter: ' + err.message;
     } finally {
       btn.disabled = false;
+      setBusy(false);
     }
   }
 
@@ -523,6 +603,9 @@ ${pageHtml}
 
   async function downloadCoverLetterWord() {
     if (!lastCoverLetterText) return;
+    const btn = document.getElementById('clDownloadBtn');
+    btn.disabled = true;
+    setBusy(true, 'Preparing your cover letter Word document…');
     try {
       const res = await fetch('/export-cover-letter-word', {
         method: 'POST',
@@ -537,7 +620,69 @@ ${pageHtml}
       document.body.removeChild(a);
     } catch (err) {
       alert('Download failed: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      setBusy(false);
     }
+  }
+
+  // Interview prep is generated ONLY on explicit button press, from whatever is currently
+  // on screen (including live edits) — same pattern as the cover letter panel above.
+  let lastInterviewQuestionsText = '';
+
+  function escHtml(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  async function generateInterviewQuestionsPanel() {
+    const overlay = document.getElementById('iqModalOverlay');
+    const body = document.getElementById('iqModalBody');
+    const footer = document.getElementById('iqModalFooter');
+    const btn = document.getElementById('interviewQBtn');
+    overlay.classList.add('open');
+    body.textContent = 'Generating…';
+    footer.style.display = 'none'; // nothing to copy until questions are actually generated
+    btn.disabled = true;
+    setBusy(true, 'Generating your interview questions…');
+    try {
+      const res = await fetch('/generate-interview-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cvData: extractCvData(), job: JOB_DATA }),
+      });
+      const data = await res.json();
+      if (!data.questions) throw new Error(data.error || 'Generation failed');
+
+      lastInterviewQuestionsText = data.questions.map(function(q, i) {
+        return (i + 1) + '. ' + q.question + '\\n\\nAnswer option 1:\\n' + q.answer_1 + '\\n\\nAnswer option 2:\\n' + q.answer_2;
+      }).join('\\n\\n---\\n\\n');
+
+      body.innerHTML = data.questions.map(function(q, i) {
+        return '<div style="margin-bottom:18px;">' +
+          '<p><strong>' + (i + 1) + '. ' + escHtml(q.question) + '</strong></p>' +
+          '<div style="margin-left:8px;"><em>Answer option 1:</em> ' + renderChatMarkdown(q.answer_1) + '</div>' +
+          '<div style="margin-left:8px;"><em>Answer option 2:</em> ' + renderChatMarkdown(q.answer_2) + '</div>' +
+          '</div>';
+      }).join('');
+
+      if (data.hrMessage) addHrBubble('expert', data.hrMessage);
+      footer.style.display = '';
+    } catch (err) {
+      body.textContent = 'Failed to generate interview questions: ' + err.message;
+    } finally {
+      btn.disabled = false;
+      setBusy(false);
+    }
+  }
+
+  function closeInterviewQuestionsModal() {
+    document.getElementById('iqModalOverlay').classList.remove('open');
+  }
+
+  async function copyInterviewQuestions() {
+    if (!lastInterviewQuestionsText) return;
+    await navigator.clipboard.writeText(lastInterviewQuestionsText);
+    alert('Interview questions copied to clipboard.');
   }
 
   function toggleHrSidebar() {
@@ -545,6 +690,121 @@ ${pageHtml}
     document.getElementById('cvMain').classList.toggle('full', collapsed);
     document.querySelector('.cv-toolbar').classList.toggle('full', collapsed);
     document.getElementById('hrToggleBtn').textContent = collapsed ? 'Ask HR Expert' : 'Hide HR Expert';
+  }
+
+  // ── Select a piece of the CV → discuss it with HR ───────────────────────────
+  // Selecting text inside the CV marks it as "in review" (highlighted) until the candidate
+  // either applies an agreed change or explicitly keeps it as-is. Only one concern is open
+  // at a time, and only the piece actually discussed gets regenerated — never the whole CV.
+  let activeConcern = null;
+  let selectionPopover = null;
+
+  function removeSelectionPopover() {
+    if (selectionPopover) { selectionPopover.remove(); selectionPopover = null; }
+  }
+
+  document.addEventListener('mouseup', function(e) {
+    if (e.target.closest('.hr-sidebar, .cl-modal-overlay, .cv-toolbar, .busy-overlay, .concern-popover')) return;
+    setTimeout(function() {
+      removeSelectionPopover();
+      if (activeConcern) return; // resolve the current one before starting another
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) return;
+      const text = sel.toString().trim();
+      if (!text || text.length < 3) return;
+      const pageEl = document.querySelector('.page');
+      if (!pageEl || !pageEl.contains(sel.anchorNode)) return;
+      const range = sel.getRangeAt(0);
+      const fieldEl = range.startContainer.nodeType === 1
+        ? range.startContainer.closest('[data-field]')
+        : range.startContainer.parentElement && range.startContainer.parentElement.closest('[data-field]');
+      if (!fieldEl || !fieldEl.contains(range.endContainer)) return; // keep it to one field at a time
+
+      const rect = range.getBoundingClientRect();
+      const popover = document.createElement('button');
+      popover.className = 'concern-popover';
+      popover.textContent = '💬 Discuss with HR';
+      popover.style.left = Math.max(8, rect.left) + 'px';
+      popover.style.top = (rect.bottom + 6) + 'px';
+      const frozenRange = range.cloneRange();
+      popover.onclick = function() { startConcern(frozenRange, text, fieldEl); };
+      document.body.appendChild(popover);
+      selectionPopover = popover;
+    }, 10);
+  });
+
+  function startConcern(range, text, fieldEl) {
+    removeSelectionPopover();
+    const span = document.createElement('span');
+    span.className = 'hr-concern';
+    span.id = 'concern-' + Date.now();
+    try {
+      range.surroundContents(span);
+    } catch (err) {
+      alert('Please select text within a single line or bullet to discuss it with HR.');
+      return;
+    }
+    activeConcern = { id: span.id, targetEl: fieldEl, selectedText: text, originalFieldText: fieldEl.textContent, firstMessageSent: false };
+    const banner = document.getElementById('concernBannerText');
+    banner.textContent = 'Discussing: "' + (text.length > 60 ? text.slice(0, 60) + '…' : text) + '"';
+    document.getElementById('concernBanner').style.display = '';
+    document.getElementById('concernResolveRow').style.display = '';
+    if (document.getElementById('hrSidebar').classList.contains('collapsed')) toggleHrSidebar();
+    document.getElementById('hrSbInput').focus();
+    window.getSelection().removeAllRanges();
+  }
+
+  function unwrapConcernSpan() {
+    if (!activeConcern) return;
+    const span = document.getElementById(activeConcern.id);
+    if (span && span.parentNode) {
+      while (span.firstChild) span.parentNode.insertBefore(span.firstChild, span);
+      span.parentNode.removeChild(span);
+    }
+  }
+
+  function hideConcernUI() {
+    document.getElementById('concernBanner').style.display = 'none';
+    document.getElementById('concernResolveRow').style.display = 'none';
+  }
+
+  function cancelConcern() {
+    unwrapConcernSpan();
+    hideConcernUI();
+    activeConcern = null;
+  }
+
+  function keepConcernAsIs() {
+    unwrapConcernSpan();
+    hideConcernUI();
+    addHrBubble('expert', "Got it — I'll leave that part exactly as it is.");
+    activeConcern = null;
+  }
+
+  async function applyConcernChange() {
+    if (!activeConcern) return;
+    const applyBtn = document.getElementById('concernApplyBtn');
+    const keepBtn = document.getElementById('concernKeepBtn');
+    applyBtn.disabled = true; keepBtn.disabled = true;
+    setBusy(true, 'Updating that part of your CV…');
+    try {
+      const res = await fetch('/hr/apply-concern', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job: JOB_DATA, fieldText: activeConcern.originalFieldText, selectedText: activeConcern.selectedText }),
+      });
+      const data = await res.json();
+      if (!data.revisedText) throw new Error(data.error || 'Update failed');
+      activeConcern.targetEl.textContent = data.revisedText; // replaces the span too — content is regenerated, not just unhighlighted
+      addHrBubble('expert', "Done — I've updated that part of your CV.");
+      hideConcernUI();
+      activeConcern = null;
+    } catch (err) {
+      addHrBubble('expert', 'Sorry, I could not apply that change: ' + err.message);
+    } finally {
+      applyBtn.disabled = false; keepBtn.disabled = false;
+      setBusy(false);
+    }
   }
 
   // Renders a small subset of markdown (paragraphs, "- " bullet lists, **bold**) into safe
@@ -586,11 +846,17 @@ ${pageHtml}
     addHrBubble('user', message);
     input.value = '';
     sendBtn.disabled = true;
+    setBusy(true, '', { overlay: false }); // chat bubble itself signals "in progress" — no popup needed
     try {
+      const body = { message, model };
+      if (activeConcern) {
+        body.concern = { selectedText: activeConcern.selectedText, isFirst: !activeConcern.firstMessageSent };
+        activeConcern.firstMessageSent = true;
+      }
       const res = await fetch('/hr/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, model }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!data.reply) throw new Error(data.error || 'No reply');
@@ -599,6 +865,7 @@ ${pageHtml}
       addHrBubble('expert', 'Sorry, something went wrong: ' + err.message);
     } finally {
       sendBtn.disabled = false;
+      setBusy(false);
     }
   }
 </script>
