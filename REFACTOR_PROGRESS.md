@@ -26,7 +26,7 @@
 | Phase | Status | Commit | Notes |
 |---|---|---|---|
 | 0 — Safety (delete `APIK.txt`, fix `.claudeignore` encoding) | **done** | `chore(phase-0)` | Also fixed pre-existing stale `rewriteCV` → `rewriteCVWithChanges` calls in `test.js` (unrelated breakage found while verifying). **Gate going forward: `npm run test:ui` per phase (free, mocked); `npm test` (real API) only occasionally/at the end** — test.js has no mocks, unlike test.ui.js. |
-| 1 — Core (`core/claude.js`, `core/json.js`, dedupe ai.js/coach.js) | pending | — | |
+| 1 — Core (`core/claude.js`, `core/json.js`, dedupe ai.js/coach.js) | **done** | `refactor(phase-1)` | Added `npm run test:unit` script + `testMatch: "**/*.test.js"` to package.json so new isolated unit tests (this phase's `core/json.test.js`, future agent tests) run separately from the costly `test.js`. Per-phase gate from now on: `npm run test:ui` + `npm run test:unit` (both free/mocked). |
 | 2 — Knowledge (`knowledge/recruiter-core.md`, `coach-core.md`) | pending | — | |
 | 3 — Agents (split ai.js/coach.js into `agents/*`) | pending | — | |
 | 4 — Field detection (`agents/extractor.js` `detectField`) | pending | — | |

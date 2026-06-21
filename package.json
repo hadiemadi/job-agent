@@ -7,6 +7,7 @@
     "test": "jest --verbose",
     "test:ui": "jest test.ui.js --verbose",
     "test:content": "jest test.js --verbose",
+    "test:unit": "jest --testPathPatterns=\\.test\\.js$ --verbose",
     "start": "node server.js"
   },
   "keywords": [],
@@ -18,7 +19,8 @@
     "transform": {},
     "testMatch": [
       "**/test.js",
-      "**/test.ui.js"
+      "**/test.ui.js",
+      "**/*.test.js"
     ]
   },
   "dependencies": {
