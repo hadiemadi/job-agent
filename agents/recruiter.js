@@ -2,6 +2,7 @@ const { client, MODEL } = require('../core/claude');
 const { extractJSON } = require('../core/json');
 const { loadCore } = require('../core/knowledge');
 const { preferencesBlock } = require('../core/preferences');
+const { detectField } = require('./extractor');
 
 // Writing-style directive so CV prose and cover letters read as genuinely human-written —
 // applied to every piece of free-text content the HR persona writes (CV wording, cover
@@ -36,15 +37,26 @@ don't explain this reasoning to the candidate unless asked):
 - First-person pronoun use ("I"/"my") — many European markets tolerate it more than the US.`;
 }
 
+// Identifies the candidate's field/discipline and seniority in the prompt so the HR persona's
+// judgment is calibrated to what a great recruiter in THAT specific discipline would check,
+// not one-size-fits-all advice. From Phase 5 onward this same `field` also keys the
+// self-improving discipline knowledge store (knowledge/disciplines/<field>.json) — for now
+// it's prompt context only, nothing is looked up or persisted yet.
+function fieldBlock(field) {
+  if (!field || !field.field) return '';
+  return `\n\nCANDIDATE FIELD/DISCIPLINE: ${field.field}${field.seniority ? ` (seniority: ${field.seniority})` : ''} — apply judgment calibrated to what a great recruiter in this specific discipline would check, not generic advice.`;
+}
+
 // One persona, shared by every HR-thread call (review, rewrite, refine, placement, sidebar
 // chat, cover letter, interview prep) so the same "expert" carries context and judgment from
 // upload through Word export. Modeled on a top-tier executive recruiter/resume strategist
 // so output is consistent and decisive run-to-run, rather than re-deciding style each call.
 // Exported so agents/cvWriter.js and tasks/* (which write/place CV content but don't own the
-// persona itself) can build their system prompts with it.
-function hrSystemPrompt(cvText, job, preferences) {
+// persona itself) can build their system prompts with it. `field` (from detectField) is
+// optional — only reviewCV passes it for now (Phase 4); other callers are unaffected.
+function hrSystemPrompt(cvText, job, preferences, field) {
   return `${loadCore('recruiter-core')}
-${regionalConventionsBlock(job, preferences && preferences.conventionsResearch)}
+${regionalConventionsBlock(job, preferences && preferences.conventionsResearch)}${fieldBlock(field)}
 
 CANDIDATE'S TARGET JOB: ${job.job_title} at ${job.employer_name || job.company || ''}
 ${(job.job_description || job.description || '').slice(0, 800)}
@@ -58,6 +70,7 @@ ${cvText}${preferencesBlock(preferences)}${stealthWritingDirective()}`;
 // and merged in by the /review-cv route — splitting "what's safe to auto-apply" from "what's
 // worth flagging to the candidate" keeps each judgment call narrower and more consistent.
 async function reviewCV(cvText, job, thread = [], preferences) {
+  const field = await detectField(cvText);
   const userMessage = `Review this candidate's CV against the job description above.
 
 List the auto_changes you'd apply automatically — safe to apply because they are directly
@@ -96,12 +109,12 @@ Return JSON only:
     model: MODEL,
     max_tokens: 3000,
     temperature: 0, // classification, not creative writing — same CV/job must yield the same gap list every time
-    system: hrSystemPrompt(cvText, job, preferences),
+    system: hrSystemPrompt(cvText, job, preferences, field),
     messages,
   });
   const raw = extractJSON(message.content[0].text);
   const review = JSON.parse(raw);
-  return { review, thread: [...messages, { role: 'assistant', content: message.content[0].text }] };
+  return { review, field, thread: [...messages, { role: 'assistant', content: message.content[0].text }] };
 }
 
 async function analyzeJobFit(cvText, jobs, countryCode = 'GB') {

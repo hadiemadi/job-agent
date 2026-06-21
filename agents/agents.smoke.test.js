@@ -10,20 +10,30 @@ jest.mock('../core/claude', () => ({
 
 const { client } = require('../core/claude');
 
+beforeEach(() => {
+  client.messages.create.mockClear();
+});
+
 function mockTextResponse(text) {
   client.messages.create.mockResolvedValue({ content: [{ type: 'text', text }] });
 }
 
 describe('agents/extractor', () => {
   const extractor = require('./extractor');
-  test('exports extractJobTitles and parseJobFromText', () => {
+  test('exports extractJobTitles, parseJobFromText, detectField', () => {
     expect(typeof extractor.extractJobTitles).toBe('function');
     expect(typeof extractor.parseJobFromText).toBe('function');
+    expect(typeof extractor.detectField).toBe('function');
   });
   test('extractJobTitles resolves with a mocked response', async () => {
     mockTextResponse('TPM, Program Manager, Engineering Lead');
     const titles = await extractor.extractJobTitles('some cv text');
     expect(titles).toEqual(['TPM', 'Program Manager', 'Engineering Lead']);
+  });
+  test('detectField resolves a field/seniority pair from a mocked response', async () => {
+    mockTextResponse(JSON.stringify({ field: 'RF/Hardware Engineering', seniority: 'senior' }));
+    const result = await extractor.detectField('some cv text');
+    expect(result).toEqual({ field: 'RF/Hardware Engineering', seniority: 'senior' });
   });
 });
 
@@ -33,15 +43,23 @@ describe('agents/recruiter', () => {
     ['reviewCV', 'analyzeJobFit', 'refineWithHR', 'chatWithHRExpert', 'researchCvConventions', 'hrSystemPrompt', 'stealthWritingDirective']
       .forEach(name => expect(typeof recruiter[name]).toBe('function'));
   });
-  test('reviewCV resolves with a mocked response', async () => {
+  test('reviewCV resolves with a mocked response and also detects/returns a field', async () => {
     mockTextResponse(JSON.stringify({ overall_match: 'Strong', strengths: [], recommended_sections: [], section_rationale: '', auto_changes: [] }));
     const { review } = await recruiter.reviewCV('cv text', { job_title: 'TPM' }, [], {});
     expect(review.overall_match).toBe('Strong');
+    // reviewCV calls detectField internally (Phase 4) — confirm it made the extra call rather
+    // than skipping field detection silently.
+    expect(client.messages.create).toHaveBeenCalledTimes(2);
   });
   test('hrSystemPrompt assembles text containing the recruiter-core knowledge file content', () => {
     const prompt = recruiter.hrSystemPrompt('cv text', { job_title: 'TPM' }, {});
     expect(prompt).toContain('YOUR CORE PRINCIPLES');
     expect(prompt).toContain('cv text');
+  });
+  test('hrSystemPrompt includes the detected field/seniority when provided', () => {
+    const prompt = recruiter.hrSystemPrompt('cv text', { job_title: 'TPM' }, {}, { field: 'RF/Hardware Engineering', seniority: 'senior' });
+    expect(prompt).toContain('CANDIDATE FIELD/DISCIPLINE: RF/Hardware Engineering');
+    expect(prompt).toContain('senior');
   });
 });
 
