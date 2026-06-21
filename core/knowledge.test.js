@@ -39,6 +39,30 @@ describe('loadCore', () => {
   });
 });
 
+describe('loadDiscipline / saveDiscipline', () => {
+  const TEST_FIELD = 'Test Discipline For Unit Tests';
+  const DISCIPLINE_PATH = path.join(__dirname, '..', 'knowledge', 'disciplines', 'test-discipline-for-unit-tests.json');
+
+  afterEach(() => {
+    if (fs.existsSync(DISCIPLINE_PATH)) fs.unlinkSync(DISCIPLINE_PATH);
+  });
+
+  test('loadDiscipline returns null when no store exists yet for this field', () => {
+    jest.resetModules();
+    const { loadDiscipline } = require('./knowledge');
+    expect(loadDiscipline(TEST_FIELD)).toBeNull();
+  });
+
+  test('saveDiscipline persists to a filename slugified from the field name, and loadDiscipline reads it back', () => {
+    jest.resetModules();
+    const { loadDiscipline, saveDiscipline } = require('./knowledge');
+    const store = { field: TEST_FIELD, updated: '2026-01-01', skills: [{ text: 'Test skill', confidence: 1 }], keywords: [], red_flags: [] };
+    saveDiscipline(TEST_FIELD, store);
+    expect(fs.existsSync(DISCIPLINE_PATH)).toBe(true);
+    expect(loadDiscipline(TEST_FIELD)).toEqual(store);
+  });
+});
+
 describe('recruiter persona is data-driven', () => {
   test('editing knowledge/recruiter-core.md on disk changes what a fresh load returns', () => {
     // Proves the HR system prompt's core text genuinely comes from the .md file rather than

@@ -3,3 +3,4 @@ node_modules
 APIK.txt
 uploads/
 output/
+knowledge/disciplines/*.json

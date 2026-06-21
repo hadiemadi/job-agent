@@ -1,8 +1,10 @@
 const { client, MODEL } = require('../core/claude');
 const { extractJSON } = require('../core/json');
-const { loadCore } = require('../core/knowledge');
+const { loadCore, loadDiscipline, saveDiscipline } = require('../core/knowledge');
 const { preferencesBlock } = require('../core/preferences');
 const { detectField } = require('./extractor');
+const { mergeFindings, isStale } = require('./curator');
+const { research } = require('./researcher');
 
 // Writing-style directive so CV prose and cover letters read as genuinely human-written —
 // applied to every piece of free-text content the HR persona writes (CV wording, cover
@@ -39,12 +41,21 @@ don't explain this reasoning to the candidate unless asked):
 
 // Identifies the candidate's field/discipline and seniority in the prompt so the HR persona's
 // judgment is calibrated to what a great recruiter in THAT specific discipline would check,
-// not one-size-fits-all advice. From Phase 5 onward this same `field` also keys the
-// self-improving discipline knowledge store (knowledge/disciplines/<field>.json) — for now
-// it's prompt context only, nothing is looked up or persisted yet.
-function fieldBlock(field) {
+// not one-size-fits-all advice. Also renders the accumulated discipline knowledge store
+// (Phase 5's self-improving skills/keywords/red_flags, if any exist yet) — empty is fine,
+// the core text in knowledge/recruiter-core.md still applies on its own.
+function fieldBlock(field, disciplineStore) {
   if (!field || !field.field) return '';
-  return `\n\nCANDIDATE FIELD/DISCIPLINE: ${field.field}${field.seniority ? ` (seniority: ${field.seniority})` : ''} — apply judgment calibrated to what a great recruiter in this specific discipline would check, not generic advice.`;
+  let block = `\n\nCANDIDATE FIELD/DISCIPLINE: ${field.field}${field.seniority ? ` (seniority: ${field.seniority})` : ''} — apply judgment calibrated to what a great recruiter in this specific discipline would check, not generic advice.`;
+  const hasAny = disciplineStore && [disciplineStore.skills, disciplineStore.keywords, disciplineStore.red_flags].some(list => list && list.length);
+  if (hasAny) {
+    const renderList = (label, items) => (items && items.length) ? `\n- ${label}: ${items.map(i => i.text).join('; ')}` : '';
+    block += `\n\nACCUMULATED KNOWLEDGE for ${field.field} (learned over time from prior reviews — weigh higher-confidence items more heavily):` +
+      renderList('Skills/competencies a great recruiter in this field checks for', disciplineStore.skills) +
+      renderList('Keywords', disciplineStore.keywords) +
+      renderList('Red flags', disciplineStore.red_flags);
+  }
+  return block;
 }
 
 // One persona, shared by every HR-thread call (review, rewrite, refine, placement, sidebar
@@ -52,11 +63,11 @@ function fieldBlock(field) {
 // upload through Word export. Modeled on a top-tier executive recruiter/resume strategist
 // so output is consistent and decisive run-to-run, rather than re-deciding style each call.
 // Exported so agents/cvWriter.js and tasks/* (which write/place CV content but don't own the
-// persona itself) can build their system prompts with it. `field` (from detectField) is
-// optional — only reviewCV passes it for now (Phase 4); other callers are unaffected.
-function hrSystemPrompt(cvText, job, preferences, field) {
+// persona itself) can build their system prompts with it. `field`/`disciplineStore` are
+// optional — only reviewCV passes them for now; other callers are unaffected.
+function hrSystemPrompt(cvText, job, preferences, field, disciplineStore) {
   return `${loadCore('recruiter-core')}
-${regionalConventionsBlock(job, preferences && preferences.conventionsResearch)}${fieldBlock(field)}
+${regionalConventionsBlock(job, preferences && preferences.conventionsResearch)}${fieldBlock(field, disciplineStore)}
 
 CANDIDATE'S TARGET JOB: ${job.job_title} at ${job.employer_name || job.company || ''}
 ${(job.job_description || job.description || '').slice(0, 800)}
@@ -65,12 +76,30 @@ CANDIDATE'S CV:
 ${cvText}${preferencesBlock(preferences)}${stealthWritingDirective()}`;
 }
 
+// The learning loop (Part D of the refactor plan): load this field's discipline store; if
+// it's never been researched or has gone stale, run the Researcher (a no-op stub for now —
+// see agents/researcher.js — so this costs nothing until live search is enabled) and have
+// the Curator merge whatever it finds, then persist. Returns the store either way (possibly
+// still empty) so hrSystemPrompt always has something to render or safely skip.
+async function loadOrRefreshDiscipline(field) {
+  if (!field || !field.field) return null;
+  let store = loadDiscipline(field.field);
+  if (isStale(store)) {
+    const findings = await research(field.field);
+    store = mergeFindings(store, findings);
+    store.field = field.field;
+    saveDiscipline(field.field, store);
+  }
+  return store;
+}
+
 // HR review — auto_changes (safe, directly evidenced) + section decisions. Gap-finding
 // (confirm_changes) is handled separately by the Career Coach's analyzeGaps (agents/coach.js)
 // and merged in by the /review-cv route — splitting "what's safe to auto-apply" from "what's
 // worth flagging to the candidate" keeps each judgment call narrower and more consistent.
 async function reviewCV(cvText, job, thread = [], preferences) {
   const field = await detectField(cvText);
+  const disciplineStore = await loadOrRefreshDiscipline(field);
   const userMessage = `Review this candidate's CV against the job description above.
 
 List the auto_changes you'd apply automatically — safe to apply because they are directly
@@ -109,7 +138,7 @@ Return JSON only:
     model: MODEL,
     max_tokens: 3000,
     temperature: 0, // classification, not creative writing — same CV/job must yield the same gap list every time
-    system: hrSystemPrompt(cvText, job, preferences, field),
+    system: hrSystemPrompt(cvText, job, preferences, field, disciplineStore),
     messages,
   });
   const raw = extractJSON(message.content[0].text);

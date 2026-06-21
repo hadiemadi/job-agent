@@ -15,4 +15,34 @@ function loadCore(name) {
   return text;
 }
 
-module.exports = { loadCore };
+const DISCIPLINES_DIR = path.join(__dirname, '..', 'knowledge', 'disciplines');
+
+// Turns a field name (e.g. "RF/Hardware Engineering") into a filesystem-safe slug
+// (e.g. "rf-hardware-engineering.json") so the discipline store has one stable file per
+// field regardless of how it was capitalized/punctuated when detected.
+function disciplineFileName(field) {
+  return String(field).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '.json';
+}
+
+// Reads the self-improving per-field knowledge store (skills/keywords/red_flags, each
+// confidence-scored — see Part D of the refactor plan). Returns null if this field has never
+// been researched before; the caller (agents/recruiter.js) treats that the same as "stale."
+function loadDiscipline(field) {
+  if (!field) return null;
+  const filePath = path.join(DISCIPLINES_DIR, disciplineFileName(field));
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (e) {
+    return null;
+  }
+}
+
+// Persists the discipline store after the Curator has merged new findings into it.
+function saveDiscipline(field, store) {
+  fs.mkdirSync(DISCIPLINES_DIR, { recursive: true });
+  const filePath = path.join(DISCIPLINES_DIR, disciplineFileName(field));
+  fs.writeFileSync(filePath, JSON.stringify(store, null, 2));
+}
+
+module.exports = { loadCore, loadDiscipline, saveDiscipline };
