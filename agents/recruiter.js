@@ -1,0 +1,206 @@
+const { client, MODEL } = require('../core/claude');
+const { extractJSON } = require('../core/json');
+const { loadCore } = require('../core/knowledge');
+const { preferencesBlock } = require('../core/preferences');
+
+// Writing-style directive so CV prose and cover letters read as genuinely human-written —
+// applied to every piece of free-text content the HR persona writes (CV wording, cover
+// letters), never to the facts themselves. Style only; never invents or alters substance.
+// Exported because tasks/coverLetter.js and tasks/interviewPrep.js also append it directly
+// to their own user messages, outside the system prompt.
+function stealthWritingDirective() {
+  return `\n\nWRITING STYLE — read naturally, like a real person wrote it: Vary sentence length and structure; avoid a uniform, metronomic rhythm. Avoid AI-cliché phrases and buzzwords ("leverage", "synergy", "passionate about", "I am writing to express my interest", "in today's fast-paced environment", "proven track record", "delve", "robust", "seamless", "unlock potential") unless genuinely the most accurate word. Avoid repeating the exact same sentence structure across consecutive bullets or lines. Use em dashes and semicolons sparingly, the way a person naturally would. Prefer concrete, specific detail (numbers, named tools, named outcomes) over generic claims. Never mention, hint at, or disclose that AI was used to write or assist with this content. All of this is about STYLE ONLY — never invent facts, achievements, or numbers not already present in the candidate's CV.`;
+}
+
+// CV layout/section norms differ by country, industry, and seniority (e.g. a photo and
+// hobbies are customary on a Swedish engineer's CV but a red flag on a US one). Rather than
+// hardcoding one country's rules, this either hands Claude its own live research findings
+// (when the client opted into extensive search — see researchCvConventions below) or asks it
+// to apply its trained knowledge of the target market's norms itself. Internal to
+// hrSystemPrompt — not used anywhere else, so not exported.
+function regionalConventionsBlock(job, conventionsResearch) {
+  const country = job.job_country || job.country || job.job_location || job.location || 'the country implied by this job listing';
+  if (conventionsResearch) {
+    return `\n\nREGIONAL CV CONVENTIONS — live web research for this role's target market (apply these; do not default to generic US norms):\n${conventionsResearch}`;
+  }
+  return `\n\nREGIONAL CV CONVENTIONS: Determine and apply the correct CV/resume conventions for
+${country}, for a candidate at this seniority and in this industry — using your own knowledge
+of regional hiring norms, not a one-size-fits-all US template. Explicitly decide (silently —
+don't explain this reasoning to the candidate unless asked):
+- Page length norms for this market and seniority.
+- Whether a photo, date of birth/age, marital status, or nationality is customary or a red flag.
+- Whether hobbies/personal interests are customary here (e.g. commonly expected on engineering
+  CVs in Sweden/Germany/Netherlands; typically omitted in the US/UK/India) — include them only
+  if genuinely customary for this market and the candidate has real ones to list.
+- Local date format, spelling/terminology, and section ordering conventions.
+- First-person pronoun use ("I"/"my") — many European markets tolerate it more than the US.`;
+}
+
+// One persona, shared by every HR-thread call (review, rewrite, refine, placement, sidebar
+// chat, cover letter, interview prep) so the same "expert" carries context and judgment from
+// upload through Word export. Modeled on a top-tier executive recruiter/resume strategist
+// so output is consistent and decisive run-to-run, rather than re-deciding style each call.
+// Exported so agents/cvWriter.js and tasks/* (which write/place CV content but don't own the
+// persona itself) can build their system prompts with it.
+function hrSystemPrompt(cvText, job, preferences) {
+  return `${loadCore('recruiter-core')}
+${regionalConventionsBlock(job, preferences && preferences.conventionsResearch)}
+
+CANDIDATE'S TARGET JOB: ${job.job_title} at ${job.employer_name || job.company || ''}
+${(job.job_description || job.description || '').slice(0, 800)}
+
+CANDIDATE'S CV:
+${cvText}${preferencesBlock(preferences)}${stealthWritingDirective()}`;
+}
+
+// HR review — auto_changes (safe, directly evidenced) + section decisions. Gap-finding
+// (confirm_changes) is handled separately by the Career Coach's analyzeGaps (agents/coach.js)
+// and merged in by the /review-cv route — splitting "what's safe to auto-apply" from "what's
+// worth flagging to the candidate" keeps each judgment call narrower and more consistent.
+async function reviewCV(cvText, job, thread = [], preferences) {
+  const userMessage = `Review this candidate's CV against the job description above.
+
+List the auto_changes you'd apply automatically — safe to apply because they are directly
+evidenced in the CV (skills mentioned in experience but missing from the skills list, keyword
+optimization that matches existing experience, restructuring/reordering). Apply the same bar
+every time — the same CV and job must produce the same list every time.
+
+Also decide which CV sections to include in the tailored version. Apply current US resume best
+practices (2024/2025) — and apply them consistently: the same CV and job must produce the same
+section decisions every time, never a different outcome between attempts.
+- "summary": include for most roles — strong 3-5 sentence professional profile targeting this specific job
+- "key_qualifications": include for senior, specialist, or leadership roles where a quick highlight reel adds value before experience; skip for junior/generalist roles
+- "skills": include when technical skills are key differentiators for this role; skip if skills are already embedded in experience bullets and adding a list adds no value
+- "experience": always include
+- "education": always include
+- Any additional section already present in the candidate's ORIGINAL CV with real content
+  (e.g. "certifications", "languages", "publications", "awards", "volunteer", "side projects"):
+  ALWAYS include it in recommended_sections under its original name — do not drop a credential
+  the candidate already has just because this specific job doesn't emphasize it. Only omit an
+  existing section if it is genuinely irrelevant to professional credibility (e.g. unrelated
+  personal hobbies with no bearing on employability).
+- A section the candidate's original CV does NOT already have: only add it if there is strong
+  direct evidence in the CV content that justifies it.
+
+Return JSON only:
+{
+  "overall_match": "Strong|Moderate|Weak",
+  "strengths": [""],
+  "recommended_sections": ["summary", "skills", "experience", "education"],
+  "section_rationale": "",
+  "auto_changes": [{ "description": "", "rationale": "" }]
+}`;
+
+  const messages = [...thread, { role: 'user', content: userMessage }];
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 3000,
+    temperature: 0, // classification, not creative writing — same CV/job must yield the same gap list every time
+    system: hrSystemPrompt(cvText, job, preferences),
+    messages,
+  });
+  const raw = extractJSON(message.content[0].text);
+  const review = JSON.parse(raw);
+  return { review, thread: [...messages, { role: 'assistant', content: message.content[0].text }] };
+}
+
+async function analyzeJobFit(cvText, jobs, countryCode = 'GB') {
+  const countryNames = { GB: 'United Kingdom', SE: 'Sweden', US: 'United States', DE: 'Germany', NL: 'Netherlands' };
+  const preferredCountry = countryNames[countryCode] || 'United Kingdom';
+  const topJobs = jobs.slice(0, 30);
+  const jobList = topJobs.map((job, i) =>
+    `${i+1}. ${job.job_title} at ${job.employer_name} (${job.job_city || job.job_country || 'Remote'}) - ${(job.job_description || '').slice(0, 300)}`
+  ).join('\n');
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 8192,
+    messages: [{ role: 'user', content: `Here is my CV:\n${cvText}\n\nHere are the jobs found:\n${jobList}\n\nPlease rank these jobs by fit. Prioritize jobs based in ${preferredCountry} or Remote. Return a JSON array with this exact structure, no explanation:\n[{\n  "rank": 1,\n  "job_title": "",\n  "company": "",\n  "location": "",\n  "fit_score": 5,\n  "reasons_for": "",\n  "reasons_against": "",\n  "apply_link": ""\n}]` }]
+  });
+  try {
+    const raw = extractJSON(message.content[0].text);
+    const ranked = JSON.parse(raw);
+    return ranked.map(r => ({ ...r, apply_link: r.apply_link || topJobs[r.rank - 1]?.job_apply_link || '' }));
+  } catch (e) { return []; }
+}
+
+// HR agent refines a gap suggestion based on what the coach + client discussed
+async function refineWithHR(cvText, job, hrReview, gap, conversation, thread, preferences) {
+  const conversationText = conversation.map(m =>
+    `${m.role === 'user' ? 'Candidate' : 'Coach'}: ${m.content}`
+  ).join('\n');
+
+  const userMessage = `Your initial HR review identified this gap: ${gap.description}
+
+The candidate discussed this gap with their career coach. Here is the conversation:
+
+${conversationText}
+
+Based on this discussion, rewrite the suggestion as a concrete, CV-ready statement. Be specific and honest.
+
+Return JSON only:
+{
+  "refined_description": "",
+  "rationale": "",
+  "verdict": "add|skip|candidate_decides"
+}
+
+verdict: "add" if clearly evidenced, "skip" if not justified, "candidate_decides" if borderline.`;
+
+  const messages = [...thread, { role: 'user', content: userMessage }];
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 400,
+    system: hrSystemPrompt(cvText, job, preferences),
+    messages,
+  });
+  const raw = extractJSON(response.content[0].text);
+  const result = JSON.parse(raw);
+  return { result, thread: [...messages, { role: 'assistant', content: response.content[0].text }] };
+}
+
+// Sidebar Q&A on the editable tailored CV page — continues the same HR thread, so the
+// expert remembers everything discussed during review/rewrite/placement. `model` lets the
+// sidebar's picker override the default model for this turn only.
+async function chatWithHRExpert(cvText, job, thread, userMessage, model, preferences) {
+  const messages = [...(thread || []), { role: 'user', content: userMessage }];
+  const response = await client.messages.create({
+    model: model || MODEL,
+    max_tokens: 900,
+    system: hrSystemPrompt(cvText, job, preferences),
+    messages,
+  });
+  const reply = response.content[0].text;
+  return { reply, thread: [...messages, { role: 'assistant', content: reply }] };
+}
+
+// Opt-in "extensive search" — the client checked a box asking for live web research into
+// CV/resume conventions for this specific job's country, industry, and seniority, rather than
+// relying on the model's own trained knowledge (see regionalConventionsBlock above). Runs once
+// per job; the resulting summary is cached in appSession.clientPreferences.conventionsResearch
+// by the server and reused for every subsequent HR-thread call on that job.
+async function researchCvConventions(job, cvText) {
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 700,
+    tools: [{ type: 'web_search_20260209', name: 'web_search' }],
+    messages: [{
+      role: 'user',
+      content: `Research current resume/CV conventions for a "${job.job_title}" role at
+${job.employer_name || job.company || 'this company'}, located in ${job.job_country || job.country || job.job_location || job.location || 'an unspecified country'}.
+Infer the candidate's seniority and industry from this CV excerpt:
+${(cvText || '').slice(0, 600)}
+
+Search for and summarize the LOCAL market's actual norms for: page length, whether a photo is
+expected/discouraged, whether date of birth/age/marital status/nationality are customary,
+whether hobbies/personal interests are commonly included, section ordering, and any other
+distinctive convention for this country/industry. Be concrete and specific to this market —
+not generic advice. Return a plain-text summary, under 12 lines, no markdown headers.`,
+    }],
+  });
+  return message.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+}
+
+module.exports = {
+  reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions,
+  hrSystemPrompt, stealthWritingDirective,
+};

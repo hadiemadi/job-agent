@@ -11,21 +11,35 @@ require('dotenv').config();
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 // jest.mock() is hoisted by Jest to run before any require().
-// So when agent.js loads and calls require('./src/ai'), it gets the mock below.
+// So when agent.js loads and calls require('./agents/recruiter') etc., it gets the mocks below.
 
-jest.mock('./src/ai', () => ({
-  parseCVStructure:     jest.fn(),
-  reviewCV:             jest.fn(),
-  rewriteCVWithChanges: jest.fn(),
-  chatWithCoach:        jest.fn(),
-  refineWithHR:         jest.fn(),
-  chatWithHRExpert:     jest.fn(),
-  adjustLanguageLevel:  jest.fn(),
-  parseJobFromText:     jest.fn(),
-  extractJobTitles:     jest.fn(),
-  analyzeJobFit:        jest.fn(),
-  applyConcernChange:   jest.fn(),
+jest.mock('./agents/extractor', () => ({
+  extractJobTitles: jest.fn(),
+  parseJobFromText: jest.fn(),
+}));
+
+jest.mock('./agents/recruiter', () => ({
+  reviewCV:              jest.fn(),
+  analyzeJobFit:         jest.fn(),
+  refineWithHR:          jest.fn(),
+  chatWithHRExpert:      jest.fn(),
   researchCvConventions: jest.fn(),
+}));
+
+jest.mock('./agents/cvWriter', () => ({
+  parseCVStructure:     jest.fn(),
+  rewriteCVWithChanges: jest.fn(),
+  adjustLanguageLevel:  jest.fn(),
+  applyConcernChange:   jest.fn(),
+}));
+
+jest.mock('./agents/coach', () => ({
+  analyzeAndSuggestRoles: jest.fn(),
+  matchRolesToMarket:     jest.fn(),
+  buildCareerPath:        jest.fn(),
+  analyzeGaps:            jest.fn(),
+  selectTopGaps:          jest.fn(),
+  chatWithCoach:          jest.fn(),
 }));
 
 jest.mock('./src/cv',       () => ({ readCV: jest.fn() }));
@@ -37,13 +51,6 @@ jest.mock('./src/templates', () => ({
 }));
 jest.mock('./src/wordExport', () => ({ generateWordCV: jest.fn(), generateWordCVAlt: jest.fn() }));
 jest.mock('./src/wordTemplateExport', () => ({ generateWordFromTemplate: jest.fn() }));
-jest.mock('./src/coach', () => ({
-  analyzeAndSuggestRoles: jest.fn(),
-  matchRolesToMarket:     jest.fn(),
-  buildCareerPath:        jest.fn(),
-  analyzeGaps:            jest.fn(),
-  selectTopGaps:          jest.fn(),
-}));
 jest.mock('fs-extra', () => ({
   outputFile: jest.fn(),
   ensureDirSync: jest.fn(),
@@ -94,8 +101,10 @@ const MOCK_GAPS = [
 
 // ── Module references (for setting return values in beforeEach / beforeAll) ────
 
-const { parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, chatWithHRExpert, adjustLanguageLevel, parseJobFromText, applyConcernChange, researchCvConventions } = require('./src/ai');
-const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps } = require('./src/coach');
+const { parseCVStructure, rewriteCVWithChanges, adjustLanguageLevel, applyConcernChange } = require('./agents/cvWriter');
+const { reviewCV, refineWithHR, chatWithHRExpert, researchCvConventions } = require('./agents/recruiter');
+const { parseJobFromText } = require('./agents/extractor');
+const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps, chatWithCoach } = require('./agents/coach');
 const { readCV }        = require('./src/cv');
 const { scrapeJobPage } = require('./src/scraper');
 const { generateWordCV, generateWordCVAlt } = require('./src/wordExport');

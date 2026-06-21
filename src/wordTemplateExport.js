@@ -4,7 +4,7 @@ const path = require('path');
 const PizZip = require('pizzip');
 const Docxtemplater = require('docxtemplater');
 const { extractParagraphs, hasMergeTags, generateWordViaPlacement } = require('./docxPlacement');
-const { planDocxPlacement } = require('./ai');
+const { planDocxPlacement } = require('../tasks/docxPlacement');
 
 function prepareTemplateData(cvData) {
   const cv = cvData || {};
