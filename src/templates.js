@@ -202,17 +202,17 @@ ${CV_CSS}
   .tb-link { font-size: 11px; color: rgba(255,255,255,0.55); text-decoration: underline; cursor: pointer; }
   .tb-link:hover { color: white; }
   .tb-status { font-size: 11px; color: rgba(255,255,255,0.55); margin-left: 4px; }
-  .cv-toolbar { right: 20%; transition: right 0.2s; }
+  .cv-toolbar { right: 30%; transition: right 0.2s; }
   .cv-toolbar.full { right: 0; }
   .tb-btn:disabled, .tb-select:disabled, .hr-sb-model:disabled { opacity: 0.45; cursor: not-allowed; }
 
-  /* ── Main CV area — shares the screen 80/20 with the HR sidebar ───── */
-  .cv-main { margin-right: 20%; transition: margin-right 0.2s; }
+  /* ── Main CV area — shares the screen 70/30 with the HR sidebar ───── */
+  .cv-main { margin-right: 30%; transition: margin-right 0.2s; }
   .cv-main.full { margin-right: 0; }
 
-  /* ── HR Expert sidebar — visible by default, occupies 20% of the screen ── */
+  /* ── HR Expert sidebar — visible by default, occupies 30% of the screen ── */
   .hr-sidebar {
-    position: fixed; top: 0; right: 0; width: 20%; height: 100%; z-index: 9998;
+    position: fixed; top: 0; right: 0; width: 30%; height: 100%; z-index: 9998;
     background: white; border-left: 1px solid #E0E0E0; box-shadow: -4px 0 16px rgba(0,0,0,0.12);
     display: flex; flex-direction: column; transition: transform 0.2s;
     font-family: 'Segoe UI', Arial, sans-serif;
@@ -796,7 +796,11 @@ ${pageHtml}
       const data = await res.json();
       if (!data.revisedText) throw new Error(data.error || 'Update failed');
       activeConcern.targetEl.textContent = data.revisedText; // replaces the span too — content is regenerated, not just unhighlighted
-      addHrBubble('expert', "Done — I've updated that part of your CV.");
+      if (data.changed === false) {
+        addHrBubble('expert', "We concluded no change was needed here — I've kept this part exactly as it was.");
+      } else {
+        addHrBubble('expert', "Done — I've updated that part of your CV based on our discussion.");
+      }
       hideConcernUI();
       activeConcern = null;
     } catch (err) {

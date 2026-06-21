@@ -25,6 +25,7 @@ jest.mock('./src/ai', () => ({
   extractJobTitles:     jest.fn(),
   analyzeJobFit:        jest.fn(),
   applyConcernChange:   jest.fn(),
+  researchCvConventions: jest.fn(),
 }));
 
 jest.mock('./src/cv',       () => ({ readCV: jest.fn() }));
@@ -93,7 +94,7 @@ const MOCK_GAPS = [
 
 // ── Module references (for setting return values in beforeEach / beforeAll) ────
 
-const { parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, chatWithHRExpert, adjustLanguageLevel, parseJobFromText, applyConcernChange } = require('./src/ai');
+const { parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, chatWithHRExpert, adjustLanguageLevel, parseJobFromText, applyConcernChange, researchCvConventions } = require('./src/ai');
 const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps } = require('./src/coach');
 const { readCV }        = require('./src/cv');
 const { scrapeJobPage } = require('./src/scraper');
@@ -319,7 +320,29 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
 
     await request(app).post('/review-cv').send({ job: MOCK_JOB });
     const lastCall = reviewCV.mock.calls[reviewCV.mock.calls.length - 1];
-    expect(lastCall[3]).toEqual({ tone: 2, customInstructions: 'Never mention my current employer by name' });
+    expect(lastCall[3]).toEqual({ tone: 2, customInstructions: 'Never mention my current employer by name', languageLevel: 2, extensiveSearch: false, conventionsResearch: '', gapSeverities: ['major', 'mild', 'minor'] });
+  });
+
+  test('POST /confirm-contact with gapSeverities filters which severities selectTopGaps sees', async () => {
+    selectTopGaps.mockClear();
+    await request(app).post('/confirm-contact').send({ name: 'Hadi Emadi', gapSeverities: ['major'] });
+    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    const lastCall = selectTopGaps.mock.calls[selectTopGaps.mock.calls.length - 1];
+    expect(lastCall[1]).toEqual(['major']);
+  });
+
+  test('POST /confirm-contact with extensiveSearch makes /review-cv research conventions once and cache the result', async () => {
+    researchCvConventions.mockResolvedValue('In Sweden, hobbies are commonly listed; photos are common.');
+    await request(app).post('/confirm-contact').send({ name: 'Hadi Emadi', extensiveSearch: true });
+
+    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    expect(researchCvConventions).toHaveBeenCalledWith(MOCK_JOB, expect.any(String));
+    let lastCall = reviewCV.mock.calls[reviewCV.mock.calls.length - 1];
+    expect(lastCall[3].conventionsResearch).toBe('In Sweden, hobbies are commonly listed; photos are common.');
+
+    const callsBefore = researchCvConventions.mock.calls.length;
+    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    expect(researchCvConventions.mock.calls.length).toBe(callsBefore); // cached — not re-researched
   });
 
   test('POST /rewrite returns 200 with filePath only — comparison is built lazily, not here', async () => {
@@ -395,13 +418,23 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(lastCall[3]).toContain('quote or restate');
   });
 
-  test('POST /hr/apply-concern returns 200 with revisedText', async () => {
-    applyConcernChange.mockResolvedValue({ revisedText: 'Led RF integration across 3 product lines.', thread: [] });
+  test('POST /hr/apply-concern returns 200 with revisedText and changed flag', async () => {
+    applyConcernChange.mockResolvedValue({ revisedText: 'Led RF integration across 3 product lines.', changed: true, thread: [] });
     const res = await request(app).post('/hr/apply-concern').send({
       job: MOCK_JOB, fieldText: 'Led RF integration.', selectedText: 'RF integration',
     });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('revisedText');
+    expect(res.body.changed).toBe(true);
+  });
+
+  test('POST /hr/apply-concern propagates changed:false when the discussion concluded no edit was needed', async () => {
+    applyConcernChange.mockResolvedValue({ revisedText: 'Led RF integration.', changed: false, thread: [] });
+    const res = await request(app).post('/hr/apply-concern').send({
+      job: MOCK_JOB, fieldText: 'Led RF integration.', selectedText: 'RF integration',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.changed).toBe(false);
   });
 
   test('POST /hr/apply-concern → 400 when fieldText or selectedText is missing', async () => {

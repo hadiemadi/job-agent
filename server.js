@@ -6,7 +6,7 @@ const fse = require('fs-extra');
 const PizZip = require('pizzip');
 const {
   readCV, extractJobTitles, searchAllLocations, analyzeJobFit,
-  parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, chatWithHRExpert, adjustLanguageLevel, generateCoverLetter, generateInterviewQuestions, applyConcernChange,
+  parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, chatWithHRExpert, adjustLanguageLevel, generateCoverLetter, generateInterviewQuestions, applyConcernChange, researchCvConventions,
   generateComparisonTemplate,
   analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps,
 } = require('./agent');
@@ -35,7 +35,7 @@ let appSession = {
   currentJob: null, hrReview: null,
   coachHistory: [], hrThread: [], hrDisplayHistory: [],
   confirmedContact: null,
-  clientPreferences: { tone: 4, customInstructions: '', languageLevel: 2 },
+  clientPreferences: { tone: 4, customInstructions: '', languageLevel: 2, extensiveSearch: false, conventionsResearch: '', gapSeverities: ['major', 'mild', 'minor'] },
 };
 
 // ── API endpoints ─────────────────────────────────────────────────────────────
@@ -242,9 +242,14 @@ app.post('/upload-template', templateUpload.single('template'), async (req, res)
 });
 
 app.post('/confirm-contact', (req, res) => {
-  const { name, title, email, phone, location, linkedin, customInstructions, tone } = req.body;
+  const { name, title, email, phone, location, linkedin, customInstructions, tone, extensiveSearch, gapSeverities } = req.body;
   appSession.confirmedContact = { name, title, email, phone, location, linkedin };
-  appSession.clientPreferences = { tone: tone || 4, customInstructions: customInstructions || '' };
+  const validSeverities = Array.isArray(gapSeverities) ? gapSeverities.filter(s => ['major', 'mild', 'minor'].includes(s)) : [];
+  appSession.clientPreferences = {
+    tone: tone || 4, customInstructions: customInstructions || '', languageLevel: 2,
+    extensiveSearch: !!extensiveSearch, conventionsResearch: '',
+    gapSeverities: validSeverities.length ? validSeverities : ['major', 'mild', 'minor'],
+  };
   if (appSession.cvData) Object.assign(appSession.cvData, appSession.confirmedContact);
   res.json({ ok: true });
 });
@@ -254,6 +259,15 @@ app.post('/review-cv', async (req, res) => {
     if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
     const { job } = req.body;
     if (!job) return res.status(400).json({ error: 'job is required.' });
+    // Opt-in live research into this job's country/industry-specific CV conventions — runs
+    // once per job, then cached on clientPreferences so every later HR-thread call (rewrite,
+    // refine, sidebar chat, Word placement) reuses it without re-searching.
+    if (appSession.clientPreferences?.extensiveSearch && !appSession.clientPreferences.conventionsResearch) {
+      try {
+        const conventionsResearch = await researchCvConventions(job, appSession.cvText);
+        appSession.clientPreferences = { ...appSession.clientPreferences, conventionsResearch };
+      } catch (e) { /* research is best-effort — fall back to the model's own knowledge */ }
+    }
     // HR review (auto_changes + section decisions) and the Coach's gap analysis run in
     // parallel — gap-finding is the Coach's job (analyzeGaps casts wide, up to 20 candidates,
     // severity-scored); selectTopGaps then picks at least 5 worth actually asking the
@@ -262,7 +276,7 @@ app.post('/review-cv', async (req, res) => {
       reviewCV(appSession.cvText, job, [], appSession.clientPreferences),
       analyzeGaps(appSession.cvText, job),
     ]);
-    const fullReview = { ...review, confirm_changes: selectTopGaps(gaps) };
+    const fullReview = { ...review, confirm_changes: selectTopGaps(gaps, appSession.clientPreferences.gapSeverities) };
     appSession.currentJob = job;
     appSession.hrReview = fullReview;
     appSession.hrThread = thread;
@@ -334,11 +348,11 @@ app.post('/hr/apply-concern', async (req, res) => {
     if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
     const { job, fieldText, selectedText } = req.body;
     if (!fieldText || !selectedText) return res.status(400).json({ error: 'fieldText and selectedText are required.' });
-    const { revisedText, thread } = await applyConcernChange(
+    const { revisedText, changed, thread } = await applyConcernChange(
       appSession.cvText, job || appSession.currentJob, fieldText, selectedText, appSession.hrThread, appSession.clientPreferences
     );
     appSession.hrThread = thread;
-    res.json({ revisedText });
+    res.json({ revisedText, changed });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

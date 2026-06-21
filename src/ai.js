@@ -196,9 +196,32 @@ function stealthWritingDirective() {
   return `\n\nWRITING STYLE — read naturally, like a real person wrote it: Vary sentence length and structure; avoid a uniform, metronomic rhythm. Avoid AI-cliché phrases and buzzwords ("leverage", "synergy", "passionate about", "I am writing to express my interest", "in today's fast-paced environment", "proven track record", "delve", "robust", "seamless", "unlock potential") unless genuinely the most accurate word. Avoid repeating the exact same sentence structure across consecutive bullets or lines. Use em dashes and semicolons sparingly, the way a person naturally would. Prefer concrete, specific detail (numbers, named tools, named outcomes) over generic claims. Never mention, hint at, or disclose that AI was used to write or assist with this content. All of this is about STYLE ONLY — never invent facts, achievements, or numbers not already present in the candidate's CV.`;
 }
 
+// CV layout/section norms differ by country, industry, and seniority (e.g. a photo and
+// hobbies are customary on a Swedish engineer's CV but a red flag on a US one). Rather than
+// hardcoding one country's rules, this either hands Claude its own live research findings
+// (when the client opted into extensive search — see researchCvConventions below) or asks it
+// to apply its trained knowledge of the target market's norms itself.
+function regionalConventionsBlock(job, conventionsResearch) {
+  const country = job.job_country || job.country || job.job_location || job.location || 'the country implied by this job listing';
+  if (conventionsResearch) {
+    return `\n\nREGIONAL CV CONVENTIONS — live web research for this role's target market (apply these; do not default to generic US norms):\n${conventionsResearch}`;
+  }
+  return `\n\nREGIONAL CV CONVENTIONS: Determine and apply the correct CV/resume conventions for
+${country}, for a candidate at this seniority and in this industry — using your own knowledge
+of regional hiring norms, not a one-size-fits-all US template. Explicitly decide (silently —
+don't explain this reasoning to the candidate unless asked):
+- Page length norms for this market and seniority.
+- Whether a photo, date of birth/age, marital status, or nationality is customary or a red flag.
+- Whether hobbies/personal interests are customary here (e.g. commonly expected on engineering
+  CVs in Sweden/Germany/Netherlands; typically omitted in the US/UK/India) — include them only
+  if genuinely customary for this market and the candidate has real ones to list.
+- Local date format, spelling/terminology, and section ordering conventions.
+- First-person pronoun use ("I"/"my") — many European markets tolerate it more than the US.`;
+}
+
 // One persona, shared by every HR-thread call (review, rewrite, refine, placement, sidebar
 // chat, cover letter, interview prep) so the same "expert" carries context and judgment from
-// upload through Word export. Modeled on a top-tier US executive recruiter/resume strategist
+// upload through Word export. Modeled on a top-tier executive recruiter/resume strategist
 // so output is consistent and decisive run-to-run, rather than re-deciding style each call.
 function hrSystemPrompt(cvText, job, preferences) {
   return `You are a top-tier Senior HR Manager and CV strategist — 18+ years leading talent
@@ -241,18 +264,13 @@ judgment should not vary between attempts:
   original CV.
 - No filler, no clichés, no generic statements that could apply to any candidate.
 
-US RESUME CONVENTIONS — this candidate is applying to US-based roles; follow current 2024/2025
-US hiring norms, not UK/EU CV conventions:
+GENERAL CONVENTIONS THAT APPLY EVERYWHERE:
 - Reverse-chronological order, most recent role first.
-- Length: 1 page for under ~10 years of experience, max 2 pages beyond that — never longer.
-- No photo, no age, no date of birth, no marital status, no nationality, no "References
-  available upon request."
-- Header: name, phone, email, city + state, LinkedIn — no full street address.
-- Consistent date format throughout (e.g. "Jan 2022 – Present").
-- First-person pronouns ("I", "my") never appear — every bullet is an implied-subject fragment.
-- Prefer a clean, single-column, ATS-parseable layout unless the candidate has explicitly
-  chosen a more visual/designer template for a creative role.
-- US spelling and terminology throughout.
+- No "References available upon request."
+- Consistent date format throughout.
+- Prefer a clean, ATS-parseable layout unless the candidate has explicitly chosen a more
+  visual/designer template for a creative role.
+${regionalConventionsBlock(job, preferences && preferences.conventionsResearch)}
 
 CANDIDATE'S TARGET JOB: ${job.job_title} at ${job.employer_name || job.company || ''}
 ${(job.job_description || job.description || '').slice(0, 800)}
@@ -475,7 +493,9 @@ RULES:
 - Apply every listed change exactly as described
 - Keep all facts accurate — do NOT invent experience not in the original
 - Emphasize job description keywords where they match the candidate's actual experience
-- Include ONLY the sections listed under SECTIONS TO INCLUDE — omit all others
+- The section list below is already FINAL — it was decided in the HR review step that already
+  ran. Include every section listed, and ONLY those — do not re-judge relevance or silently drop
+  one you'd personally consider less impactful for this job; that decision has already been made.
 - Return which top-level sections you modified in "modified_sections"
 
 SECTIONS TO INCLUDE (in this order):
@@ -499,6 +519,7 @@ IMPORTANT: skills and key_qualifications must be flat arrays of plain strings on
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 3500,
+    temperature: 0, // section list is a closed decision already made by reviewCV — the same CV/job/sections must produce the same set of sections every time
     system: hrSystemPrompt(cvText, job, preferences),
     messages,
   });
@@ -507,6 +528,19 @@ IMPORTANT: skills and key_qualifications must be flat arrays of plain strings on
   const result = JSON.parse(raw);
   const updatedThread = [...messages, { role: 'assistant', content: message.content[0].text }];
   const { cv: cvData, modified_sections = [] } = result;
+  // Section inclusion was already decided by reviewCV (`sections`) — re-assert it here rather
+  // than trusting the rewrite call to have honored it under sampling, since dropping a
+  // candidate's existing section (e.g. Publications) silently is the exact bug this guards.
+  customSections.forEach(title => {
+    const norm = String(title).toLowerCase().trim();
+    const exists = (cvData.additional_sections || []).some(s => String(s.title || '').toLowerCase().trim() === norm);
+    if (!exists) {
+      const original = (originalCvData?.additional_sections || []).find(s => String(s.title || '').toLowerCase().trim() === norm);
+      if (original) {
+        cvData.additional_sections = [...(cvData.additional_sections || []), original];
+      }
+    }
+  });
   enforceContactInfo(cvData, cvText);
   cleanBulletPrefixes(cvData);
   if (originalName) cvData.name = originalName;
@@ -857,15 +891,20 @@ async function applyConcernChange(cvText, job, fieldText, selectedText, thread =
 That snippet is part of this single piece of CV content (one field/bullet/sentence):
 "${fieldText}"
 
-Based on everything just discussed above in this conversation, rewrite ONLY this one piece of
-CV content to reflect the agreed conclusion. Keep its length, tone, and voice close to the
-original — change only what was actually discussed and agreed; do not invent new facts or
-alter anything that wasn't raised in the conversation. Return the FULL revised text of this
-piece (not just the changed words), since it will directly replace the original.
+Based on everything just discussed above in this conversation, decide the agreed conclusion:
+- If the discussion concluded that this piece should change, rewrite ONLY this one piece of CV
+  content to reflect that agreement. Keep its length, tone, and voice close to the original —
+  change only what was actually discussed and agreed; do not invent new facts or alter anything
+  that wasn't raised in the conversation. Return the FULL revised text of this piece (not just
+  the changed words), since it will directly replace the original.
+- If the discussion concluded that nothing should actually change (the candidate decided to
+  keep it as-is, or the concern was resolved without needing an edit), return the original text
+  unchanged and set "changed" to false — do not invent a cosmetic edit just to have something
+  to return.
 ${stealthWritingDirective()}
 
 Return JSON only:
-{ "revised_text": "" }`;
+{ "revised_text": "", "changed": true }`;
 
   const messages = [...thread, { role: 'user', content: userMessage }];
   const message = await client.messages.create({
@@ -875,9 +914,36 @@ Return JSON only:
     messages,
   });
   const raw = extractJSON(message.content[0].text);
-  const { revised_text } = JSON.parse(raw);
+  const { revised_text, changed } = JSON.parse(raw);
   const updatedThread = [...messages, { role: 'assistant', content: message.content[0].text }];
-  return { revisedText: revised_text, thread: updatedThread };
+  return { revisedText: revised_text, changed: changed !== false, thread: updatedThread };
 }
 
-module.exports = { extractJobTitles, analyzeJobFit, parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, planDocxPlacement, chatWithHRExpert, adjustLanguageLevel, generateCoverLetter, generateInterviewQuestions, applyConcernChange };
+// Opt-in "extensive search" — the client checked a box asking for live web research into
+// CV/resume conventions for this specific job's country, industry, and seniority, rather than
+// relying on the model's own trained knowledge (see regionalConventionsBlock above). Runs once
+// per job; the resulting summary is cached in appSession.clientPreferences.conventionsResearch
+// by the server and reused for every subsequent HR-thread call on that job.
+async function researchCvConventions(job, cvText) {
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 700,
+    tools: [{ type: 'web_search_20260209', name: 'web_search' }],
+    messages: [{
+      role: 'user',
+      content: `Research current resume/CV conventions for a "${job.job_title}" role at
+${job.employer_name || job.company || 'this company'}, located in ${job.job_country || job.country || job.job_location || job.location || 'an unspecified country'}.
+Infer the candidate's seniority and industry from this CV excerpt:
+${(cvText || '').slice(0, 600)}
+
+Search for and summarize the LOCAL market's actual norms for: page length, whether a photo is
+expected/discouraged, whether date of birth/age/marital status/nationality are customary,
+whether hobbies/personal interests are commonly included, section ordering, and any other
+distinctive convention for this country/industry. Be concrete and specific to this market —
+not generic advice. Return a plain-text summary, under 12 lines, no markdown headers.`,
+    }],
+  });
+  return message.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+}
+
+module.exports = { extractJobTitles, analyzeJobFit, parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, planDocxPlacement, chatWithHRExpert, adjustLanguageLevel, generateCoverLetter, generateInterviewQuestions, applyConcernChange, researchCvConventions };

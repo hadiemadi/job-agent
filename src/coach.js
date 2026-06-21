@@ -213,11 +213,13 @@ with very few genuine gaps, return fewer items rather than inventing weak ones.`
 }
 
 // Picks a manageable subset of the full gap list to actually put in front of the candidate —
-// at least 5 where that many genuinely exist, prioritized by severity, capped so the review
-// stays digestible rather than turning into 20 separate chats.
-function selectTopGaps(gaps, minCount = 5, maxCount = 8) {
+// at least 5 where that many genuinely exist, prioritized by severity, capped at 20 total
+// (across all severities combined) so the review stays digestible. `severities` is the set of
+// severities the client opted into seeing (checkboxes on the contact page, all on by default).
+function selectTopGaps(gaps, severities = ['major', 'mild', 'minor'], minCount = 5, maxCount = 20) {
   const order = { major: 0, mild: 1, minor: 2 };
-  const sorted = [...(gaps || [])].sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3));
+  const filtered = (gaps || []).filter(g => severities.includes(g.severity));
+  const sorted = filtered.sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3));
   const count = Math.min(Math.max(minCount, sorted.length), maxCount);
   return sorted.slice(0, count);
 }

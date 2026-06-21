@@ -111,8 +111,18 @@ async function go() {
   }
 }
 
+// Expands/collapses the "Advanced options" panel on the contact page (progressive
+// disclosure — keeps the form short by default, per/job options tucked away until asked for).
+function toggleAdvanced() {
+  const panel = el('adv-panel');
+  const open = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : 'block';
+  el('adv-arrow').textContent = open ? '▸' : '▾';
+}
+
 // Saves confirmed contact to server, then continues with job + HR steps
 async function confirmContact() {
+  const gapSeverities = ['major', 'mild', 'minor'].filter(s => el('ci-sev-' + s).checked);
   const contact = {
     name:     el('ci-name').value.trim(),
     title:    el('ci-title').value.trim(),
@@ -122,6 +132,8 @@ async function confirmContact() {
     linkedin: el('ci-linkedin').value.trim(),
     customInstructions: el('ci-instructions').value.trim(),
     tone:     parseInt(el('ci-tone').value, 10),
+    extensiveSearch: el('ci-extensive-search').checked,
+    gapSeverities: gapSeverities.length ? gapSeverities : ['major', 'mild', 'minor'],
   };
   hide('contactStatus');
   try {
