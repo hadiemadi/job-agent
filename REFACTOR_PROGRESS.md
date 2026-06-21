@@ -33,14 +33,28 @@
 | 5 — Learning loop (discipline store + curator + researcher stub) | **done** | `feat(phase-5)` | `agents/curator.js` (`mergeFindings`, `isStale`), `agents/researcher.js` (no-op stub, zero network calls — verified by a dedicated test), `core/knowledge.js` gained `loadDiscipline`/`saveDiscipline`. `agents/recruiter.js`'s `reviewCV` now runs the full loop (`loadOrRefreshDiscipline`) and renders accumulated knowledge into `hrSystemPrompt` via `fieldBlock`. `knowledge/disciplines/*.json` is gitignored (auto-generated, per-field learned cache — only `.gitkeep` is tracked). Real-API smoke confirmed a discipline store gets created (empty, since the stub returns nothing) on first review for a field. |
 | 6 — UI hooks (input router + `ci-refresh-discipline` checkbox) | **done** | `feat(phase-6)` | `agents/inputRouter.js`'s `classify()` buckets a contact-page comment as general/discipline/ambiguous. `/confirm-contact` classifies `customInstructions` and stores it on `clientPreferences.routedInstruction`; `/review-cv` applies a discipline-bucket comment once a field is known via `agents/recruiter.js`'s new `pinDisciplineSkill`, applied once per contact confirmation (`routedInstructionApplied`). New `ci-refresh-discipline` checkbox (unchecked default) added beside `ci-extensive-search`; wired through but server-side no-op (`clientPreferences.refreshDiscipline` is stored, unused — matches the Researcher stub from Phase 5). Real-API smoke confirmed both classification directions and the full pin-to-disk loop. |
 | 7 — Routes/Render (split `server.js` → `routes/`, `templates.js` → `render/`) | **done** | `refactor(phase-7)` | `server.js` shrank from 417 to 21 lines (just middleware + router mounting). New `routes/{cv,jobs,hr,coach}.routes.js` (Express Routers) + `services/{session,uploads}.js` (`getSession`/`setSession` preserve the original mutable-`appSession` semantics — both full-reassignment and in-place-mutation call sites — across module boundaries). `src/templates.js` (949 lines) split into `render/{styles,cvHtml,comparison}.js`, verified byte-identical output via direct function comparison before deleting the original. Verified with a full real-HTTP click-through against the running server (upload → confirm-contact → fetch-job → review-cv → rewrite), producing a correct 56KB tailored CV HTML file. |
-| 8 — Dev tools + evals (`.claude/agents/*`, eval harness) | pending | — | |
+| 8 — Dev tools + evals (`.claude/agents/*`, eval harness) | **done** | `chore(phase-8)` | `.claude/agents/{ui-designer,architecture-reviewer,prompt-tester}.md` (dev-only subagents, never imported by app code). `evals/cases/*.json` (4 CV+job pairs: strong RF/hardware fit, a leadership stretch role, a weak-fit pure-software role, a European-market job) + `evals/run.js` (calls `reviewCV`+`analyzeGaps` per case, writes `evals/output/<case>.json`). Ran for real: all 4 cases completed without throwing, with sensible match verdicts (Strong/Strong/Weak/Strong) — confirms the harness works end-to-end. `evals/output/*.json` is gitignored (generated, not hand-written). |
+
+## Refactor complete
+
+All 9 phases (0-8) are done. `src/ai.js` and `src/coach.js` are gone, replaced by
+`agents/{extractor,recruiter,cvWriter,coach,curator,researcher,inputRouter}.js` and
+`tasks/{coverLetter,interviewPrep,docxPlacement}.js`. `server.js` is ~20 lines; routes live in
+`routes/`. `src/templates.js` is gone, replaced by `render/{styles,cvHtml,comparison}.js`.
+HR/coach personas are editable text in `knowledge/*.md`. Per-field knowledge self-improves in
+`knowledge/disciplines/*.json` via `agents/curator.js`, fed by a no-op `agents/researcher.js`
+stub (no live search, no cost) and a contact-page Input Router. `npm run test:unit` (mocked,
+free) + `npm run test:ui` (mocked, free) are the per-phase gate that stayed green throughout;
+`npm test` (real API) and `node evals/run.js` (real API) are available for full verification
+but cost real money, per the cost estimate in the original plan.
 
 ## Resume instructions for a new session
-1. Read this file's Phase status table — find the first row not marked `done`.
+1. Read this file's Phase status table — find the first row not marked `done`. As of this
+   writing, all 9 phases are done; any future work here is post-refactor maintenance, not a
+   resumed phase.
 2. Read the matching phase section in the saved plan file (path above) for exact file
-   targets, test expectations, and commit message.
-3. Check `git log --oneline -10` to confirm which commits already landed — the commit
+   targets, test expectations, and commit message style, if doing similar follow-up work.
+3. Check `git log --oneline -15` to confirm which commits actually landed — the commit
    message prefix (`refactor(phase-N)`/`feat(phase-N)`/`chore(phase-N)`) tells you which
    phases are actually done in the repo, which is the source of truth if this file and
    git history ever disagree.
-4. Continue from there, same execution rules as above.

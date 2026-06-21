@@ -1,0 +1,10 @@
+{
+  "name": "weak-fit-backend-software",
+  "job": {
+    "job_title": "Senior Backend Software Engineer",
+    "employer_name": "Stripe",
+    "job_city": "Remote",
+    "job_country": "United States",
+    "job_description": "Build and scale distributed payment-processing services in Go and Java. Strong experience with Kubernetes, gRPC, and high-throughput transactional systems. No hardware or RF background required — this is a pure software backend role."
+  }
+}
