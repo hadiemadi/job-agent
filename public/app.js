@@ -133,6 +133,7 @@ async function confirmContact() {
     customInstructions: el('ci-instructions').value.trim(),
     tone:     parseInt(el('ci-tone').value, 10),
     extensiveSearch: el('ci-extensive-search').checked,
+    refreshDiscipline: el('ci-refresh-discipline').checked,
     gapSeverities: gapSeverities.length ? gapSeverities : ['major', 'mild', 'minor'],
   };
   hide('contactStatus');

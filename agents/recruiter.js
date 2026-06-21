@@ -93,6 +93,18 @@ async function loadOrRefreshDiscipline(field) {
   return store;
 }
 
+// Pins a client-stated skill claim (routed here by agents/inputRouter.js's "discipline"
+// bucket — see the /confirm-contact + /review-cv wiring in server.js) into that field's
+// discipline store as a trusted, never-decaying fact. Source_type "user" + pinned: true
+// means the Curator will never bump/alter it via a later Researcher merge.
+function pinDisciplineSkill(field, text) {
+  if (!field || !field.field || !text) return;
+  const store = loadDiscipline(field.field);
+  const updated = mergeFindings(store, { skills: [{ text, confidence: 99, source_type: 'user', pinned: true }] });
+  updated.field = field.field;
+  saveDiscipline(field.field, updated);
+}
+
 // HR review — auto_changes (safe, directly evidenced) + section decisions. Gap-finding
 // (confirm_changes) is handled separately by the Career Coach's analyzeGaps (agents/coach.js)
 // and merged in by the /review-cv route — splitting "what's safe to auto-apply" from "what's
@@ -244,5 +256,5 @@ not generic advice. Return a plain-text summary, under 12 lines, no markdown hea
 
 module.exports = {
   reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions,
-  hrSystemPrompt, stealthWritingDirective,
+  hrSystemPrompt, stealthWritingDirective, pinDisciplineSkill,
 };

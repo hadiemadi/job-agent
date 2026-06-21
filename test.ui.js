@@ -24,6 +24,11 @@ jest.mock('./agents/recruiter', () => ({
   refineWithHR:          jest.fn(),
   chatWithHRExpert:      jest.fn(),
   researchCvConventions: jest.fn(),
+  pinDisciplineSkill:    jest.fn(),
+}));
+
+jest.mock('./agents/inputRouter', () => ({
+  classify: jest.fn(),
 }));
 
 jest.mock('./agents/cvWriter', () => ({
@@ -102,8 +107,9 @@ const MOCK_GAPS = [
 // ── Module references (for setting return values in beforeEach / beforeAll) ────
 
 const { parseCVStructure, rewriteCVWithChanges, adjustLanguageLevel, applyConcernChange } = require('./agents/cvWriter');
-const { reviewCV, refineWithHR, chatWithHRExpert, researchCvConventions } = require('./agents/recruiter');
+const { reviewCV, refineWithHR, chatWithHRExpert, researchCvConventions, pinDisciplineSkill } = require('./agents/recruiter');
 const { parseJobFromText } = require('./agents/extractor');
+const { classify } = require('./agents/inputRouter');
 const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps, chatWithCoach } = require('./agents/coach');
 const { readCV }        = require('./src/cv');
 const { scrapeJobPage } = require('./src/scraper');
@@ -121,6 +127,7 @@ beforeEach(() => {
   readCV.mockResolvedValue('Hadi Emadi\nTPM\nh@test.com\n+1 555 0000\nlinkedin.com/in/hadi');
   parseCVStructure.mockResolvedValue(MOCK_CV_DATA);
   reviewCV.mockResolvedValue({ review: MOCK_REVIEW, thread: [] });
+  classify.mockResolvedValue({ bucket: 'none', text: '' });
   analyzeGaps.mockResolvedValue(MOCK_GAPS);
   selectTopGaps.mockImplementation(gaps => gaps);
   rewriteCVWithChanges.mockResolvedValue({
@@ -329,7 +336,39 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
 
     await request(app).post('/review-cv').send({ job: MOCK_JOB });
     const lastCall = reviewCV.mock.calls[reviewCV.mock.calls.length - 1];
-    expect(lastCall[3]).toEqual({ tone: 2, customInstructions: 'Never mention my current employer by name', languageLevel: 2, extensiveSearch: false, conventionsResearch: '', gapSeverities: ['major', 'mild', 'minor'] });
+    expect(lastCall[3]).toEqual({
+      tone: 2, customInstructions: 'Never mention my current employer by name', languageLevel: 2,
+      extensiveSearch: false, conventionsResearch: '', gapSeverities: ['major', 'mild', 'minor'],
+      refreshDiscipline: false, routedInstruction: { bucket: 'none', text: '' }, routedInstructionApplied: false,
+    });
+  });
+
+  test('POST /confirm-contact routes a discipline-bucket comment, and /review-cv pins it once a field is known', async () => {
+    classify.mockResolvedValue({ bucket: 'discipline', text: 'Hands-on GaN PA tuning experience' });
+    reviewCV.mockResolvedValue({ review: MOCK_REVIEW, field: { field: 'RF/Hardware Engineering', seniority: 'senior' }, thread: [] });
+
+    await request(app).post('/confirm-contact').send({ name: 'Hadi Emadi', customInstructions: 'Hands-on GaN PA tuning experience' });
+    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+
+    expect(pinDisciplineSkill).toHaveBeenCalledWith(
+      { field: 'RF/Hardware Engineering', seniority: 'senior' },
+      'Hands-on GaN PA tuning experience'
+    );
+
+    // A second /review-cv in the same contact-confirmation session must not re-pin.
+    const callsBefore = pinDisciplineSkill.mock.calls.length;
+    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    expect(pinDisciplineSkill.mock.calls.length).toBe(callsBefore);
+  });
+
+  test('POST /confirm-contact with a general-bucket comment does not call pinDisciplineSkill', async () => {
+    classify.mockResolvedValue({ bucket: 'general', text: 'Prefer a one-page CV.' });
+    reviewCV.mockResolvedValue({ review: MOCK_REVIEW, field: { field: 'RF/Hardware Engineering', seniority: 'senior' }, thread: [] });
+
+    await request(app).post('/confirm-contact').send({ name: 'Hadi Emadi', customInstructions: 'Prefer a one-page CV.' });
+    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+
+    expect(pinDisciplineSkill).not.toHaveBeenCalled();
   });
 
   test('POST /confirm-contact with gapSeverities filters which severities selectTopGaps sees', async () => {
@@ -583,5 +622,23 @@ describe('POST /upload-template', () => {
     const res = await request(app).post('/upload-template');
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+  });
+});
+
+// ── 8. Contact page markup — Advanced options panel ────────────────────────────
+
+describe('#contactCard Advanced options panel (public/index.html)', () => {
+  const html = require('fs').readFileSync(require('path').join(__dirname, 'public', 'index.html'), 'utf8');
+
+  test('ci-refresh-discipline checkbox is present and unchecked by default', () => {
+    const match = html.match(/<input[^>]*id="ci-refresh-discipline"[^>]*>/);
+    expect(match).not.toBeNull();
+    expect(match[0]).not.toMatch(/\bchecked\b/);
+  });
+
+  test('ci-extensive-search remains present and unchecked by default (unaffected by this change)', () => {
+    const match = html.match(/<input[^>]*id="ci-extensive-search"[^>]*>/);
+    expect(match).not.toBeNull();
+    expect(match[0]).not.toMatch(/\bchecked\b/);
   });
 });

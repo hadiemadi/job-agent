@@ -39,9 +39,21 @@ describe('agents/extractor', () => {
 
 describe('agents/recruiter', () => {
   const recruiter = require('./recruiter');
-  test('exports reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions, hrSystemPrompt, stealthWritingDirective', () => {
-    ['reviewCV', 'analyzeJobFit', 'refineWithHR', 'chatWithHRExpert', 'researchCvConventions', 'hrSystemPrompt', 'stealthWritingDirective']
+  test('exports reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions, hrSystemPrompt, stealthWritingDirective, pinDisciplineSkill', () => {
+    ['reviewCV', 'analyzeJobFit', 'refineWithHR', 'chatWithHRExpert', 'researchCvConventions', 'hrSystemPrompt', 'stealthWritingDirective', 'pinDisciplineSkill']
       .forEach(name => expect(typeof recruiter[name]).toBe('function'));
+  });
+  test('pinDisciplineSkill persists a pinned entry into that field\'s discipline store', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const storePath = path.join(__dirname, '..', 'knowledge', 'disciplines', 'smoke-test-pin-field.json');
+    try {
+      recruiter.pinDisciplineSkill({ field: 'Smoke Test Pin Field' }, 'Hands-on widget calibration');
+      const store = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+      expect(store.skills[0]).toMatchObject({ text: 'Hands-on widget calibration', pinned: true, confidence: 99, source_type: 'user' });
+    } finally {
+      if (fs.existsSync(storePath)) fs.unlinkSync(storePath);
+    }
   });
   test('reviewCV resolves with a mocked response and also detects/returns a field', async () => {
     mockTextResponse(JSON.stringify({ overall_match: 'Strong', strengths: [], recommended_sections: [], section_rationale: '', auto_changes: [] }));

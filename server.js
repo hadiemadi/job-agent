@@ -9,6 +9,7 @@ const {
   parseCVStructure, reviewCV, rewriteCVWithChanges, chatWithCoach, refineWithHR, parseJobFromText, chatWithHRExpert, adjustLanguageLevel, generateCoverLetter, generateInterviewQuestions, applyConcernChange, researchCvConventions,
   generateComparisonTemplate,
   analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps,
+  classify, pinDisciplineSkill,
 } = require('./agent');
 const { scrapeJobPage } = require('./src/scraper');
 const { generateWordCV, generateWordCVAlt, generateCoverLetterWord } = require('./src/wordExport');
@@ -35,7 +36,10 @@ let appSession = {
   currentJob: null, hrReview: null,
   coachHistory: [], hrThread: [], hrDisplayHistory: [],
   confirmedContact: null,
-  clientPreferences: { tone: 4, customInstructions: '', languageLevel: 2, extensiveSearch: false, conventionsResearch: '', gapSeverities: ['major', 'mild', 'minor'] },
+  clientPreferences: {
+    tone: 4, customInstructions: '', languageLevel: 2, extensiveSearch: false, conventionsResearch: '',
+    gapSeverities: ['major', 'mild', 'minor'], refreshDiscipline: false, routedInstruction: null, routedInstructionApplied: false,
+  },
 };
 
 // ── API endpoints ─────────────────────────────────────────────────────────────
@@ -241,14 +245,27 @@ app.post('/upload-template', templateUpload.single('template'), async (req, res)
   }
 });
 
-app.post('/confirm-contact', (req, res) => {
-  const { name, title, email, phone, location, linkedin, customInstructions, tone, extensiveSearch, gapSeverities } = req.body;
+app.post('/confirm-contact', async (req, res) => {
+  const { name, title, email, phone, location, linkedin, customInstructions, tone, extensiveSearch, refreshDiscipline, gapSeverities } = req.body;
   appSession.confirmedContact = { name, title, email, phone, location, linkedin };
   const validSeverities = Array.isArray(gapSeverities) ? gapSeverities.filter(s => ['major', 'mild', 'minor'].includes(s)) : [];
+  // The Input Router decides whether this free-text comment is a field-agnostic instruction
+  // (already flows into every prompt via customInstructions below — no extra plumbing) or a
+  // discipline-specific skill claim (pinned into that field's knowledge store once the field
+  // is known — see /review-cv). Best-effort: classification failure just falls back to
+  // treating the comment as a plain general instruction.
+  let routedInstruction = null;
+  try {
+    routedInstruction = await classify(customInstructions || '');
+  } catch (e) { /* best-effort — comment still flows via customInstructions either way */ }
   appSession.clientPreferences = {
     tone: tone || 4, customInstructions: customInstructions || '', languageLevel: 2,
     extensiveSearch: !!extensiveSearch, conventionsResearch: '',
+    // "Refresh discipline knowledge from web" — wired through but currently a no-op: the
+    // Researcher (agents/researcher.js) is a deliberate stub until live search is enabled.
+    refreshDiscipline: !!refreshDiscipline,
     gapSeverities: validSeverities.length ? validSeverities : ['major', 'mild', 'minor'],
+    routedInstruction, routedInstructionApplied: false,
   };
   if (appSession.cvData) Object.assign(appSession.cvData, appSession.confirmedContact);
   res.json({ ok: true });
@@ -272,10 +289,18 @@ app.post('/review-cv', async (req, res) => {
     // parallel — gap-finding is the Coach's job (analyzeGaps casts wide, up to 20 candidates,
     // severity-scored); selectTopGaps then picks at least 5 worth actually asking the
     // candidate about, instead of HR trying to do both jobs in one pass.
-    const [{ review, thread }, gaps] = await Promise.all([
+    const [{ review, field, thread }, gaps] = await Promise.all([
       reviewCV(appSession.cvText, job, [], appSession.clientPreferences),
       analyzeGaps(appSession.cvText, job),
     ]);
+    // Once the candidate's field is known, apply any discipline-bucket comment from the
+    // contact page — pinned in as a trusted fact for this and future reviews. Applied once
+    // per contact confirmation (routedInstructionApplied), not on every repeated review.
+    const { routedInstruction, routedInstructionApplied } = appSession.clientPreferences;
+    if (field?.field && routedInstruction?.bucket === 'discipline' && routedInstruction.text && !routedInstructionApplied) {
+      pinDisciplineSkill(field, routedInstruction.text);
+      appSession.clientPreferences = { ...appSession.clientPreferences, routedInstructionApplied: true };
+    }
     const fullReview = { ...review, confirm_changes: selectTopGaps(gaps, appSession.clientPreferences.gapSeverities) };
     appSession.currentJob = job;
     appSession.hrReview = fullReview;
