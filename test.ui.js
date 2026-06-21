@@ -50,8 +50,10 @@ jest.mock('./agents/coach', () => ({
 jest.mock('./src/cv',       () => ({ readCV: jest.fn() }));
 jest.mock('./src/jobs',     () => ({ searchAllLocations: jest.fn() }));
 jest.mock('./src/scraper',  () => ({ scrapeJobPage: jest.fn() }));
-jest.mock('./src/templates', () => ({
-  generateExecutiveTemplate:  jest.fn().mockReturnValue('<html>cv</html>'),
+jest.mock('./render/cvHtml', () => ({
+  generateExecutiveTemplate: jest.fn().mockReturnValue('<html>cv</html>'),
+}));
+jest.mock('./render/comparison', () => ({
   generateComparisonTemplate: jest.fn().mockReturnValue('<html>compare</html>'),
 }));
 jest.mock('./src/wordExport', () => ({ generateWordCV: jest.fn(), generateWordCVAlt: jest.fn() }));

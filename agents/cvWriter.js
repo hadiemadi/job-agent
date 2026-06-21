@@ -1,5 +1,5 @@
 const fse = require('fs-extra');
-const { generateExecutiveTemplate } = require('../src/templates');
+const { generateExecutiveTemplate } = require('../render/cvHtml');
 const { client, MODEL } = require('../core/claude');
 const { extractJSON } = require('../core/json');
 const { hrSystemPrompt, stealthWritingDirective } = require('./recruiter');

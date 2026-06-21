@@ -1,0 +1,53 @@
+const express = require('express');
+const { chatWithCoach, analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath } = require('../agent');
+const { getSession } = require('../services/session');
+
+const router = express.Router();
+
+router.post('/coach/discuss', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    const { message, gapIndex } = req.body;
+    const gap = appSession.hrReview?.confirm_changes?.[gapIndex];
+    const { reply, history } = await chatWithCoach(
+      appSession.cvText, appSession.currentJob, appSession.hrReview,
+      appSession.coachHistory, message, gap?.description, appSession.clientPreferences
+    );
+    appSession.coachHistory = history;
+    res.json({ reply });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/coach/analyze', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    const { direction } = req.body;
+    if (!direction) return res.status(400).json({ error: 'direction is required.' });
+    const result = await analyzeAndSuggestRoles(appSession.cvText, direction);
+    if (!result) return res.status(500).json({ error: 'Analysis failed.' });
+    const rankedJobs = appSession.rankedJobs || [];
+    const marketMatches = rankedJobs.length > 0 ? await matchRolesToMarket(result.suggested_roles, rankedJobs) : [];
+    res.json({ profile: result.profile, suggestedRoles: result.suggested_roles, marketMatches });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/coach/path', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    const { roleTitle } = req.body;
+    const path = await buildCareerPath(roleTitle, appSession.cvText);
+    if (!path) return res.status(500).json({ error: 'Path analysis failed.' });
+    res.json(path);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;

@@ -7,7 +7,8 @@ const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps
 const { classify } = require('./agents/inputRouter');
 const { generateCoverLetter } = require('./tasks/coverLetter');
 const { generateInterviewQuestions } = require('./tasks/interviewPrep');
-const { generateExecutiveTemplate, generateComparisonTemplate } = require('./src/templates');
+const { generateExecutiveTemplate } = require('./render/cvHtml');
+const { generateComparisonTemplate } = require('./render/comparison');
 
 module.exports = {
   readCV, searchAllLocations,
