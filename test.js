@@ -1,6 +1,6 @@
 require('dotenv').config();
 const fs = require('fs');
-const { readCV, extractJobTitles, searchAllLocations, analyzeJobFit, rewriteCV } = require('./agent');
+const { readCV, extractJobTitles, searchAllLocations, analyzeJobFit, rewriteCVWithChanges } = require('./agent');
 
 const TEST_CV_PATH = './cv.pdf';
 const TIMEOUT = 60000;
@@ -75,7 +75,7 @@ test('CV rewrite generates HTML file', async () => {
     apply_link: 'https://example.com'
   };
 
-  const filePath = await rewriteCV(text, mockJob);
+  const { filePath } = await rewriteCVWithChanges(text, mockJob, [], [], null, null, null, [], undefined, [], null, []);
   expect(filePath).toBeTruthy();
   expect(fs.existsSync(filePath)).toBe(true);
 
@@ -95,7 +95,7 @@ test('Rewritten CV contains job-specific keywords', async () => {
     apply_link: 'https://nokia.com'
   };
 
-  const filePath = await rewriteCV(text, mockJob);
+  const { filePath } = await rewriteCVWithChanges(text, mockJob, [], [], null, null, null, [], undefined, [], null, []);
   const rewrittenHTML = fs.readFileSync(filePath, 'utf8');
 
   expect(rewrittenHTML).toContain('Nokia');
