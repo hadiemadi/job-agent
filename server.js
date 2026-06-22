@@ -1,6 +1,7 @@
 require('dotenv').config();
 const http = require('http');
 const express = require('express');
+const fse = require('fs-extra');
 const cookieParser = require('cookie-parser');
 const { sessionMiddleware, requestScope } = require('./services/session');
 const { globalLimiter, aiLimiter } = require('./services/ratelimit');
@@ -9,8 +10,17 @@ const jobsRoutes = require('./routes/jobs.routes');
 const hrRoutes = require('./routes/hr.routes');
 const coachRoutes = require('./routes/coach.routes');
 
+// Render's disk is ephemeral — these must exist fresh every boot, not just on first
+// install. uploads/templates is ensured separately by services/uploads.js.
+fse.ensureDirSync('uploads');
+fse.ensureDirSync('output');
+
 const app = express();
 app.use(express.json());
+
+// Mounted before cookieParser/sessionMiddleware/the routers on purpose: a platform health
+// check should never depend on session state, rate limits, or any downstream router.
+app.get('/healthz', (req, res) => res.json({ ok: true }));
 
 app.use(cookieParser());
 app.use(sessionMiddleware);
@@ -40,6 +50,7 @@ app.use(coachRoutes);
 const server = http.createServer(requestScope(app));
 
 if (require.main === module) {
-  server.listen(3000, () => console.log('Job Agent running at http://localhost:3000'));
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, '0.0.0.0', () => console.log(`Job Agent running on port ${PORT}`));
 }
 module.exports = server;

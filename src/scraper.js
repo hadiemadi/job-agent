@@ -1,8 +1,18 @@
-const puppeteerExtra = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-puppeteerExtra.use(StealthPlugin());
-
+// puppeteer-extra (and Chromium) are required LAZILY, inside scrapeJobPage, so that simply
+// importing this module — which routes/jobs.routes.js does unconditionally — never pulls in
+// Chromium. On Render's free tier there's no Docker/Chromium available, so scraping is
+// gated off entirely in production (see the ENABLE_SCRAPER check below); requiring
+// puppeteer-extra at module load time would still try to resolve Chromium's launch path and
+// could blow up the whole process at boot even when the feature is never used.
 async function scrapeJobPage(url) {
+  if (process.env.ENABLE_SCRAPER !== 'true') {
+    throw new Error('SCRAPER_DISABLED');
+  }
+
+  const puppeteerExtra = require('puppeteer-extra');
+  const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+  puppeteerExtra.use(StealthPlugin());
+
   const browser = await puppeteerExtra.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],

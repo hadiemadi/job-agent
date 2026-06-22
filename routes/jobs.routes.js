@@ -52,6 +52,7 @@ router.post('/fetch-job', async (req, res) => {
         rawText = await scrapeJobPage(url);
       } catch (err) {
         if (err.message === 'LOGIN_WALL') return res.status(422).json({ error: 'LinkedIn requires login.', loginWall: true });
+        if (err.message === 'SCRAPER_DISABLED') return res.status(422).json({ error: 'URL scraping is off — paste the job description text instead.', scraperDisabled: true });
         throw err;
       }
     } else {
