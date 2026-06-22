@@ -1,6 +1,6 @@
 const fse = require('fs-extra');
 const { generateExecutiveTemplate } = require('../render/cvHtml');
-const { client, MODEL } = require('../core/claude');
+const { client, MODEL, createJsonCompletion } = require('../core/claude');
 const { extractJSON } = require('../core/json');
 const { hrSystemPrompt, stealthWritingDirective } = require('./recruiter');
 
@@ -364,17 +364,15 @@ Return JSON only:
   "template_suggestion": "one sentence if a different template style would suit this wording level better, otherwise empty string"
 }`;
 
-  const messages = [...(thread || []), { role: 'user', content: userMessage }];
-  const message = await client.messages.create({
+  const { text, messages, raw } = await createJsonCompletion({
     model: MODEL,
     max_tokens: 3500,
     system: hrSystemPrompt(cvText, job, prefs),
-    messages,
+    messages: [...(thread || []), { role: 'user', content: userMessage }],
   });
 
-  const raw = extractJSON(message.content[0].text);
   const result = JSON.parse(raw);
-  const updatedThread = [...messages, { role: 'assistant', content: message.content[0].text }];
+  const updatedThread = [...messages, { role: 'assistant', content: text }];
   const { cv: updatedCv, template_suggestion = '' } = result;
 
   enforceContactInfo(updatedCv, cvText);

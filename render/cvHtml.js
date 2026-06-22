@@ -130,10 +130,6 @@ function generateExecutiveTemplate(cv, job, opts = {}) {
 <title>${cv.name} — CV for ${job.job_title}</title>
 <style>
 ${CV_CSS}
-  /* Standalone: extra top padding for toolbar */
-  body { padding-top: 52px; }
-  .page { margin: 40px auto; }
-
   /* ── Inline editing ─────────────────────────────────── */
   [contenteditable] { outline: none; border-radius: 3px; min-width: 4px; cursor: text; transition: background 0.1s; }
   [contenteditable]:hover  { background: rgba(24,95,165,0.07); }
@@ -141,33 +137,35 @@ ${CV_CSS}
   .header [contenteditable]:hover { background: rgba(255,255,255,0.08); }
   .header [contenteditable]:focus { background: rgba(255,255,255,0.14); outline-color: rgba(255,255,255,0.45); }
 
-  /* ── Floating toolbar ───────────────────────────────── */
+  /* ── Left toolbar (fixed sidebar) ────────────────────── */
   .cv-toolbar {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
-    background: #1a1a18; padding: 10px 28px;
-    display: flex; align-items: center; justify-content: space-between;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.45);
+    position: fixed; top: 0; left: 0; bottom: 0; width: 230px; z-index: 9999;
+    background: #1a1a18; padding: 20px 16px;
+    display: flex; flex-direction: column; align-items: stretch; gap: 10px;
+    overflow-y: auto;
+    box-shadow: 2px 0 12px rgba(0,0,0,0.45);
     font-family: 'Segoe UI', Arial, sans-serif;
   }
-  .tb-hint { font-size: 12px; color: rgba(255,255,255,0.4); }
-  .tb-hint strong { color: rgba(255,255,255,0.85); font-weight: 500; }
-  .tb-actions { display: flex; gap: 8px; }
-  .tb-btn { border: none; padding: 7px 18px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit; }
+  .tb-hint { font-size: 12px; color: rgba(255,255,255,0.4); line-height: 1.5; padding-bottom: 10px; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .tb-hint strong { color: rgba(255,255,255,0.85); font-weight: 500; display: block; margin-bottom: 2px; }
+  .tb-actions { display: flex; flex-direction: column; gap: 8px; }
+  .tb-btn { border: none; padding: 9px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit; width: 100%; text-align: left; }
   .tb-save  { background: rgba(255,255,255,0.1); color: white; }
   .tb-save:hover  { background: rgba(255,255,255,0.18); }
   .tb-print { background: #185FA5; color: white; }
   .tb-print:hover { background: #0C447C; }
-  .tb-select { border: none; padding: 7px 10px; border-radius: 6px; font-size: 12px; font-family: inherit; background: rgba(255,255,255,0.1); color: white; }
+  .tb-select { border: none; padding: 8px 10px; border-radius: 6px; font-size: 12px; font-family: inherit; background: rgba(255,255,255,0.1); color: white; width: 100%; }
   .tb-select option { color: #2C2C2A; }
-  .tb-link { font-size: 11px; color: rgba(255,255,255,0.55); text-decoration: underline; cursor: pointer; }
+  .tb-link { font-size: 11px; color: rgba(255,255,255,0.55); text-decoration: underline; cursor: pointer; display: block; }
   .tb-link:hover { color: white; }
-  .tb-status { font-size: 11px; color: rgba(255,255,255,0.55); margin-left: 4px; }
-  .cv-toolbar { right: 30%; transition: right 0.2s; }
-  .cv-toolbar.full { right: 0; }
+  .tb-status { font-size: 11px; color: rgba(255,255,255,0.55); }
   .tb-btn:disabled, .tb-select:disabled, .hr-sb-model:disabled { opacity: 0.45; cursor: not-allowed; }
+  .tb-row { display: flex; gap: 6px; align-items: center; }
+  .tb-row .tb-select { flex: 1; min-width: 0; }
+  .tb-go { width: auto; flex-shrink: 0; padding: 8px 12px; text-align: center; }
 
-  /* ── Main CV area — shares the screen 70/30 with the HR sidebar ───── */
-  .cv-main { margin-right: 30%; transition: margin-right 0.2s; }
+  /* ── Main CV area — left toolbar is always reserved; right 30% shares with HR sidebar ── */
+  .cv-main { margin-left: 230px; margin-right: 30%; transition: margin-right 0.2s; }
   .cv-main.full { margin-right: 0; }
 
   /* ── HR Expert sidebar — visible by default, occupies 30% of the screen ── */
@@ -231,7 +229,8 @@ ${CV_CSS}
   @media print {
     .cv-toolbar { display: none !important; }
     .hr-sidebar { display: none !important; }
-    body { background: white; padding-top: 0; }
+    .cv-main { margin: 0 !important; }
+    body { background: white; }
     .page { box-shadow: none; margin: 0; }
     [contenteditable]:hover,
     [contenteditable]:focus { background: transparent !important; outline: none !important; }
@@ -258,14 +257,16 @@ ${CV_CSS}
     <input type="file" id="templateFile" accept=".docx" hidden onchange="uploadTemplate()">
     <button class="tb-btn tb-save" onclick="document.getElementById('templateFile').click()">Upload template…</button>
     <a class="tb-link" href="/templates/word/starter_template.docx" download>Download starter template ↓</a>
-    <select class="tb-select" id="languageLevel" title="How polished should the CV's wording be?">
-      <option value="1">Wording: Original</option>
-      <option value="2" selected>Wording: Slightly polished</option>
-      <option value="3">Wording: Professional</option>
-      <option value="4">Wording: Highly professional</option>
-      <option value="5">Wording: Senior expert</option>
-    </select>
-    <button class="tb-btn tb-save" id="regenWordingBtn" onclick="regenerateWording()">Regenerate wording</button>
+    <div class="tb-row">
+      <select class="tb-select" id="languageLevel" title="How polished should the CV's wording be?">
+        <option value="1">Wording: Original</option>
+        <option value="2" selected>Wording: Slightly polished</option>
+        <option value="3">Wording: Professional</option>
+        <option value="4">Wording: Highly professional</option>
+        <option value="5">Wording: Senior expert</option>
+      </select>
+      <button class="tb-btn tb-print tb-go" id="regenWordingBtn" onclick="regenerateWording()" title="Regenerate wording at this level">Go</button>
+    </div>
     <button class="tb-btn tb-print" id="exportWordBtn" onclick="exportWord()">Export to Word</button>
     <button class="tb-btn tb-save" id="coverLetterBtn" onclick="generateCoverLetterPanel()">Generate Cover Letter</button>
     <button class="tb-btn tb-save" id="interviewQBtn" onclick="generateInterviewQuestionsPanel()">Generate Interview Questions</button>
@@ -648,7 +649,6 @@ ${pageHtml}
   function toggleHrSidebar() {
     const collapsed = document.getElementById('hrSidebar').classList.toggle('collapsed');
     document.getElementById('cvMain').classList.toggle('full', collapsed);
-    document.querySelector('.cv-toolbar').classList.toggle('full', collapsed);
     document.getElementById('hrToggleBtn').textContent = collapsed ? 'Ask HR Expert' : 'Hide HR Expert';
   }
 
