@@ -2,7 +2,16 @@ const fse = require('fs-extra');
 const { generateExecutiveTemplate } = require('../render/cvHtml');
 const { client, MODEL, createJsonCompletion } = require('../core/claude');
 const { extractJSON } = require('../core/json');
+const { loadCore } = require('../core/knowledge');
 const { hrSystemPrompt, stealthWritingDirective } = require('./recruiter');
+
+// The writer's own generation directive, appended on top of the shared HR persona/rules
+// (hrSystemPrompt). Keeps the writer and the independent pre-release reviewer (recruiter.js's
+// reviewTailoredCV) on genuinely separate prompts — the writer never sees the reviewer's
+// checklist-only framing, and the reviewer never sees this generation directive.
+function writerSystemPrompt(...args) {
+  return `${hrSystemPrompt(...args)}\n\n${loadCore('cv-writer-core')}`;
+}
 
 // Extract contact info directly from raw CV text via regex — never trust the LLM
 // to transcribe sensitive identifiers verbatim (it can silently alter dots, hyphens, etc.)
@@ -294,7 +303,7 @@ IMPORTANT: skills and key_qualifications must be flat arrays of plain strings on
     model: MODEL,
     max_tokens: 3500,
     temperature: 0, // section list is a closed decision already made by reviewCV — the same CV/job/sections must produce the same set of sections every time
-    system: hrSystemPrompt(cvText, job, preferences),
+    system: writerSystemPrompt(cvText, job, preferences),
     messages,
   });
 
@@ -367,7 +376,7 @@ Return JSON only:
   const { text, messages, raw } = await createJsonCompletion({
     model: MODEL,
     max_tokens: 3500,
-    system: hrSystemPrompt(cvText, job, prefs),
+    system: writerSystemPrompt(cvText, job, prefs),
     messages: [...(thread || []), { role: 'user', content: userMessage }],
   });
 
@@ -420,7 +429,7 @@ Return JSON only:
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 500,
-    system: hrSystemPrompt(cvText, job, preferences),
+    system: writerSystemPrompt(cvText, job, preferences),
     messages,
   });
   const raw = extractJSON(message.content[0].text);
