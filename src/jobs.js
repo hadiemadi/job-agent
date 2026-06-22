@@ -5,6 +5,37 @@ const COUNTRY_CITIES = {
   NL: { city: 'Amsterdam', country: 'NL' },
 };
 
+// ── Daily job-search cap ──────────────────────────────────────────────────────
+// Server-wide (not per-user) in-memory counter — resets on restart as well as at UTC
+// midnight, same tradeoff as core/claude.js's spend cap: fine for v1, a DB-backed counter
+// is the future hardening step if this needs to survive restarts/multiple processes.
+// See core/claude.js for why this isn't `Number(process.env.X) || fallback` — a legitimate
+// "0" cap would silently fall back to the default with that pattern.
+function envNumber(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  return Number.isNaN(n) ? fallback : n;
+}
+
+const DAILY_JOB_SEARCH_CAP = envNumber('DAILY_JOB_SEARCH_CAP', 50);
+
+function utcDateString() {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD, UTC by construction
+}
+
+let searchDate = utcDateString();
+let searchCountToday = 0;
+
+function checkJobSearchCap() {
+  const today = utcDateString();
+  if (today !== searchDate) { searchDate = today; searchCountToday = 0; }
+  if (searchCountToday >= DAILY_JOB_SEARCH_CAP) {
+    throw new Error('Daily job-search limit reached.');
+  }
+  searchCountToday += 1;
+}
+
 // ── Jooble (primary source for US jobs) ──────────────────────────────────────
 
 async function searchJooble(keywords, location) {
@@ -61,6 +92,7 @@ async function searchJSearch(query, location, country) {
 // ── Public entry point ────────────────────────────────────────────────────────
 
 async function searchAllLocations(jobTitle, countryCode = 'GB', usState = '') {
+  checkJobSearchCap(); // before hitting Jooble/JSearch — this is the one public entry point both go through
   if (countryCode === 'US') {
     const location = usState ? usState : 'United States';
     const [stateJobs, remoteJobs] = await Promise.all([
