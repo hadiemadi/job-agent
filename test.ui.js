@@ -110,7 +110,7 @@ const MOCK_GAPS = [
 // ── Module references (for setting return values in beforeEach / beforeAll) ────
 
 const { parseCVStructure, rewriteCVWithChanges, adjustLanguageLevel, applyConcernChange } = require('./agents/cvWriter');
-const { reviewCV, refineWithHR, chatWithHRExpert, researchCvConventions, pinDisciplineSkill } = require('./agents/recruiter');
+const { reviewCV, refineWithHR, chatWithHRExpert, researchCvConventions, pinDisciplineSkill, reviewTailoredCV } = require('./agents/recruiter');
 const { parseJobFromText } = require('./agents/extractor');
 const { classify } = require('./agents/inputRouter');
 const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps, chatWithCoach } = require('./agents/coach');
@@ -140,6 +140,7 @@ beforeEach(() => {
     thread: [],
     hrDisplayHistory: [],
   });
+  reviewTailoredCV.mockResolvedValue({ checks: [], verdict: 'SHIP', required_edits: [] });
   parseJobFromText.mockResolvedValue(MOCK_JOB);
   // Mirrors real behavior of growing the thread (instead of a static value) so tests can
   // detect whether the server is still wiping appSession.coachHistory between calls.
@@ -406,6 +407,44 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('filePath');
     expect(res.body).not.toHaveProperty('comparisonPath');
+  });
+
+  test('POST /rewrite runs the independent review loop: a FIX_REQUIRED verdict triggers one targeted revision, then ships clean', async () => {
+    const dirtyCv = { ...MOCK_CV_DATA, summary: 'Excited to join Apple as a TPM.' };
+    const cleanCv = { ...MOCK_CV_DATA, summary: 'Senior TPM with deep RF hardware background.' };
+    rewriteCVWithChanges
+      .mockResolvedValueOnce({ filePath: 'output/cv_Apple.html', cvData: dirtyCv, modified_sections: ['summary'], thread: [], hrDisplayHistory: [] })
+      .mockResolvedValueOnce({ filePath: 'output/cv_Apple.html', cvData: cleanCv, modified_sections: ['summary'], thread: [], hrDisplayHistory: [] });
+    reviewTailoredCV
+      .mockResolvedValueOnce({ checks: [], verdict: 'FIX_REQUIRED', required_edits: ['Remove the company name "Apple" from the summary'] })
+      .mockResolvedValueOnce({ checks: [], verdict: 'SHIP', required_edits: [] });
+
+    const res = await request(app).post('/rewrite').send({
+      job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [],
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reviewIssues).toEqual([]);
+    expect(rewriteCVWithChanges).toHaveBeenCalledTimes(2);
+    expect(reviewTailoredCV).toHaveBeenCalledTimes(2);
+    // the second writer call is the targeted revision — it carries the required edit forward,
+    // not a from-scratch regeneration
+    const secondCallChanges = rewriteCVWithChanges.mock.calls[1][3];
+    expect(secondCallChanges).toEqual([{ description: 'Remove the company name "Apple" from the summary' }]);
+  });
+
+  test('POST /rewrite surfaces remaining review issues after exhausting the 2-pass revision limit', async () => {
+    reviewTailoredCV.mockResolvedValue({ checks: [], verdict: 'FIX_REQUIRED', required_edits: ['Remove the company name "Apple" from the summary'] });
+
+    const res = await request(app).post('/rewrite').send({
+      job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [],
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reviewIssues).toEqual(['Remove the company name "Apple" from the summary']);
+    // 1 initial write + 2 revision passes = 3; 3 reviews, one per write
+    expect(rewriteCVWithChanges).toHaveBeenCalledTimes(3);
+    expect(reviewTailoredCV).toHaveBeenCalledTimes(3);
   });
 
   test('POST /build-comparison returns 200 with comparisonPath after a CV has been tailored', async () => {

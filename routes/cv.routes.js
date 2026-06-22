@@ -2,11 +2,12 @@ const express = require('express');
 const path = require('path');
 const fse = require('fs-extra');
 const PizZip = require('pizzip');
-const { readCV, parseCVStructure, rewriteCVWithChanges, adjustLanguageLevel, classify, generateComparisonTemplate } = require('../agent');
+const { readCV, parseCVStructure, adjustLanguageLevel, classify, generateComparisonTemplate } = require('../agent');
 const { generateWordCV, generateWordCVAlt } = require('../src/wordExport');
 const { generateWordFromTemplate } = require('../src/wordTemplateExport');
 const { upload, templateUpload } = require('../services/uploads');
 const { getSession, setSession } = require('../services/session');
+const { tailorCvWithReview } = require('../services/workflows');
 
 const router = express.Router();
 
@@ -56,7 +57,13 @@ router.post('/rewrite', async (req, res) => {
     const cvText = await readCV(cvPath || appSession.cvPath);
     const recommendedSections = (appSession.hrReview || {}).recommended_sections;
     const originalName = (appSession.cvData || {}).name;
-    const { filePath, cvData, modified_sections, thread, hrDisplayHistory } = await rewriteCVWithChanges(cvText, job, autoChanges || [], confirmedChanges || [], recommendedSections, originalName, appSession.confirmedContact, appSession.hrThread, appSession.clientPreferences, appSession.hrDisplayHistory, appSession.cvData, gapDiscussions || []);
+    const { filePath, cvData, modified_sections, thread, hrDisplayHistory, review } = await tailorCvWithReview({
+      cvText, job, autoChanges: autoChanges || [], confirmedChanges: confirmedChanges || [],
+      recommendedSections, originalName, confirmedContact: appSession.confirmedContact,
+      thread: appSession.hrThread, preferences: appSession.clientPreferences,
+      hrDisplayHistory: appSession.hrDisplayHistory, originalCvData: appSession.cvData,
+      gapDiscussions: gapDiscussions || [],
+    });
     appSession.hrThread = thread;
     appSession.hrDisplayHistory = hrDisplayHistory;
     // Comparison page is NOT built here — it's a side artifact most clients never open, and
@@ -65,7 +72,10 @@ router.post('/rewrite', async (req, res) => {
     appSession.lastTailoredCvData     = cvData;
     appSession.lastModifiedSections   = modified_sections;
     appSession.lastTailoredJob        = job;
-    res.json({ filePath });
+    // The independent pre-release review (services/workflows.js) gets up to 2 revision passes.
+    // If it still isn't SHIP after that, surface the remaining issues rather than hide them.
+    const reviewIssues = review && review.verdict === 'FIX_REQUIRED' ? review.required_edits : [];
+    res.json({ filePath, reviewIssues });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
