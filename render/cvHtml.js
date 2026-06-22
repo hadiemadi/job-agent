@@ -133,29 +133,29 @@ ${CV_CSS}
   /* ── Inline editing ─────────────────────────────────── */
   [contenteditable] { outline: none; border-radius: 3px; min-width: 4px; cursor: text; transition: background 0.1s; }
   [contenteditable]:hover  { background: rgba(24,95,165,0.07); }
-  [contenteditable]:focus  { background: rgba(24,95,165,0.12); outline: 1.5px dashed #185FA5; outline-offset: 2px; }
+  [contenteditable]:focus  { background: rgba(24,95,165,0.12); outline: 1.5px dashed var(--accent); outline-offset: 2px; }
   .header [contenteditable]:hover { background: rgba(255,255,255,0.08); }
   .header [contenteditable]:focus { background: rgba(255,255,255,0.14); outline-color: rgba(255,255,255,0.45); }
 
   /* ── Left toolbar (fixed sidebar) ────────────────────── */
   .cv-toolbar {
     position: fixed; top: 0; left: 0; bottom: 0; width: 230px; z-index: 9999;
-    background: #1a1a18; padding: 20px 16px;
+    background: #181816; padding: 20px 16px;
     display: flex; flex-direction: column; align-items: stretch; gap: 10px;
     overflow-y: auto;
     box-shadow: 2px 0 12px rgba(0,0,0,0.45);
-    font-family: 'Segoe UI', Arial, sans-serif;
+    font-family: var(--font-ui);
   }
   .tb-hint { font-size: 12px; color: rgba(255,255,255,0.4); line-height: 1.5; padding-bottom: 10px; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.12); }
   .tb-hint strong { color: rgba(255,255,255,0.85); font-weight: 500; display: block; margin-bottom: 2px; }
   .tb-actions { display: flex; flex-direction: column; gap: 8px; }
-  .tb-btn { border: none; padding: 9px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit; width: 100%; text-align: left; }
+  .tb-btn { border: none; padding: 9px 14px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit; width: 100%; text-align: left; transition: background 0.15s; }
   .tb-save  { background: rgba(255,255,255,0.1); color: white; }
   .tb-save:hover  { background: rgba(255,255,255,0.18); }
-  .tb-print { background: #185FA5; color: white; }
-  .tb-print:hover { background: #0C447C; }
-  .tb-select { border: none; padding: 8px 10px; border-radius: 6px; font-size: 12px; font-family: inherit; background: rgba(255,255,255,0.1); color: white; width: 100%; }
-  .tb-select option { color: #2C2C2A; }
+  .tb-print { background: var(--accent); color: white; }
+  .tb-print:hover { background: var(--accent-dark); }
+  .tb-select { border: none; padding: 8px 10px; border-radius: var(--radius-sm); font-size: 12px; font-family: inherit; background: rgba(255,255,255,0.1); color: white; width: 100%; }
+  .tb-select option { color: var(--ink); }
   .tb-link { font-size: 11px; color: rgba(255,255,255,0.55); text-decoration: underline; cursor: pointer; display: block; }
   .tb-link:hover { color: white; }
   .tb-status { font-size: 11px; color: rgba(255,255,255,0.55); }
@@ -171,14 +171,14 @@ ${CV_CSS}
   /* ── HR Expert sidebar — visible by default, occupies 30% of the screen ── */
   .hr-sidebar {
     position: fixed; top: 0; right: 0; width: 30%; height: 100%; z-index: 9998;
-    background: white; border-left: 1px solid #E0E0E0; box-shadow: -4px 0 16px rgba(0,0,0,0.12);
+    background: var(--surface); border-left: 1px solid var(--border); box-shadow: -4px 0 16px rgba(0,0,0,0.12);
     display: flex; flex-direction: column; transition: transform 0.2s;
-    font-family: 'Segoe UI', Arial, sans-serif;
+    font-family: var(--font-ui);
   }
   .hr-sidebar.collapsed { transform: translateX(100%); }
   .hr-sb-header { padding: 56px 16px 12px; border-bottom: 1px solid #eee; display: flex; flex-direction: column; gap: 8px; }
-  .hr-sb-title { font-size: 13px; font-weight: 600; color: #2C2C2A; }
-  .hr-sb-model { padding: 6px 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; font-family: inherit; }
+  .hr-sb-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .hr-sb-model { padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; font-family: inherit; }
   .hr-sb-messages { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
   .hr-sb-bubble { padding: 10px 13px; border-radius: 10px; font-size: 13.5px; line-height: 1.6; max-width: 90%; word-wrap: break-word; }
   .hr-sb-bubble p { margin: 0 0 8px; }
@@ -186,18 +186,18 @@ ${CV_CSS}
   .hr-sb-bubble ul { margin: 0 0 8px 18px; padding: 0; }
   .hr-sb-bubble ul:last-child { margin-bottom: 0; }
   .hr-sb-bubble li { margin-bottom: 4px; }
-  .hr-sb-bubble.user { background: #185FA5; color: white; align-self: flex-end; }
+  .hr-sb-bubble.user { background: var(--accent); color: white; align-self: flex-end; }
   .hr-sb-bubble.expert { background: #f0f0ee; color: #222; align-self: flex-start; }
   .hr-sb-input-row { padding: 12px 16px; border-top: 1px solid #eee; display: flex; gap: 8px; }
-  .hr-sb-input-row textarea { flex: 1; resize: none; height: 44px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 13px; }
-  .hr-sb-send { border: none; background: #185FA5; color: white; border-radius: 6px; padding: 0 14px; cursor: pointer; font-size: 13px; }
+  .hr-sb-input-row textarea { flex: 1; resize: none; height: 44px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; }
+  .hr-sb-send { border: none; background: var(--accent); color: white; border-radius: var(--radius-sm); padding: 0 14px; cursor: pointer; font-size: 13px; }
   .hr-sb-send:disabled { background: #bbb; cursor: not-allowed; }
 
   /* ── CV selection → HR concern ───────────────────────── */
   /* Highlighted text stays marked from the moment it's raised until the discussion resolves
      (changed or kept) — so the candidate never loses track of what's still "in review". */
   .hr-concern { background: #fffbdd; outline: 2px solid #e6a817; outline-offset: 2px; border-radius: 3px; }
-  .concern-popover { position: fixed; z-index: 10020; background: #2C2C2A; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.35); font-family: 'Segoe UI', Arial, sans-serif; }
+  .concern-popover { position: fixed; z-index: 10020; background: var(--ink); color: white; border: none; padding: 6px 12px; border-radius: var(--radius-sm); font-size: 12px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.35); font-family: var(--font-ui); }
   .concern-popover:hover { background: #444; }
   .concern-banner { background: #fff8e6; border-top: 1px solid #f0dca0; border-bottom: 1px solid #f0dca0; padding: 8px 16px; font-size: 11.5px; color: #7a5500; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .concern-banner span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -205,11 +205,11 @@ ${CV_CSS}
   .concern-resolve-row { display: flex; gap: 8px; padding: 10px 16px; border-bottom: 1px solid #eee; }
 
   /* ── Cover letter modal ─────────────────────────────── */
-  .cl-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 10001; display: none; align-items: center; justify-content: center; font-family: 'Segoe UI', Arial, sans-serif; }
+  .cl-modal-overlay { position: fixed; inset: 0; background: rgba(20,20,18,0.5); z-index: 10001; display: none; align-items: center; justify-content: center; font-family: var(--font-ui); }
   .cl-modal-overlay.open { display: flex; }
-  .cl-modal { background: white; width: 600px; max-width: 90%; max-height: 85vh; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column; overflow: hidden; }
+  .cl-modal { background: var(--surface); width: 600px; max-width: 90%; max-height: 85vh; border-radius: var(--radius-md); box-shadow: 0 16px 48px rgba(0,0,0,0.25); display: flex; flex-direction: column; overflow: hidden; }
   .cl-modal-header { padding: 16px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
-  .cl-modal-header h2 { font-size: 15px; color: #2C2C2A; }
+  .cl-modal-header h2 { font-size: 15px; color: var(--ink); }
   .cl-modal-close { border: none; background: none; font-size: 20px; cursor: pointer; color: #999; line-height: 1; }
   .cl-modal-close:hover { color: #333; }
   .cl-modal-body { padding: 20px; overflow-y: auto; font-size: 13.5px; line-height: 1.7; color: #333; }
@@ -219,10 +219,10 @@ ${CV_CSS}
 
   /* ── Busy overlay — shown for every in-flight request so the user is never left
        wondering if a click registered; setBusy() also greys out every other button. ── */
-  .busy-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 10010; display: none; align-items: center; justify-content: center; font-family: 'Segoe UI', Arial, sans-serif; }
+  .busy-overlay { position: fixed; inset: 0; background: rgba(20,20,18,0.4); z-index: 10010; display: none; align-items: center; justify-content: center; font-family: var(--font-ui); }
   .busy-overlay.open { display: flex; }
-  .busy-box { background: white; padding: 22px 30px; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.35); display: flex; align-items: center; gap: 14px; font-size: 14px; color: #2C2C2A; }
-  .busy-spinner { width: 20px; height: 20px; border: 3px solid #E0E0E0; border-top-color: #185FA5; border-radius: 50%; animation: busy-spin 0.8s linear infinite; flex-shrink: 0; }
+  .busy-box { background: var(--surface); padding: 22px 30px; border-radius: var(--radius-md); box-shadow: 0 16px 48px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 14px; font-size: 14px; color: var(--ink); }
+  .busy-spinner { width: 20px; height: 20px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: busy-spin 0.8s linear infinite; flex-shrink: 0; }
   @keyframes busy-spin { to { transform: rotate(360deg); } }
 
   /* ── Print: remove toolbar + edit indicators ────────── */
@@ -236,10 +236,22 @@ ${CV_CSS}
     [contenteditable]:focus { background: transparent !important; outline: none !important; }
   }
 
+  /* ── Narrow screens: the fixed 230px left toolbar + 30% right sidebar don't fit a phone
+       screen — turn the toolbar into a normal top bar and stop reserving sidebar space
+       (the sidebar itself still opens as an overlay via the existing toggle). ── */
+  @media (max-width: 900px) {
+    .cv-toolbar { position: static; width: auto; flex-direction: row; flex-wrap: wrap; box-shadow: none; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .tb-hint { display: none; }
+    .tb-actions { flex-direction: row; flex-wrap: wrap; }
+    .tb-btn, .tb-select { width: auto; }
+    .cv-main { margin-left: 0; margin-right: 0 !important; }
+    .hr-sidebar { width: 86%; }
+  }
+
   /* edu-item class overrides (generated with compound class names) */
-  .edu-item-degree { font-size: 13px; font-weight: 600; color: #2C2C2A; }
+  .edu-item-degree { font-size: 13px; font-weight: 600; color: var(--ink); }
   .edu-item-school { font-size: 12px; color: #666; }
-  .edu-item-year   { font-size: 11px; color: #185FA5; margin-top: 2px; }
+  .edu-item-year   { font-size: 11px; color: var(--accent); margin-top: 2px; }
 </style>
 </head>
 <body>

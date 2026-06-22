@@ -31,25 +31,31 @@ function generateComparisonTemplate(originalCv, tailoredCv, job, modifiedSection
 <style>
 ${CV_CSS}
   /* Comparison overrides */
-  body { background: #e8e8e6; padding: 0; }
+  body { background: #e6e6e3; padding: 0; }
   .page { margin: 0; }
 
   /* edu-item class overrides */
-  .edu-item-degree { font-size: 13px; font-weight: 600; color: #2C2C2A; }
+  .edu-item-degree { font-size: 13px; font-weight: 600; color: var(--ink); }
   .edu-item-school { font-size: 12px; color: #666; }
-  .edu-item-year   { font-size: 11px; color: #185FA5; margin-top: 2px; }
+  .edu-item-year   { font-size: 11px; color: var(--accent); margin-top: 2px; }
 
   /* Comparison chrome */
-  .comp-header { background: #2C2C2A; color: white; padding: 14px 32px; }
+  .comp-header { background: var(--ink); color: white; padding: 14px 32px; }
   .comp-header h1 { font-size: 15px; font-weight: 500; }
   .col-labels { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 1380px; margin: 14px auto 4px; padding: 0 24px; }
-  .col-label  { font-size: 11px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: #999; text-align: center; }
-  .col-label.right { color: #185FA5; }
+  .col-label  { font-size: 11px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted-light); text-align: center; }
+  .col-label.right { color: var(--accent); }
   .legend     { max-width: 1380px; margin: 0 auto 8px; padding: 0 24px; display: flex; align-items: center; gap: 8px; }
   .legend-box { width: 14px; height: 14px; background: #fffbdd; border: 2px solid #e6a817; border-radius: 2px; flex-shrink: 0; }
   .legend-text { font-size: 12px; color: #666; }
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 1380px; margin: 0 auto 40px; padding: 0 24px; }
   .col  { zoom: 0.62; }
+
+  @media (max-width: 900px) {
+    .col-labels, .legend, .cols { padding: 0 14px; }
+    .cols { grid-template-columns: 1fr; }
+    .col  { zoom: 1; }
+  }
 </style>
 </head>
 <body>
