@@ -301,7 +301,7 @@ IMPORTANT: skills and key_qualifications must be flat arrays of plain strings on
   const messages = [...thread, { role: 'user', content: userMessage }];
   const message = await client.messages.create({
     model: MODEL,
-    max_tokens: 3500,
+    max_tokens: 4096, // bumped from 3500 to reduce truncation risk on long/senior CVs
     temperature: 0, // section list is a closed decision already made by reviewCV — the same CV/job/sections must produce the same set of sections every time
     system: writerSystemPrompt(cvText, job, preferences),
     messages,

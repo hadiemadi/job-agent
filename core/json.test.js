@@ -29,6 +29,29 @@ describe('extractJSON', () => {
   test('throws when no JSON is present', () => {
     expect(() => extractJSON('no json here at all')).toThrow('No JSON found in model response');
   });
+
+  test('repairs an unescaped double-quote inside an array element (the "Expected \',\' or \']\'" bug)', () => {
+    // Mimics the production failure: the model wrote a bullet point with an unescaped
+    // quoted program name, breaking the string mid-array-element. extractJSON used to
+    // return this candidate as-is (only slicing + control-char sanitizing, never actually
+    // validating), so the caller's JSON.parse blew up downstream with a confusing
+    // "Expected ',' or ']' after array element" position error.
+    const broken = '{"cv": {"bullets": ["Led the "Atlas" program to deliver 5G radios on time", "Cut costs by 20%"]}}';
+    expect(() => JSON.parse(broken)).toThrow();
+
+    const fixed = extractJSON(broken);
+    expect(() => JSON.parse(fixed)).not.toThrow();
+    expect(JSON.parse(fixed)).toEqual({
+      cv: { bullets: ['Led the "Atlas" program to deliver 5G radios on time', 'Cut costs by 20%'] },
+    });
+  });
+
+  test('throws a clear error when even jsonrepair cannot fix the candidate', () => {
+    // "{[}..." slices to the candidate "{[}" — mismatched bracket types that jsonrepair
+    // itself cannot resolve, not just a missing-bracket case extractJSON's own slicing logic
+    // already catches (that's "Unclosed JSON in model response", a different message).
+    expect(() => extractJSON('prefix {[} suffix')).toThrow('Model JSON could not be parsed or repaired:');
+  });
 });
 
 describe('sanitizeJsonControlChars', () => {
