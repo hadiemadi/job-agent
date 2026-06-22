@@ -122,6 +122,18 @@ const fse               = require('fs-extra');
 const request           = require('supertest');
 const app               = require('./server');
 
+// services/session.js now keys sessions off a "sid" cookie (AsyncLocalStorage per request),
+// so multiple users no longer share one global appSession. These tests were written when
+// there WAS one global session and deliberately chain several requests expecting state
+// (cvText, confirmedContact, hrThread, coachHistory...) to persist between them — that's
+// still true for one real browser, since it sends the same cookie on every request. A plain
+// `request(app)` call doesn't carry cookies between calls, so it now looks like a fresh user
+// each time. `request.agent(app)` is supertest's cookie jar — it keeps the "sid" cookie
+// returned by the first response and resends it on every subsequent call, exactly
+// reproducing one continuous browser session. Every former `request(app)` call below now
+// uses this shared `agent` instead.
+const agent              = request.agent(app);
+
 // ── Default return values — reset before every test ───────────────────────────
 
 beforeEach(() => {
@@ -182,55 +194,55 @@ beforeEach(() => {
 
 describe('Error handling — no CV in session', () => {
   test('POST /review-cv → 400 when no CV is loaded', async () => {
-    const res = await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    const res = await agent.post('/review-cv').send({ job: MOCK_JOB });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('POST /coach/discuss → 400 when no CV is loaded', async () => {
-    const res = await request(app).post('/coach/discuss').send({ message: 'Hello', gapIndex: 0 });
+    const res = await agent.post('/coach/discuss').send({ message: 'Hello', gapIndex: 0 });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('POST /hr/refine → 400 when no CV is loaded', async () => {
-    const res = await request(app).post('/hr/refine').send({ gapIndex: 0, conversation: [] });
+    const res = await agent.post('/hr/refine').send({ gapIndex: 0, conversation: [] });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('POST /hr/chat → 400 when no CV is loaded', async () => {
-    const res = await request(app).post('/hr/chat').send({ message: 'Hello' });
+    const res = await agent.post('/hr/chat').send({ message: 'Hello' });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('POST /hr/apply-concern → 400 when no CV is loaded', async () => {
-    const res = await request(app).post('/hr/apply-concern').send({ fieldText: 'x', selectedText: 'x' });
+    const res = await agent.post('/hr/apply-concern').send({ fieldText: 'x', selectedText: 'x' });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('POST /coach/analyze → 400 when no CV is loaded', async () => {
-    const res = await request(app).post('/coach/analyze').send({ direction: 'leadership' });
+    const res = await agent.post('/coach/analyze').send({ direction: 'leadership' });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('POST /coach/path → 400 when no CV is loaded', async () => {
-    const res = await request(app).post('/coach/path').send({ roleTitle: 'Director of Engineering' });
+    const res = await agent.post('/coach/path').send({ roleTitle: 'Director of Engineering' });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('POST /adjust-language → 400 when no CV is loaded', async () => {
-    const res = await request(app).post('/adjust-language').send({ cvData: MOCK_CV_DATA, job: MOCK_JOB, languageLevel: 3 });
+    const res = await agent.post('/adjust-language').send({ cvData: MOCK_CV_DATA, job: MOCK_JOB, languageLevel: 3 });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('POST /build-comparison → 400 when no CV has been tailored yet', async () => {
-    const res = await request(app).post('/build-comparison').send({ job: MOCK_JOB });
+    const res = await agent.post('/build-comparison').send({ job: MOCK_JOB });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
@@ -240,20 +252,20 @@ describe('Error handling — no CV in session', () => {
 
 describe('Error handling — missing required fields', () => {
   test('POST /fetch-job → 400 when neither url nor jobText is provided', async () => {
-    const res = await request(app).post('/fetch-job').send({});
+    const res = await agent.post('/fetch-job').send({});
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('POST /review-cv → 400 when job field is missing', async () => {
     // Even if CV is loaded, omitting `job` must return 400
-    const res = await request(app).post('/review-cv').send({});
+    const res = await agent.post('/review-cv').send({});
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('POST /coach/analyze → 400 when direction field is missing', async () => {
-    const res = await request(app).post('/coach/analyze').send({});
+    const res = await agent.post('/coach/analyze').send({});
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
@@ -263,7 +275,7 @@ describe('Error handling — missing required fields', () => {
 
 describe('POST /upload-cv', () => {
   test('returns 200 with cvPath and cvData when a PDF is uploaded', async () => {
-    const res = await request(app).post('/upload-cv').attach('cv', 'cv.pdf');
+    const res = await agent.post('/upload-cv').attach('cv', 'cv.pdf');
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('cvPath');
     expect(res.body).toHaveProperty('cvData');
@@ -277,7 +289,7 @@ describe('POST /upload-cv', () => {
 
 describe('POST /fetch-job', () => {
   test('returns 200 with job object when jobText is pasted directly', async () => {
-    const res = await request(app)
+    const res = await agent
       .post('/fetch-job')
       .send({ jobText: 'Technical Program Manager at Apple. Requirements: RF, ASIC.' });
     expect(res.status).toBe(200);
@@ -288,7 +300,7 @@ describe('POST /fetch-job', () => {
   });
 
   test('returns 200 when a job URL is provided (scraper mocked)', async () => {
-    const res = await request(app)
+    const res = await agent
       .post('/fetch-job')
       .send({ url: 'https://linkedin.com/jobs/view/tpm-apple-123' });
     expect(res.status).toBe(200);
@@ -297,7 +309,7 @@ describe('POST /fetch-job', () => {
 
   test('returns 422 with loginWall flag when scraper hits a LinkedIn login wall', async () => {
     scrapeJobPage.mockRejectedValue(new Error('LOGIN_WALL'));
-    const res = await request(app)
+    const res = await agent
       .post('/fetch-job')
       .send({ url: 'https://linkedin.com/jobs/view/private-123' });
     expect(res.status).toBe(422);
@@ -317,12 +329,12 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     reviewCV.mockResolvedValue({ review: MOCK_REVIEW, thread: [] });
     analyzeGaps.mockResolvedValue(MOCK_GAPS);
     selectTopGaps.mockImplementation(gaps => gaps);
-    await request(app).post('/upload-cv').attach('cv', 'cv.pdf');
-    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    await agent.post('/upload-cv').attach('cv', 'cv.pdf');
+    await agent.post('/review-cv').send({ job: MOCK_JOB });
   });
 
   test('POST /review-cv returns 200 with full review structure', async () => {
-    const res = await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    const res = await agent.post('/review-cv').send({ job: MOCK_JOB });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('overall_match');
     expect(res.body).toHaveProperty('strengths');
@@ -333,12 +345,12 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   });
 
   test('POST /confirm-contact stores clientPreferences and /review-cv passes them through', async () => {
-    const contactRes = await request(app).post('/confirm-contact').send({
+    const contactRes = await agent.post('/confirm-contact').send({
       name: 'Hadi Emadi', customInstructions: 'Never mention my current employer by name', tone: 2,
     });
     expect(contactRes.status).toBe(200);
 
-    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    await agent.post('/review-cv').send({ job: MOCK_JOB });
     const lastCall = reviewCV.mock.calls[reviewCV.mock.calls.length - 1];
     expect(lastCall[3]).toEqual({
       tone: 2, customInstructions: 'Never mention my current employer by name', languageLevel: 2,
@@ -351,8 +363,8 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     classify.mockResolvedValue({ bucket: 'discipline', text: 'Hands-on GaN PA tuning experience' });
     reviewCV.mockResolvedValue({ review: MOCK_REVIEW, field: { field: 'RF/Hardware Engineering', seniority: 'senior' }, thread: [] });
 
-    await request(app).post('/confirm-contact').send({ name: 'Hadi Emadi', customInstructions: 'Hands-on GaN PA tuning experience' });
-    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    await agent.post('/confirm-contact').send({ name: 'Hadi Emadi', customInstructions: 'Hands-on GaN PA tuning experience' });
+    await agent.post('/review-cv').send({ job: MOCK_JOB });
 
     expect(pinDisciplineSkill).toHaveBeenCalledWith(
       { field: 'RF/Hardware Engineering', seniority: 'senior' },
@@ -361,7 +373,7 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
 
     // A second /review-cv in the same contact-confirmation session must not re-pin.
     const callsBefore = pinDisciplineSkill.mock.calls.length;
-    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    await agent.post('/review-cv').send({ job: MOCK_JOB });
     expect(pinDisciplineSkill.mock.calls.length).toBe(callsBefore);
   });
 
@@ -369,36 +381,36 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     classify.mockResolvedValue({ bucket: 'general', text: 'Prefer a one-page CV.' });
     reviewCV.mockResolvedValue({ review: MOCK_REVIEW, field: { field: 'RF/Hardware Engineering', seniority: 'senior' }, thread: [] });
 
-    await request(app).post('/confirm-contact').send({ name: 'Hadi Emadi', customInstructions: 'Prefer a one-page CV.' });
-    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    await agent.post('/confirm-contact').send({ name: 'Hadi Emadi', customInstructions: 'Prefer a one-page CV.' });
+    await agent.post('/review-cv').send({ job: MOCK_JOB });
 
     expect(pinDisciplineSkill).not.toHaveBeenCalled();
   });
 
   test('POST /confirm-contact with gapSeverities filters which severities selectTopGaps sees', async () => {
     selectTopGaps.mockClear();
-    await request(app).post('/confirm-contact').send({ name: 'Hadi Emadi', gapSeverities: ['major'] });
-    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    await agent.post('/confirm-contact').send({ name: 'Hadi Emadi', gapSeverities: ['major'] });
+    await agent.post('/review-cv').send({ job: MOCK_JOB });
     const lastCall = selectTopGaps.mock.calls[selectTopGaps.mock.calls.length - 1];
     expect(lastCall[1]).toEqual(['major']);
   });
 
   test('POST /confirm-contact with extensiveSearch makes /review-cv research conventions once and cache the result', async () => {
     researchCvConventions.mockResolvedValue('In Sweden, hobbies are commonly listed; photos are common.');
-    await request(app).post('/confirm-contact').send({ name: 'Hadi Emadi', extensiveSearch: true });
+    await agent.post('/confirm-contact').send({ name: 'Hadi Emadi', extensiveSearch: true });
 
-    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    await agent.post('/review-cv').send({ job: MOCK_JOB });
     expect(researchCvConventions).toHaveBeenCalledWith(MOCK_JOB, expect.any(String));
     let lastCall = reviewCV.mock.calls[reviewCV.mock.calls.length - 1];
     expect(lastCall[3].conventionsResearch).toBe('In Sweden, hobbies are commonly listed; photos are common.');
 
     const callsBefore = researchCvConventions.mock.calls.length;
-    await request(app).post('/review-cv').send({ job: MOCK_JOB });
+    await agent.post('/review-cv').send({ job: MOCK_JOB });
     expect(researchCvConventions.mock.calls.length).toBe(callsBefore); // cached — not re-researched
   });
 
   test('POST /rewrite returns 200 with filePath only — comparison is built lazily, not here', async () => {
-    const res = await request(app).post('/rewrite').send({
+    const res = await agent.post('/rewrite').send({
       job: MOCK_JOB,
       cvPath: 'cv.pdf',
       autoChanges: [{ description: 'Move ASIC to top of skills' }],
@@ -419,7 +431,7 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
       .mockResolvedValueOnce({ checks: [], verdict: 'FIX_REQUIRED', required_edits: ['Remove the company name "Apple" from the summary'] })
       .mockResolvedValueOnce({ checks: [], verdict: 'SHIP', required_edits: [] });
 
-    const res = await request(app).post('/rewrite').send({
+    const res = await agent.post('/rewrite').send({
       job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [],
     });
 
@@ -436,7 +448,7 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   test('POST /rewrite surfaces remaining review issues after exhausting the 2-pass revision limit', async () => {
     reviewTailoredCV.mockResolvedValue({ checks: [], verdict: 'FIX_REQUIRED', required_edits: ['Remove the company name "Apple" from the summary'] });
 
-    const res = await request(app).post('/rewrite').send({
+    const res = await agent.post('/rewrite').send({
       job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [],
     });
 
@@ -448,16 +460,16 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   });
 
   test('POST /build-comparison returns 200 with comparisonPath after a CV has been tailored', async () => {
-    await request(app).post('/rewrite').send({
+    await agent.post('/rewrite').send({
       job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [],
     });
-    const res = await request(app).post('/build-comparison').send({ job: MOCK_JOB });
+    const res = await agent.post('/build-comparison').send({ job: MOCK_JOB });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('comparisonPath');
   });
 
   test('POST /coach/discuss returns 200 with a reply string', async () => {
-    const res = await request(app)
+    const res = await agent
       .post('/coach/discuss')
       .send({ message: 'I have 10 years of RF hardware experience.', gapIndex: 0 });
     expect(res.status).toBe(200);
@@ -467,7 +479,7 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   });
 
   test('POST /hr/refine returns 200 with verdict and refined_description', async () => {
-    const res = await request(app).post('/hr/refine').send({
+    const res = await agent.post('/hr/refine').send({
       gapIndex: 0,
       conversation: [{ role: 'user', content: 'I am studying for PMP right now.' }],
     });
@@ -478,7 +490,7 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   });
 
   test('POST /hr/refine → 400 when gapIndex is out of range', async () => {
-    const res = await request(app).post('/hr/refine').send({
+    const res = await agent.post('/hr/refine').send({
       gapIndex: 999,
       conversation: [],
     });
@@ -486,20 +498,20 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   });
 
   test('POST /hr/chat returns 200 with a reply string', async () => {
-    const res = await request(app).post('/hr/chat').send({ message: 'Why was PMP flagged as a gap?' });
+    const res = await agent.post('/hr/chat').send({ message: 'Why was PMP flagged as a gap?' });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('reply');
     expect(typeof res.body.reply).toBe('string');
   });
 
   test('POST /hr/chat → 400 when message is missing', async () => {
-    const res = await request(app).post('/hr/chat').send({});
+    const res = await agent.post('/hr/chat').send({});
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('POST /hr/chat with a concern injects the selected excerpt and first-turn quote instruction', async () => {
-    await request(app).post('/hr/chat').send({
+    await agent.post('/hr/chat').send({
       message: 'Should I mention this differently?',
       concern: { selectedText: 'led RF integration', isFirst: true },
     });
@@ -510,7 +522,7 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
 
   test('POST /hr/apply-concern returns 200 with revisedText and changed flag', async () => {
     applyConcernChange.mockResolvedValue({ revisedText: 'Led RF integration across 3 product lines.', changed: true, thread: [] });
-    const res = await request(app).post('/hr/apply-concern').send({
+    const res = await agent.post('/hr/apply-concern').send({
       job: MOCK_JOB, fieldText: 'Led RF integration.', selectedText: 'RF integration',
     });
     expect(res.status).toBe(200);
@@ -520,7 +532,7 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
 
   test('POST /hr/apply-concern propagates changed:false when the discussion concluded no edit was needed', async () => {
     applyConcernChange.mockResolvedValue({ revisedText: 'Led RF integration.', changed: false, thread: [] });
-    const res = await request(app).post('/hr/apply-concern').send({
+    const res = await agent.post('/hr/apply-concern').send({
       job: MOCK_JOB, fieldText: 'Led RF integration.', selectedText: 'RF integration',
     });
     expect(res.status).toBe(200);
@@ -528,13 +540,13 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   });
 
   test('POST /hr/apply-concern → 400 when fieldText or selectedText is missing', async () => {
-    const res = await request(app).post('/hr/apply-concern').send({ job: MOCK_JOB });
+    const res = await agent.post('/hr/apply-concern').send({ job: MOCK_JOB });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('POST /coach/analyze returns 200 with profile and suggestedRoles array', async () => {
-    const res = await request(app).post('/coach/analyze').send({ direction: 'leadership' });
+    const res = await agent.post('/coach/analyze').send({ direction: 'leadership' });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('profile');
     expect(res.body).toHaveProperty('suggestedRoles');
@@ -542,7 +554,7 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   });
 
   test('POST /coach/path returns 200 with key_challenges and skill_gaps', async () => {
-    const res = await request(app).post('/coach/path').send({ roleTitle: 'Director of Engineering' });
+    const res = await agent.post('/coach/path').send({ roleTitle: 'Director of Engineering' });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('key_challenges');
     expect(res.body).toHaveProperty('skill_gaps');
@@ -550,7 +562,7 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   });
 
   test('POST /adjust-language returns 200 with updated cvData and filePath', async () => {
-    const res = await request(app).post('/adjust-language').send({
+    const res = await agent.post('/adjust-language').send({
       cvData: MOCK_CV_DATA, job: MOCK_JOB, languageLevel: 5,
     });
     expect(res.status).toBe(200);
@@ -562,15 +574,15 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   });
 
   test('POST /adjust-language → 400 when cvData or job is missing', async () => {
-    const res = await request(app).post('/adjust-language').send({ job: MOCK_JOB });
+    const res = await agent.post('/adjust-language').send({ job: MOCK_JOB });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('HR sidebar display history survives a wording regeneration (not cleared)', async () => {
-    await request(app).post('/hr/chat').send({ message: 'Why was the summary reworded?' });
+    await agent.post('/hr/chat').send({ message: 'Why was the summary reworded?' });
 
-    await request(app).post('/adjust-language').send({ cvData: MOCK_CV_DATA, job: MOCK_JOB, languageLevel: 3 });
+    await agent.post('/adjust-language').send({ cvData: MOCK_CV_DATA, job: MOCK_JOB, languageLevel: 3 });
     const lastCall = adjustLanguageLevel.mock.calls[adjustLanguageLevel.mock.calls.length - 1];
     const historyPassedIn = lastCall[6]; // hrDisplayHistory argument
 
@@ -579,9 +591,9 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   });
 
   test('Career Coach thread persists across /review-cv calls (not reset per job)', async () => {
-    await request(app).post('/coach/discuss').send({ message: 'I led a 12-person RF team.', gapIndex: 0 });
-    await request(app).post('/review-cv').send({ job: MOCK_JOB });
-    await request(app).post('/coach/discuss').send({ message: 'Anything else I should mention?', gapIndex: 0 });
+    await agent.post('/coach/discuss').send({ message: 'I led a 12-person RF team.', gapIndex: 0 });
+    await agent.post('/review-cv').send({ job: MOCK_JOB });
+    await agent.post('/coach/discuss').send({ message: 'Anything else I should mention?', gapIndex: 0 });
 
     // The history passed into this last call would be [] if /review-cv still wiped
     // appSession.coachHistory — instead it must carry over the first exchange.
@@ -594,25 +606,25 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
 
 describe('POST /export-word', () => {
   test('returns 200 with wordPath when cvData and job are provided', async () => {
-    const res = await request(app).post('/export-word').send({ cvData: MOCK_CV_DATA, job: MOCK_JOB });
+    const res = await agent.post('/export-word').send({ cvData: MOCK_CV_DATA, job: MOCK_JOB });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('wordPath');
   });
 
   test('returns 400 when cvData is missing', async () => {
-    const res = await request(app).post('/export-word').send({ job: MOCK_JOB });
+    const res = await agent.post('/export-word').send({ job: MOCK_JOB });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('returns 400 when job is missing', async () => {
-    const res = await request(app).post('/export-word').send({ cvData: MOCK_CV_DATA });
+    const res = await agent.post('/export-word').send({ cvData: MOCK_CV_DATA });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('uses the custom template renderer when templatePath is provided', async () => {
-    const res = await request(app).post('/export-word').send({
+    const res = await agent.post('/export-word').send({
       cvData: MOCK_CV_DATA, job: MOCK_JOB, templatePath: 'uploads/templates/fake.docx',
     });
     expect(res.status).toBe(200);
@@ -622,7 +634,7 @@ describe('POST /export-word', () => {
   });
 
   test('returns 400 when templatePath escapes uploads/templates', async () => {
-    const res = await request(app).post('/export-word').send({
+    const res = await agent.post('/export-word').send({
       cvData: MOCK_CV_DATA, job: MOCK_JOB, templatePath: '../../etc/passwd',
     });
     expect(res.status).toBe(400);
@@ -630,7 +642,7 @@ describe('POST /export-word', () => {
   });
 
   test('uses the alternate built-in template when templateStyle is "alternate"', async () => {
-    const res = await request(app).post('/export-word').send({
+    const res = await agent.post('/export-word').send({
       cvData: MOCK_CV_DATA, job: MOCK_JOB, templateStyle: 'alternate',
     });
     expect(res.status).toBe(200);
@@ -640,7 +652,7 @@ describe('POST /export-word', () => {
   });
 
   test('returns 501 when templateStyle is "original"', async () => {
-    const res = await request(app).post('/export-word').send({
+    const res = await agent.post('/export-word').send({
       cvData: MOCK_CV_DATA, job: MOCK_JOB, templateStyle: 'original',
     });
     expect(res.status).toBe(501);
@@ -652,7 +664,7 @@ describe('POST /export-word', () => {
 
 describe('POST /upload-template', () => {
   test('returns 200 with templatePath for a valid .docx upload', async () => {
-    const res = await request(app)
+    const res = await agent
       .post('/upload-template')
       .attach('template', 'templates/word/starter_template.docx');
     expect(res.status).toBe(200);
@@ -661,7 +673,7 @@ describe('POST /upload-template', () => {
   });
 
   test('returns 400 when no file is attached', async () => {
-    const res = await request(app).post('/upload-template');
+    const res = await agent.post('/upload-template');
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
@@ -682,5 +694,37 @@ describe('#contactCard Advanced options panel (public/index.html)', () => {
     const match = html.match(/<input[^>]*id="ci-extensive-search"[^>]*>/);
     expect(match).not.toBeNull();
     expect(match[0]).not.toMatch(/\bchecked\b/);
+  });
+});
+
+// ── 9. Per-browser session isolation (services/session.js) ─────────────────────
+
+describe('Per-browser session isolation', () => {
+  test('two requests with no cookie each get their own distinct "sid" cookie', async () => {
+    const resA = await request(app).post('/confirm-contact').send({ name: 'AAA', customInstructions: '' });
+    const resB = await request(app).post('/confirm-contact').send({ name: 'BBB', customInstructions: '' });
+    const sidA = (resA.headers['set-cookie'] || []).find(c => c.startsWith('sid='));
+    const sidB = (resB.headers['set-cookie'] || []).find(c => c.startsWith('sid='));
+    expect(sidA).toBeDefined();
+    expect(sidB).toBeDefined();
+    expect(sidA).not.toBe(sidB);
+  });
+
+  test('two different session cookies (two browsers) get two independent sessions — confirmedContact does not leak between them', async () => {
+    const agentA = request.agent(app);
+    const agentB = request.agent(app);
+
+    await agentA.post('/confirm-contact').send({ name: 'AAA', customInstructions: '' });
+    await agentB.post('/confirm-contact').send({ name: 'BBB', customInstructions: '' });
+
+    await agentA.post('/rewrite').send({ job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [] });
+    await agentB.post('/rewrite').send({ job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [] });
+
+    const calls = rewriteCVWithChanges.mock.calls;
+    const confirmedContactA = calls[calls.length - 2][6]; // 7th positional arg = confirmedContact
+    const confirmedContactB = calls[calls.length - 1][6];
+
+    expect(confirmedContactA.name).toBe('AAA');
+    expect(confirmedContactB.name).toBe('BBB');
   });
 });

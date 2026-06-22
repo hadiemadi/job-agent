@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
+    "cookie-parser": "^1.4.7",
     "docx": "^9.7.1",
     "docxtemplater": "^3.69.0",
     "dotenv": "^17.4.2",
