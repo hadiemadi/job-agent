@@ -19,6 +19,21 @@
 
 <div class="container">
 
+  <!-- ── First-time onboarding (dismissible — see app.js initIntro/dismissIntro) ── -->
+  <div class="intro-panel" id="introPanel" style="display:none;">
+    <div class="intro-icon">👋</div>
+    <div class="intro-body">
+      <div class="intro-title">New here? Here's how it works</div>
+      <div class="intro-steps">
+        <strong>1. Upload your CV</strong> — PDF, we'll read it automatically.<br>
+        <strong>2. Check your profile &amp; preferences</strong> — confirm your details before we start.<br>
+        <strong>3. Review with HR</strong> — see strengths, gaps, and what we'd change.<br>
+        <strong>4. Get your tailored CV</strong> — edit it, export to Word, and apply.
+      </div>
+      <button class="intro-dismiss" onclick="dismissIntro()">Got it</button>
+    </div>
+  </div>
+
   <!-- ── Input card ─────────────────────────────── -->
   <div class="card" id="inputCard">
     <h2>Tailor your CV to a job</h2>

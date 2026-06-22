@@ -9,6 +9,34 @@ function show(id) { document.getElementById(id).style.display = ''; }
 function hide(id) { document.getElementById(id).style.display = 'none'; }
 function el(id) { return document.getElementById(id); }
 
+// ── First-time onboarding ──────────────────────────────────────────────────────
+// "Seen" state is a plain client-set cookie (NOT localStorage/sessionStorage, per
+// requirement) with a year-long expiry — persists a dismissal across visits without any
+// backend/session change.
+const ONBOARD_COOKIE = 'onboarded';
+
+function getCookie(name) {
+  return document.cookie.split('; ').reduce((found, part) => {
+    const eq = part.indexOf('=');
+    if (eq === -1) return found;
+    return part.slice(0, eq) === name ? decodeURIComponent(part.slice(eq + 1)) : found;
+  }, null);
+}
+
+function setCookie(name, value, days) {
+  const expires = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+}
+
+function dismissIntro() {
+  hide('introPanel');
+  setCookie(ONBOARD_COOKIE, '1', 365);
+}
+
+// Only shown for first-time visitors — returning users (cookie already set) never see it,
+// so this can't block or slow down anyone who's already used the app.
+if (!getCookie(ONBOARD_COOKIE)) show('introPanel');
+
 function escapeHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
