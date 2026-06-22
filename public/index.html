@@ -41,7 +41,7 @@
   <!-- ── Contact review pop-up ───────────────────── -->
   <div class="modal-overlay" id="contactCard" style="display:none;">
     <div class="card modal-box">
-      <h2>Check your contact info</h2>
+      <h2>Profile &amp; Preferences</h2>
       <p class="contact-hint">We read this from your CV — correct anything that looks wrong. These values will be used on every tailored CV, exactly as you type them here.</p>
       <div class="form-row">
         <div class="form-group">
@@ -104,6 +104,10 @@
             Refresh discipline knowledge from web <span class="opt">(slower)</span>
           </label>
         </div>
+        <!-- Future: LLM model picker — once each search/call has a visible price tag
+             (see core/claude.js's spend metering), let the user choose which model runs
+             their searches here. Not built yet — see CLAUDE.md Bug Backlog item #13. -->
+
       </div>
       <button class="btn btn-go" onclick="confirmContact()" style="margin-top:14px;">Confirm &amp; continue →</button>
       <div id="contactStatus" style="display:none;margin-top:8px;"></div>
