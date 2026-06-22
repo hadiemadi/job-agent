@@ -16,7 +16,7 @@ services:
       - key: CLAUDE_MODEL
         value: claude-sonnet-4-6
       - key: DAILY_AI_BUDGET_USD
-        value: "5"
+        value: "3"
       - key: AI_RATE_LIMIT_MAX
         value: "20"
       - key: RATE_LIMIT_MAX
