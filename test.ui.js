@@ -25,6 +25,7 @@ jest.mock('./agents/recruiter', () => ({
   chatWithHRExpert:      jest.fn(),
   researchCvConventions: jest.fn(),
   pinDisciplineSkill:    jest.fn(),
+  reviewTailoredCV:      jest.fn(),
 }));
 
 jest.mock('./agents/inputRouter', () => ({

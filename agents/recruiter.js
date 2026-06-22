@@ -254,7 +254,52 @@ not generic advice. Return a plain-text summary, under 12 lines, no markdown hea
   return message.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
 }
 
+// Splits recruiter-core.md on the PRE-RELEASE REVIEW heading so the reviewer's prompt is ONLY
+// the checklist — not the writing/persona instructions the writer used to produce the draft.
+// This is what makes the review independent: the reviewer never sees hrSystemPrompt's
+// "you are a top-tier HR strategist, here's how to write/lay out a CV" framing, only the
+// fresh-eyes checklist that judges the finished result.
+function preReleaseReviewPrompt() {
+  const core = loadCore('recruiter-core');
+  const marker = 'PRE-RELEASE REVIEW';
+  const idx = core.indexOf(marker);
+  return idx === -1 ? core : core.slice(idx);
+}
+
+// Independent quality gate, run before any tailored CV reaches the candidate. Deliberately a
+// fresh, separate client.messages.create call with no shared thread/history — it must judge
+// only the final tailored CV against the job and the original source CV, with zero visibility
+// into the writer's reasoning, so an elementary mistake (e.g. the target company name baked
+// into the summary) gets caught by independent eyes rather than rubber-stamped by the same
+// judgment that produced it.
+async function reviewTailoredCV({ tailoredCv, job, sourceCvText }) {
+  const userMessage = `TARGET JOB: ${job.job_title} at ${job.employer_name || job.company || ''}
+
+CANDIDATE'S ORIGINAL/SOURCE CV (verify nothing was fabricated and nothing genuine was dropped):
+${sourceCvText}
+
+TAILORED CV TO REVIEW (JSON):
+${JSON.stringify(tailoredCv, null, 2)}
+
+Go through the checklist one item at a time. Return JSON only:
+{
+  "checks": [{ "item": "", "verdict": "PASS|FAIL", "evidence": "", "fix": "" }],
+  "verdict": "SHIP|FIX_REQUIRED",
+  "required_edits": [""]
+}`;
+
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 2500,
+    temperature: 0, // a gate, not a creative pass — same CV/job must get the same verdict every time
+    system: preReleaseReviewPrompt(),
+    messages: [{ role: 'user', content: userMessage }],
+  });
+  const raw = extractJSON(message.content[0].text);
+  return JSON.parse(raw);
+}
+
 module.exports = {
   reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions,
-  hrSystemPrompt, stealthWritingDirective, pinDisciplineSkill,
+  hrSystemPrompt, stealthWritingDirective, pinDisciplineSkill, reviewTailoredCV,
 };

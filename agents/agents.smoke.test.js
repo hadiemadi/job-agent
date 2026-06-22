@@ -39,8 +39,8 @@ describe('agents/extractor', () => {
 
 describe('agents/recruiter', () => {
   const recruiter = require('./recruiter');
-  test('exports reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions, hrSystemPrompt, stealthWritingDirective, pinDisciplineSkill', () => {
-    ['reviewCV', 'analyzeJobFit', 'refineWithHR', 'chatWithHRExpert', 'researchCvConventions', 'hrSystemPrompt', 'stealthWritingDirective', 'pinDisciplineSkill']
+  test('exports reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions, hrSystemPrompt, stealthWritingDirective, pinDisciplineSkill, reviewTailoredCV', () => {
+    ['reviewCV', 'analyzeJobFit', 'refineWithHR', 'chatWithHRExpert', 'researchCvConventions', 'hrSystemPrompt', 'stealthWritingDirective', 'pinDisciplineSkill', 'reviewTailoredCV']
       .forEach(name => expect(typeof recruiter[name]).toBe('function'));
   });
   test('pinDisciplineSkill persists a pinned entry into that field\'s discipline store', () => {
@@ -72,6 +72,30 @@ describe('agents/recruiter', () => {
     const prompt = recruiter.hrSystemPrompt('cv text', { job_title: 'TPM' }, {}, { field: 'RF/Hardware Engineering', seniority: 'senior' });
     expect(prompt).toContain('CANDIDATE FIELD/DISCIPLINE: RF/Hardware Engineering');
     expect(prompt).toContain('senior');
+  });
+  test('reviewTailoredCV uses ONLY the PRE-RELEASE REVIEW section as its system prompt, not the writing/persona instructions', async () => {
+    mockTextResponse(JSON.stringify({ checks: [], verdict: 'SHIP', required_edits: [] }));
+    await recruiter.reviewTailoredCV({ tailoredCv: { summary: 'Senior TPM with RF background.' }, job: { job_title: 'TPM', employer_name: 'Acme Corp' }, sourceCvText: 'source cv text' });
+    const call = client.messages.create.mock.calls[0][0];
+    expect(call.system).toContain('PRE-RELEASE REVIEW');
+    expect(call.system).toContain('CHECKLIST');
+    expect(call.system).not.toContain('top-tier Senior HR Manager');
+  });
+  test('reviewTailoredCV returns FIX_REQUIRED with required_edits when the target company name leaked into the CV', async () => {
+    mockTextResponse(JSON.stringify({
+      checks: [{ item: 'Target company or role name appears anywhere in the CV body or summary', verdict: 'FAIL', evidence: 'Summary mentions "Acme Corp"', fix: 'Remove "Acme Corp" from the summary' }],
+      verdict: 'FIX_REQUIRED',
+      required_edits: ['Remove the company name "Acme Corp" from the summary'],
+    }));
+    const result = await recruiter.reviewTailoredCV({ tailoredCv: { summary: 'Excited to join Acme Corp as a TPM.' }, job: { job_title: 'TPM', employer_name: 'Acme Corp' }, sourceCvText: 'source cv text' });
+    expect(result.verdict).toBe('FIX_REQUIRED');
+    expect(result.required_edits.join(' ')).toMatch(/Acme Corp/);
+  });
+  test('reviewTailoredCV returns SHIP for a clean CV with no red flags', async () => {
+    mockTextResponse(JSON.stringify({ checks: [{ item: 'Target company or role name', verdict: 'PASS', evidence: '', fix: '' }], verdict: 'SHIP', required_edits: [] }));
+    const result = await recruiter.reviewTailoredCV({ tailoredCv: { summary: 'Senior TPM with deep RF background.' }, job: { job_title: 'TPM', employer_name: 'Acme Corp' }, sourceCvText: 'source cv text' });
+    expect(result.verdict).toBe('SHIP');
+    expect(result.required_edits).toEqual([]);
   });
 });
 
