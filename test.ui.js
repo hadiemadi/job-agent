@@ -728,3 +728,63 @@ describe('Per-browser session isolation', () => {
     expect(confirmedContactB.name).toBe('BBB');
   });
 });
+
+// ── 10. GET /output/:file — session-scoped access only (PII leak fix) ──────────
+// output/ used to be served via plain express.static — anyone who guessed a filename like
+// output/cv_Rivian.html could open another candidate's full CV (name, email, phone, work
+// history), no session check at all. Now every file is named <sid>_<random>.<ext>
+// (services/session.js's registerOutputFile) and only servable to the session that
+// generated it, via this route.
+
+describe('GET /output/:file — session-scoped access only', () => {
+  const realFs = require('fs');
+  const realPath = require('path');
+  const writtenFiles = [];
+
+  afterAll(() => {
+    writtenFiles.forEach(f => { try { realFs.unlinkSync(f); } catch (e) { /* already gone */ } });
+  });
+
+  // fse.outputFile is mocked in this test file, so the route handler's "write" never touches
+  // real disk. Write the real bytes ourselves via Node's built-in fs (NOT the mocked
+  // fs-extra) at the exact session-scoped path the real registerOutputFile() returned, so
+  // GET /output/:file has something genuine to find.
+  async function tailorAndBuildComparisonFor(ownerAgent) {
+    await ownerAgent.post('/rewrite').send({ job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [] });
+    const res = await ownerAgent.post('/build-comparison').send({ job: MOCK_JOB });
+    const comparisonPath = res.body.comparisonPath; // e.g. "output/<sid>_<hex>.html"
+    const absolute = realPath.resolve(comparisonPath);
+    realFs.mkdirSync(realPath.dirname(absolute), { recursive: true });
+    realFs.writeFileSync(absolute, '<html><body>test comparison</body></html>');
+    writtenFiles.push(absolute);
+    return comparisonPath;
+  }
+
+  test('the owning session can fetch its own generated file (200)', async () => {
+    const owner = request.agent(app);
+    const comparisonPath = await tailorAndBuildComparisonFor(owner);
+    const res = await owner.get('/' + comparisonPath);
+    expect(res.status).toBe(200);
+  });
+
+  test('a different session requesting the same file gets 404', async () => {
+    const owner = request.agent(app);
+    const stranger = request.agent(app);
+    const comparisonPath = await tailorAndBuildComparisonFor(owner);
+    const res = await stranger.get('/' + comparisonPath);
+    expect(res.status).toBe(404);
+  });
+
+  test('a guessed/old-style filename (e.g. output/cv_Rivian.html) gets 404, not the file', async () => {
+    const someone = request.agent(app);
+    const res = await someone.get('/output/cv_Rivian.html');
+    expect(res.status).toBe(404);
+  });
+
+  test('a path-traversal attempt is rejected, never served', async () => {
+    const someone = request.agent(app);
+    const res = await someone.get('/output/..%2f..%2fserver.js');
+    expect(res.status).not.toBe(200);
+    expect(res.text || '').not.toMatch(/require\(/);
+  });
+});

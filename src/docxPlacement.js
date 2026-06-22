@@ -1,7 +1,7 @@
 'use strict';
 const fse = require('fs-extra');
-const path = require('path');
 const PizZip = require('pizzip');
+const { registerOutputFile } = require('../services/session');
 
 const TAG_PATTERN = /\{[#/]?[a-zA-Z_][a-zA-Z0-9_.]*\}/;
 
@@ -115,10 +115,7 @@ function applyPlacementPlan(documentXml, paragraphs, plan, cvData) {
 }
 
 async function generateWordViaPlacement(cvData, job, templatePath, cvText, thread, preferences, planFn, outputDir = 'output') {
-  const slug = (job && (job.job_title || job.title) || 'CV')
-    .replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 40);
-  const fileName = `cv_word_custom_${slug}.docx`;
-  const filePath = path.join(outputDir, fileName);
+  const filePath = registerOutputFile('docx'); // unguessable, session-scoped — see services/session.js
 
   await fse.ensureDir(outputDir);
 

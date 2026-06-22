@@ -6,7 +6,7 @@ const { readCV, parseCVStructure, adjustLanguageLevel, classify, generateCompari
 const { generateWordCV, generateWordCVAlt } = require('../src/wordExport');
 const { generateWordFromTemplate } = require('../src/wordTemplateExport');
 const { upload, templateUpload } = require('../services/uploads');
-const { getSession, setSession } = require('../services/session');
+const { getSession, setSession, registerOutputFile } = require('../services/session');
 const { tailorCvWithReview } = require('../services/workflows');
 
 const router = express.Router();
@@ -86,9 +86,8 @@ router.post('/build-comparison', async (req, res) => {
     const appSession = getSession();
     if (!appSession.lastTailoredCvData) return res.status(400).json({ error: 'No tailored CV yet.' });
     const job = req.body.job || appSession.lastTailoredJob;
-    const company = (job.employer_name || job.company || 'Company').replace(/\s+/g, '_');
     const comparisonHtml = generateComparisonTemplate(appSession.cvData, appSession.lastTailoredCvData, job, appSession.lastModifiedSections);
-    const comparisonPath = `output/comparison_${company}.html`;
+    const comparisonPath = registerOutputFile('html'); // unguessable, session-scoped — see services/session.js
     await fse.outputFile(comparisonPath, comparisonHtml);
     res.json({ comparisonPath });
   } catch (err) {

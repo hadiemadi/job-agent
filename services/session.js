@@ -46,6 +46,33 @@ function setSession(next) {
   return next;
 }
 
+// ── Session-scoped output files (CVs, cover letters, comparisons — anything written to
+// output/ and served back to the browser) ──────────────────────────────────────────────
+// A filename built from the company/job title (e.g. output/cv_Rivian.html) is guessable —
+// anyone could open another user's tailored CV by guessing it, with no session check at
+// all (server.js used to serve output/ as plain express.static). registerOutputFile()
+// replaces that with an unguessable, per-call random name AND records it on the current
+// session, so the new GET /output/:file route (server.js) can verify ownership before
+// serving anything. Every agents/src call site that writes into output/ should go through
+// this instead of building its own filename — one place to get the security property
+// right, instead of eight.
+function registerOutputFile(extension) {
+  const sid = als.getStore() || 'no-session'; // direct calls outside a request (e.g. test.js) have no sid
+  const fileName = `${sid}_${crypto.randomBytes(16).toString('hex')}.${extension}`;
+  const session = getSession();
+  if (!session.outputFiles) session.outputFiles = new Set();
+  session.outputFiles.add(fileName);
+  return `output/${fileName}`;
+}
+
+// Used by the GET /output/:file route to decide 404 vs serve — true only if the CURRENT
+// session (resolved the same way as everything else, via the "sid" cookie) generated this
+// exact file. fileName here is the basename only (the route validates that shape first).
+function isOwnedOutputFile(fileName) {
+  const session = getSession();
+  return !!(session.outputFiles && session.outputFiles.has(fileName));
+}
+
 // Runs on every request: assigns/reads the "sid" cookie and binds it to AsyncLocalStorage
 // for the lifetime of that request, so every getSession()/setSession() call further down
 // the chain (in routes, agents, services) resolves to this browser's session.
@@ -108,4 +135,7 @@ const sweepInterval = setInterval(() => {
 // Don't let the sweep timer keep a test runner or short-lived script process alive.
 if (sweepInterval.unref) sweepInterval.unref();
 
-module.exports = { getSession, setSession, als, sessionMiddleware, requestScope, createSession };
+module.exports = {
+  getSession, setSession, als, sessionMiddleware, requestScope, createSession,
+  registerOutputFile, isOwnedOutputFile,
+};

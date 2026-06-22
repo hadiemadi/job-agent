@@ -1,10 +1,10 @@
 'use strict';
 const fse = require('fs-extra');
-const path = require('path');
 const PizZip = require('pizzip');
 const Docxtemplater = require('docxtemplater');
 const { extractParagraphs, hasMergeTags, generateWordViaPlacement } = require('./docxPlacement');
 const { planDocxPlacement } = require('../tasks/docxPlacement');
+const { registerOutputFile } = require('../services/session');
 
 function prepareTemplateData(cvData) {
   const cv = cvData || {};
@@ -46,10 +46,7 @@ function flattenDocxtemplaterError(err) {
 }
 
 async function renderTaggedTemplate(cvData, job, templatePath, outputDir) {
-  const slug = (job && (job.job_title || job.title) || 'CV')
-    .replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 40);
-  const fileName = `cv_word_custom_${slug}.docx`;
-  const filePath = path.join(outputDir, fileName);
+  const filePath = registerOutputFile('docx'); // unguessable, session-scoped — see services/session.js
 
   await fse.ensureDir(outputDir);
 

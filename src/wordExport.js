@@ -4,7 +4,7 @@ const {
   AlignmentType, BorderStyle,
 } = require('docx');
 const fse   = require('fs-extra');
-const path  = require('path');
+const { registerOutputFile } = require('../services/session');
 
 // half-point sizes: 22=11pt, 24=12pt, 26=13pt, 28=14pt, 36=18pt, 48=24pt
 // spacing in twips:  240=12pt, 120=6pt, 80=4pt, 60=3pt
@@ -171,11 +171,8 @@ function certificationsSection(certifications) {
 // ── Main export ───────────────────────────────────────────────────────────────
 
 async function generateWordCV(cvData, job, outputDir = 'output') {
-  const cv     = cvData || {};
-  const slug   = (job && (job.job_title || job.title) || 'CV')
-    .replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 40);
-  const fileName  = `cv_word_${slug}.docx`;
-  const filePath  = path.join(outputDir, fileName);
+  const cv = cvData || {};
+  const filePath = registerOutputFile('docx'); // unguessable, session-scoped — see services/session.js
 
   await fse.ensureDir(outputDir);
 
@@ -227,11 +224,8 @@ async function generateWordCV(cvData, job, outputDir = 'output') {
 // Alternate built-in style: left-aligned header, skills-first ordering — a visually
 // distinct second choice in the template picker, reusing the same section builders.
 async function generateWordCVAlt(cvData, job, outputDir = 'output') {
-  const cv     = cvData || {};
-  const slug   = (job && (job.job_title || job.title) || 'CV')
-    .replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 40);
-  const fileName  = `cv_word_alt_${slug}.docx`;
-  const filePath  = path.join(outputDir, fileName);
+  const cv = cvData || {};
+  const filePath = registerOutputFile('docx'); // unguessable, session-scoped — see services/session.js
 
   await fse.ensureDir(outputDir);
 
@@ -285,11 +279,8 @@ async function generateWordCVAlt(cvData, job, outputDir = 'output') {
 // Cover letter — plain header (name + contact, reusing the same builders as the CV) followed
 // by the letter body as one paragraph per blank-line-separated block.
 async function generateCoverLetterWord(coverLetterText, cvData, job, outputDir = 'output') {
-  const cv    = cvData || {};
-  const slug  = (job && (job.job_title || job.title) || 'Cover_Letter')
-    .replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 40);
-  const fileName = `cover_letter_${slug}.docx`;
-  const filePath = path.join(outputDir, fileName);
+  const cv = cvData || {};
+  const filePath = registerOutputFile('docx'); // unguessable, session-scoped — see services/session.js
 
   await fse.ensureDir(outputDir);
 

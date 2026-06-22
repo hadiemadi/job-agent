@@ -3,6 +3,7 @@ const { generateExecutiveTemplate } = require('../render/cvHtml');
 const { client, MODEL, createJsonCompletion } = require('../core/claude');
 const { extractJSON } = require('../core/json');
 const { loadCore } = require('../core/knowledge');
+const { registerOutputFile } = require('../services/session');
 const { hrSystemPrompt, stealthWritingDirective } = require('./recruiter');
 
 // The writer's own generation directive, appended on top of the shared HR persona/rules
@@ -343,12 +344,11 @@ IMPORTANT: skills and key_qualifications must be flat arrays of plain strings on
   const initialHrMessage = buildSessionSummary(preferences, originalCvData, cvData, modified_sections, allChanges, gapDiscussions);
   const updatedDisplayHistory = [...(hrDisplayHistory || []), { role: 'expert', text: initialHrMessage }];
 
-  const company = job.employer_name || job.company || 'Company';
   const html = generateExecutiveTemplate(cvData, job, { hrDisplayHistory: updatedDisplayHistory });
-  const fileName = `output/cv_${company.replace(/\s+/g, '_')}.html`;
-  await fse.outputFile(fileName, html);
+  const filePath = registerOutputFile('html'); // unguessable, session-scoped — see services/session.js
+  await fse.outputFile(filePath, html);
 
-  return { filePath: fileName, cvData, modified_sections, thread: updatedThread, hrDisplayHistory: updatedDisplayHistory };
+  return { filePath, cvData, modified_sections, thread: updatedThread, hrDisplayHistory: updatedDisplayHistory };
 }
 
 // HR regenerates ONLY the wording of an already-tailored CV at a new language level
@@ -392,9 +392,8 @@ Return JSON only:
     (template_suggestion ? `\n- ${template_suggestion}` : '');
   const updatedDisplayHistory = [...(hrDisplayHistory || []), { role: 'expert', text: initialHrMessage }];
 
-  const company = job.employer_name || job.company || 'Company';
   const html = generateExecutiveTemplate(updatedCv, job, { hrDisplayHistory: updatedDisplayHistory });
-  const filePath = `output/cv_${company.replace(/\s+/g, '_')}.html`;
+  const filePath = registerOutputFile('html'); // unguessable, session-scoped — see services/session.js
   await fse.outputFile(filePath, html);
 
   return { cvData: updatedCv, templateSuggestion: template_suggestion, filePath, thread: updatedThread, hrDisplayHistory: updatedDisplayHistory };
