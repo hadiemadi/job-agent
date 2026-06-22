@@ -111,15 +111,6 @@ async function go() {
   }
 }
 
-// Expands/collapses the "Advanced options" panel on the contact page (progressive
-// disclosure — keeps the form short by default, per/job options tucked away until asked for).
-function toggleAdvanced() {
-  const panel = el('adv-panel');
-  const open = panel.style.display !== 'none';
-  panel.style.display = open ? 'none' : 'block';
-  el('adv-arrow').textContent = open ? '▸' : '▾';
-}
-
 // Saves confirmed contact to server, then continues with job + HR steps
 async function confirmContact() {
   const gapSeverities = ['major', 'mild', 'minor'].filter(s => el('ci-sev-' + s).checked);

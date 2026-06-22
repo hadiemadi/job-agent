@@ -82,8 +82,8 @@
         <input type="range" id="ci-tone" min="1" max="5" value="4" oninput="el('ci-tone-label').textContent = ['Very neutral','Calm','Balanced','Direct (default)','Very blunt'][this.value-1]">
         <div class="opt" id="ci-tone-label" style="text-align:center;">Direct (default)</div>
       </div>
-      <div class="adv-toggle" onclick="toggleAdvanced()"><span id="adv-arrow">▸</span> Advanced options</div>
-      <div class="adv-panel" id="adv-panel" style="display:none;">
+      <div class="adv-panel-label">Advanced options</div>
+      <div class="adv-panel" id="adv-panel">
         <div class="form-group" style="margin-bottom:10px;">
           <label>HR Review — gaps to show <span class="opt">(up to 20 total)</span></label>
           <div class="severity-checks">
