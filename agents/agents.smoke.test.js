@@ -111,6 +111,28 @@ describe('agents/cvWriter', () => {
     expect(result.revisedText).toBe('Led RF integration.');
     expect(result.changed).toBe(true);
   });
+  test('rewriteCVWithChanges treats an unanswered gap (no status field) the same as an explicit skip — never "left undecided", never invented', async () => {
+    mockTextResponse(JSON.stringify({
+      cv: { name: 'Jane Doe', summary: 'Senior TPM.', experience: [], education: [] },
+      modified_sections: ['summary'],
+    }));
+    const gapDiscussions = [
+      { description: 'Mention PMP certification', rationale: 'Listed as preferred in JD' /* no status — left unanswered by the candidate */ },
+      { description: 'Add leadership scope', rationale: 'Could strengthen fit', status: 'accepted', refinedDescription: 'Led a team of 5' },
+    ];
+    const fs = require('fs');
+    const result = await cvWriter.rewriteCVWithChanges(
+      'cv text', { job_title: 'TPM', employer_name: 'Acme' }, [], [], null, null, null, [], undefined, [], null, gapDiscussions
+    );
+    try {
+      const summaryMessage = result.hrDisplayHistory[result.hrDisplayHistory.length - 1].text;
+      expect(summaryMessage).toContain('Mention PMP certification** — skipped — not added');
+      expect(summaryMessage).not.toContain('left undecided');
+      expect(summaryMessage).toContain('Led a team of 5');
+    } finally {
+      fs.rmSync(result.filePath, { force: true });
+    }
+  });
 });
 
 describe('agents/coach', () => {

@@ -67,7 +67,9 @@
       "Bash(cd \"c:\\\\Users\\\\ezemaha\\\\Documents\\\\JobSeeker\" && ls knowledge/disciplines/ && rm -f knowledge/disciplines/*.json && ls knowledge/disciplines/)",
       "Bash(cd \"c:\\\\Users\\\\ezemaha\\\\Documents\\\\JobSeeker\" && mkdir -p .claude/agents)",
       "Bash(node --check evals/run.js)",
-      "Bash(node evals/run.js)"
+      "Bash(node evals/run.js)",
+      "Bash(curl -s -o /dev/null -w \"homepage: %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s http://localhost:3000/healthz -w \"\\\\nhealthz: %{http_code}\\\\n\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\ezemaha\\Documents\\JobSeeker\\mocks",

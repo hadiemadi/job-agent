@@ -212,25 +212,24 @@ function buildChangesAppliedLines(allChanges) {
 // gapDiscussions (from the client): one entry per confirm_changes gap, carrying the coach
 // conversation transcript (if the candidate discussed it) and the final accept/skip/refine
 // outcome — so "what was discussed" and "the outcome" can both be reported accurately.
+// Any status other than an explicit "accepted" — skipped, missing, blank, or anything else
+// — resolves to skipped. A gap the candidate left unanswered carries no real signal either
+// way, so the only safe default is "not added": this function never invents CV content for
+// a gap that wasn't explicitly accepted, and never reports a stalled/ambiguous outcome.
 function buildGapDiscussionLines(gapDiscussions) {
   if (!gapDiscussions || !gapDiscussions.length) return null;
   return gapDiscussions.map(g => {
     const discussed = g.coachConversation && g.coachConversation.length > 0;
-    let outcome;
-    if (g.status === 'accepted') {
-      outcome = g.refinedDescription ? `added to your CV as: "${g.refinedDescription}"` : 'added to your CV';
-    } else if (g.status === 'skipped') {
-      outcome = 'skipped — not added';
-    } else {
-      outcome = 'left undecided';
-    }
+    const outcome = g.status === 'accepted'
+      ? (g.refinedDescription ? `added to your CV as: "${g.refinedDescription}"` : 'added to your CV')
+      : 'skipped — not added';
     const discussedNote = discussed ? ' (after discussing it with your Career Coach)' : '';
     return `- **${g.description}** — ${outcome}${discussedNote}`;
   });
 }
 
 function buildSuggestionLines(gapDiscussions) {
-  const skipped = (gapDiscussions || []).filter(g => g.status === 'skipped' && g.rationale);
+  const skipped = (gapDiscussions || []).filter(g => g.status !== 'accepted' && g.rationale);
   if (!skipped.length) return null;
   return skipped.map(g => `- ${g.description} — ${g.rationale} (you can revisit this anytime in the sidebar)`);
 }

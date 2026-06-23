@@ -400,10 +400,13 @@ async function applyChanges() {
   // One entry per gap the HR review raised, carrying the coach conversation (if discussed)
   // and the final outcome — lets the tailored CV page's HR sidebar open with an accurate
   // "what we discussed and what happened" summary instead of just the applied change list.
+  // Any gap the candidate never explicitly accepted — whether they clicked Skip or just
+  // left it untouched — resolves to "skipped". The candidate gave no real signal either
+  // way for an untouched gap, so it must never silently end up treated as accepted; "skip"
+  // is also already the only outcome that doesn't add unconfirmed content to the CV.
   const gapDiscussions = (_hrReview.confirm_changes || []).map((c, i) => {
     const card = el('cc-' + i);
-    const status = card && card.classList.contains('accepted') ? 'accepted'
-      : card && card.classList.contains('skipped') ? 'skipped' : 'undecided';
+    const status = card && card.classList.contains('accepted') ? 'accepted' : 'skipped';
     const refined = _refinedChanges[i];
     return {
       description: c.description,
