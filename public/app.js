@@ -223,6 +223,18 @@ function showChanges(review) {
   const matchClass = review.overall_match || 'Moderate';
   el('matchBadge').innerHTML = `<span class="hr-match ${matchClass}">Match: ${matchClass}</span>`;
 
+  const fitExplanationEl = el('fitExplanation');
+  if (review.fit_explanation && review.fit_explanation.trim()) {
+    fitExplanationEl.innerHTML = `
+      <div class="changes-section-title">Why this is a ${matchClass.toLowerCase()} fit</div>
+      <p class="changes-hint" style="margin:0;">${review.fit_explanation}</p>
+    `;
+    show('fitExplanation');
+  } else {
+    fitExplanationEl.innerHTML = '';
+    hide('fitExplanation');
+  }
+
   el('strengthsBlock').innerHTML = (review.strengths || []).length ? `
     <div class="changes-section-title">Strengths</div>
     <ul class="hr-list">${review.strengths.map(s => '<li>' + s + '</li>').join('')}</ul>

@@ -136,10 +136,16 @@ section decisions every time, never a different outcome between attempts.
 - A section the candidate's original CV does NOT already have: only add it if there is strong
   direct evidence in the CV content that justifies it.
 
+If overall_match is "Moderate" or "Weak", also explain WHY in fit_explanation: which of THIS
+job's requirements aren't evidenced in this CV, and what's missing — 2-4 plain sentences,
+using only this CV and this job description (no market/search). Leave fit_explanation empty
+for "Strong".
+
 Return JSON only:
 {
   "overall_match": "Strong|Moderate|Weak",
   "strengths": [""],
+  "fit_explanation": "",
   "recommended_sections": ["summary", "skills", "experience", "education"],
   "section_rationale": "",
   "auto_changes": [{ "description": "", "rationale": "" }]

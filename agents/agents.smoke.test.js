@@ -63,6 +63,18 @@ describe('agents/recruiter', () => {
     // than skipping field detection silently.
     expect(client.messages.create).toHaveBeenCalledTimes(2);
   });
+  test('reviewCV passes through fit_explanation (the weak/moderate-fit rationale) with no extra AI call', async () => {
+    mockTextResponse(JSON.stringify({
+      overall_match: 'Weak', strengths: [], recommended_sections: [], section_rationale: '', auto_changes: [],
+      fit_explanation: "This role requires 5+ years of embedded firmware experience, which isn't evidenced anywhere in this CV.",
+    }));
+    const callsBefore = client.messages.create.mock.calls.length;
+    const { review } = await recruiter.reviewCV('cv text', { job_title: 'Firmware Engineer' }, [], {});
+    expect(review.fit_explanation).toContain('embedded firmware experience');
+    // Same 2 calls as the Strong-match case above (HR review + detectField) — the rationale
+    // came from the existing reviewCV call's own JSON output, not a separate request.
+    expect(client.messages.create.mock.calls.length - callsBefore).toBe(2);
+  });
   test('hrSystemPrompt assembles text containing the recruiter-core knowledge file content', () => {
     const prompt = recruiter.hrSystemPrompt('cv text', { job_title: 'TPM' }, {});
     expect(prompt).toContain('YOUR CORE PRINCIPLES');
