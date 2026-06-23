@@ -46,6 +46,8 @@ body { font-family:var(--font-ui); background:var(--bg); color:var(--ink); font-
 .header { background:var(--ink); color:white; padding:var(--space-5) var(--space-12); display:flex; align-items:center; gap:14px; }
 .header h1 { font-size:20px; font-weight:600; letter-spacing:0.2px; }
 .header span { font-size:12px; color:rgba(255,255,255,0.5); }
+.header-delete-btn { margin-left:auto; background:none; border:1px solid rgba(255,255,255,0.25); color:rgba(255,255,255,0.7); font-size:11px; padding:7px 14px; border-radius:var(--radius-sm); cursor:pointer; font-family:inherit; white-space:nowrap; }
+.header-delete-btn:hover { background:rgba(255,255,255,0.08); color:white; border-color:rgba(255,255,255,0.4); }
 .accent { width:4px; height:28px; background:var(--accent); border-radius:2px; flex-shrink:0; }
 
 .container { max-width:780px; margin:var(--space-8) auto; padding:0 var(--space-5); }
@@ -249,8 +251,9 @@ input[type="range"] { width:100%; cursor:pointer; accent-color:var(--accent); }
 
 /* ── Mobile ─────────────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .header { padding:14px 20px; }
+  .header { padding:14px 20px; flex-wrap:wrap; }
   .header h1 { font-size:17px; }
+  .header-delete-btn { margin-left:0; }
   .container { padding:0 var(--space-3); margin:var(--space-5) auto; }
   .card { padding:var(--space-5); }
   .form-row { grid-template-columns:1fr; gap:0; }

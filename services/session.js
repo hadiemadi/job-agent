@@ -1,5 +1,16 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { AsyncLocalStorage } = require('async_hooks');
+
+// Number(process.env.X) || fallback would silently discard a legitimate "0" — same pattern
+// used in core/claude.js, src/jobs.js, services/ratelimit.js.
+function envNumber(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  return Number.isNaN(n) ? fallback : n;
+}
 
 // One session per browser, keyed by a "sid" cookie. Routes still call the zero-arg
 // getSession()/setSession() they always have — AsyncLocalStorage carries the current
@@ -56,12 +67,14 @@ function setSession(next) {
 // serving anything. Every agents/src call site that writes into output/ should go through
 // this instead of building its own filename — one place to get the security property
 // right, instead of eight.
+// Map<fileName, { createdAt }> rather than a Set — createdAt backs the retention-TTL sweep
+// below, so a file expires even if its session stays active for a long time.
 function registerOutputFile(extension) {
   const sid = als.getStore() || 'no-session'; // direct calls outside a request (e.g. test.js) have no sid
   const fileName = `${sid}_${crypto.randomBytes(16).toString('hex')}.${extension}`;
   const session = getSession();
-  if (!session.outputFiles) session.outputFiles = new Set();
-  session.outputFiles.add(fileName);
+  if (!session.outputFiles) session.outputFiles = new Map();
+  session.outputFiles.set(fileName, { createdAt: Date.now() });
   return `output/${fileName}`;
 }
 
@@ -71,6 +84,26 @@ function registerOutputFile(extension) {
 function isOwnedOutputFile(fileName) {
   const session = getSession();
   return !!(session.outputFiles && session.outputFiles.has(fileName));
+}
+
+// Deletes every output/ file a session generated, both on disk and from its own
+// bookkeeping. Used when a session is dropped (idle sweep) and by purgeSessionData()
+// (the "Delete my data now" control). Best-effort — a file that's already gone is fine.
+function deleteOutputFiles(session) {
+  if (!session.outputFiles) return;
+  for (const fileName of session.outputFiles.keys()) {
+    try { fs.unlinkSync(path.join('output', fileName)); } catch (e) { /* already gone */ }
+  }
+  session.outputFiles.clear();
+}
+
+// "Delete my data now": wipes the CURRENT session back to a blank slate — same sid (the
+// cookie/identity isn't revoked, just the data behind it), output files removed from disk.
+function purgeSessionData() {
+  const sid = als.getStore();
+  const session = sessions.get(sid);
+  if (session) deleteOutputFiles(session);
+  sessions.set(sid, createSession());
 }
 
 // Runs on every request: assigns/reads the "sid" cookie and binds it to AsyncLocalStorage
@@ -126,10 +159,28 @@ function requestScope(handler) {
 // infra/DB work), this just stops it growing unbounded on a long-running server.
 const IDLE_LIMIT_MS = 24 * 60 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 30 * 60 * 1000;
+
+// Generated CVs/cover letters/comparisons must not outlive this window even if the
+// session that made them is still active (someone could leave the tab open for days) —
+// the privacy notice on the upload screen promises auto-deletion "after your session
+// ends," but a long-lived session shouldn't mean indefinite retention either.
+const OUTPUT_RETENTION_MS = envNumber('OUTPUT_RETENTION_MINUTES', 180) * 60 * 1000;
+
 const sweepInterval = setInterval(() => {
   const now = Date.now();
   for (const [sid, session] of sessions) {
-    if (now - session.lastSeen > IDLE_LIMIT_MS) sessions.delete(sid);
+    if (now - session.lastSeen > IDLE_LIMIT_MS) {
+      deleteOutputFiles(session);
+      sessions.delete(sid);
+      continue;
+    }
+    if (!session.outputFiles) continue;
+    for (const [fileName, meta] of session.outputFiles) {
+      if (now - meta.createdAt > OUTPUT_RETENTION_MS) {
+        try { fs.unlinkSync(path.join('output', fileName)); } catch (e) { /* already gone */ }
+        session.outputFiles.delete(fileName);
+      }
+    }
   }
 }, SWEEP_INTERVAL_MS);
 // Don't let the sweep timer keep a test runner or short-lived script process alive.
@@ -137,5 +188,5 @@ if (sweepInterval.unref) sweepInterval.unref();
 
 module.exports = {
   getSession, setSession, als, sessionMiddleware, requestScope, createSession,
-  registerOutputFile, isOwnedOutputFile,
+  registerOutputFile, isOwnedOutputFile, purgeSessionData,
 };

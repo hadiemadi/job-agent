@@ -37,6 +37,17 @@ function dismissIntro() {
 // so this can't block or slow down anyone who's already used the app.
 if (!getCookie(ONBOARD_COOKIE)) show('introPanel');
 
+// "Delete my data now" — wipes the server-side session (CV text, parsed data, HR/coach
+// history, generated output files) and reloads, which naturally resets every bit of UI
+// state back to the upload screen instead of needing to manually reset a dozen elements.
+async function deleteMyData() {
+  if (!confirm('This permanently deletes your uploaded CV, contact info, and any generated files from this session. Continue?')) return;
+  try {
+    await fetch('/delete-my-data', { method: 'POST' });
+  } catch (err) { /* best-effort — reload regardless so the UI still resets */ }
+  location.reload();
+}
+
 function escapeHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

@@ -25,6 +25,8 @@ services:
         value: "15"
       - key: DAILY_JOB_SEARCH_CAP
         value: "50"
+      - key: OUTPUT_RETENTION_MINUTES
+        value: "180"
       - key: ANTHROPIC_PRICE_INPUT_PER_MTOK
         sync: false
       - key: ANTHROPIC_PRICE_OUTPUT_PER_MTOK

@@ -6,21 +6,36 @@ const { readCV, parseCVStructure, adjustLanguageLevel, classify, generateCompari
 const { generateWordCV, generateWordCVAlt } = require('../src/wordExport');
 const { generateWordFromTemplate } = require('../src/wordTemplateExport');
 const { upload, templateUpload } = require('../services/uploads');
-const { getSession, setSession, registerOutputFile } = require('../services/session');
+const { getSession, setSession, registerOutputFile, purgeSessionData } = require('../services/session');
 const { tailorCvWithReview } = require('../services/workflows');
 
 const router = express.Router();
 
 router.post('/upload-cv', upload.single('cv'), async (req, res) => {
+  const cvPath = req.file.path;
   try {
-    const cvPath = req.file.path;
     const cvText = await readCV(cvPath);
     const cvData = await parseCVStructure(cvText);
-    setSession({ ...getSession(), cvText, cvPath, cvData });
+    // We only need the file long enough to extract its text — keeping the parsed CV text
+    // in-session is enough for every downstream step (tailoring re-reads appSession.cvText
+    // now, not the file). The consent notice on the upload screen promises the CV is
+    // "auto-deleted after your session" — this is the first half of making that true: the
+    // source file never lingers on disk past this one request.
+    await fse.remove(cvPath);
+    setSession({ ...getSession(), cvText, cvPath: null, cvData });
     res.json({ cvPath, cvData });
   } catch (err) {
+    await fse.remove(cvPath).catch(() => {}); // still scrub it even on a parse failure
     res.status(500).json({ error: err.message });
   }
+});
+
+// "Delete my data now" — wipes this session's CV text, parsed data, HR/coach history, and
+// any generated output files (from disk too), then starts it fresh. Same sid/cookie, blank
+// session behind it.
+router.post('/delete-my-data', (req, res) => {
+  purgeSessionData();
+  res.json({ ok: true });
 });
 
 router.post('/confirm-contact', async (req, res) => {
@@ -53,8 +68,10 @@ router.post('/confirm-contact', async (req, res) => {
 router.post('/rewrite', async (req, res) => {
   try {
     const appSession = getSession();
-    const { job, cvPath, autoChanges, confirmedChanges, gapDiscussions } = req.body;
-    const cvText = await readCV(cvPath || appSession.cvPath);
+    const { job, autoChanges, confirmedChanges, gapDiscussions } = req.body;
+    // The uploaded file is deleted right after /upload-cv extracts its text (see above) —
+    // appSession.cvText is the one source of truth from here on, not a re-read from disk.
+    const cvText = appSession.cvText;
     const recommendedSections = (appSession.hrReview || {}).recommended_sections;
     const originalName = (appSession.cvData || {}).name;
     const { filePath, cvData, modified_sections, thread, hrDisplayHistory, review } = await tailorCvWithReview({

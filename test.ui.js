@@ -63,6 +63,7 @@ jest.mock('fs-extra', () => ({
   outputFile: jest.fn(),
   ensureDirSync: jest.fn(),
   readFile: jest.fn().mockResolvedValue(Buffer.from('')),
+  remove: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('pizzip', () => jest.fn().mockImplementation(() => ({})));
 
