@@ -81,6 +81,11 @@ function setStep(i, state, detail) {
 // ── Main entry point ──────────────────────────────────────────────────────────
 
 async function go() {
+  if (!el('consentCheck').checked) {
+    setGoStatus('Please confirm you understand how your CV will be used before continuing.', 'err');
+    show('goStatus');
+    return;
+  }
   const file = el('cvFile').files[0];
   const jobText = el('jobText').value.trim();
   if (!file) { setGoStatus('Please upload your CV first.', 'err'); show('goStatus'); return; }
