@@ -5,6 +5,7 @@ const {
 } = require('../agent');
 const { generateCoverLetterWord } = require('../src/wordExport');
 const { getSession } = require('../services/session');
+const { setGaps, getGap, updateGapStatus, appendGapMessage, setGapConclusion } = require('../services/gapStore');
 
 const router = express.Router();
 
@@ -39,7 +40,14 @@ router.post('/review-cv', async (req, res) => {
       pinDisciplineSkill(field, routedInstruction.text);
       appSession.clientPreferences = { ...appSession.clientPreferences, routedInstructionApplied: true };
     }
-    const fullReview = { ...review, confirm_changes: selectTopGaps(gaps, appSession.clientPreferences.gapSeverities) };
+    // Gaps are persisted server-side (services/gapStore.js) with a stable id each — replaces
+    // the old design where accept/skip/discuss state lived only in the browser until /rewrite.
+    const selected = selectTopGaps(gaps, appSession.clientPreferences.gapSeverities);
+    const gapRecords = setGaps(selected);
+    const fullReview = {
+      ...review,
+      confirm_changes: gapRecords.map(g => ({ id: g.id, description: g.description, rationale: g.rationale, severity: g.severity })),
+    };
     appSession.currentJob = job;
     appSession.hrReview = fullReview;
     appSession.hrThread = thread;
@@ -98,18 +106,30 @@ router.post('/hr/refine', async (req, res) => {
   try {
     const appSession = getSession();
     if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
-    const { gapIndex, conversation } = req.body;
-    const gap = appSession.hrReview?.confirm_changes?.[gapIndex];
+    const { gapId } = req.body;
+    const gap = getGap(gapId);
     if (!gap) return res.status(400).json({ error: 'Gap not found.' });
     const { result, thread } = await refineWithHR(
       appSession.cvText, appSession.currentJob, appSession.hrReview,
-      gap, conversation, appSession.hrThread, appSession.clientPreferences
+      gap, gap.coachConversation, appSession.hrThread, appSession.clientPreferences
     );
     appSession.hrThread = thread;
+    setGapConclusion(gapId, { refinedDescription: result.refined_description, rationale: result.rationale, verdict: result.verdict });
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// The Accept/Skip buttons on a gap card — the only way a gap's status becomes 'accepted' or
+// 'skipped' server-side. /rewrite reads this directly instead of trusting a client-submitted
+// accept/skip list.
+router.post('/gap-decision', (req, res) => {
+  const { gapId, status } = req.body;
+  if (!['accepted', 'skipped'].includes(status)) return res.status(400).json({ error: 'status must be "accepted" or "skipped".' });
+  const gap = updateGapStatus(gapId, status);
+  if (!gap) return res.status(400).json({ error: 'Gap not found.' });
+  res.json({ ok: true });
 });
 
 router.post('/hr/chat', async (req, res) => {

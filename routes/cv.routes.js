@@ -7,6 +7,7 @@ const { generateWordCV, generateWordCVAlt } = require('../src/wordExport');
 const { generateWordFromTemplate } = require('../src/wordTemplateExport');
 const { upload, templateUpload } = require('../services/uploads');
 const { getSession, setSession, registerOutputFile, purgeSessionData } = require('../services/session');
+const { getGaps } = require('../services/gapStore');
 const { tailorCvWithReview } = require('../services/workflows');
 
 const router = express.Router();
@@ -68,18 +69,35 @@ router.post('/confirm-contact', async (req, res) => {
 router.post('/rewrite', async (req, res) => {
   try {
     const appSession = getSession();
-    const { job, autoChanges, confirmedChanges, gapDiscussions } = req.body;
+    const { job } = req.body;
     // The uploaded file is deleted right after /upload-cv extracts its text (see above) —
     // appSession.cvText is the one source of truth from here on, not a re-read from disk.
     const cvText = appSession.cvText;
     const recommendedSections = (appSession.hrReview || {}).recommended_sections;
     const originalName = (appSession.cvData || {}).name;
+    const autoChanges = (appSession.hrReview || {}).auto_changes || [];
+    // Gap accept/skip/discuss state is now server-side (services/gapStore.js, via the
+    // /gap-decision and /coach/discuss routes) — derived here instead of trusting a
+    // client-submitted confirmedChanges/gapDiscussions list. Any gap not explicitly
+    // 'accepted' (open, skipped, or hr-concluded) resolves to skipped: the candidate gave no
+    // real signal either way for anything else, so nothing unconfirmed is ever added to the CV.
+    const gaps = getGaps();
+    const confirmedChanges = gaps
+      .filter(g => g.status === 'accepted')
+      .map(g => ({ description: (g.hrConclusion && g.hrConclusion.refinedDescription) || g.description, rationale: g.rationale }));
+    const gapDiscussions = gaps.map(g => ({
+      description: g.description,
+      rationale: g.rationale,
+      status: g.status === 'accepted' ? 'accepted' : 'skipped',
+      coachConversation: g.coachConversation,
+      refinedDescription: g.hrConclusion ? g.hrConclusion.refinedDescription : null,
+    }));
     const { filePath, cvData, modified_sections, thread, hrDisplayHistory, review } = await tailorCvWithReview({
-      cvText, job, autoChanges: autoChanges || [], confirmedChanges: confirmedChanges || [],
+      cvText, job, autoChanges, confirmedChanges,
       recommendedSections, originalName, confirmedContact: appSession.confirmedContact,
       thread: appSession.hrThread, preferences: appSession.clientPreferences,
       hrDisplayHistory: appSession.hrDisplayHistory, originalCvData: appSession.cvData,
-      gapDiscussions: gapDiscussions || [],
+      gapDiscussions,
     });
     appSession.hrThread = thread;
     appSession.hrDisplayHistory = hrDisplayHistory;

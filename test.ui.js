@@ -201,13 +201,13 @@ describe('Error handling — no CV in session', () => {
   });
 
   test('POST /coach/discuss → 400 when no CV is loaded', async () => {
-    const res = await agent.post('/coach/discuss').send({ message: 'Hello', gapIndex: 0 });
+    const res = await agent.post('/coach/discuss').send({ message: 'Hello', gapId: 'whatever' });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
 
   test('POST /hr/refine → 400 when no CV is loaded', async () => {
-    const res = await agent.post('/hr/refine').send({ gapIndex: 0, conversation: [] });
+    const res = await agent.post('/hr/refine').send({ gapId: 'whatever' });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
   });
@@ -334,6 +334,17 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     await agent.post('/review-cv').send({ job: MOCK_JOB });
   });
 
+  // Gaps are persisted server-side with a generated id (services/gapStore.js), and several
+  // tests in this block call /review-cv for unrelated reasons (clientPreferences pass-through,
+  // gapSeverities filtering, etc.) — each call regenerates the gap list with fresh ids. So
+  // gap-dependent tests fetch a current id right before they need one, rather than reusing one
+  // captured once in beforeAll, which would go stale the moment any intervening test re-runs
+  // /review-cv.
+  async function currentGapId() {
+    const res = await agent.post('/review-cv').send({ job: MOCK_JOB });
+    return res.body.confirm_changes[0].id;
+  }
+
   test('POST /review-cv returns 200 with full review structure', async () => {
     const res = await agent.post('/review-cv').send({ job: MOCK_JOB });
     expect(res.status).toBe(200);
@@ -343,6 +354,10 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(res.body).toHaveProperty('confirm_changes');
     expect(Array.isArray(res.body.auto_changes)).toBe(true);
     expect(Array.isArray(res.body.confirm_changes)).toBe(true);
+    // Each gap gets a stable, server-assigned id (services/gapStore.js) — the contract
+    // /coach/discuss, /hr/refine, and /gap-decision all key off now.
+    expect(res.body.confirm_changes[0]).toHaveProperty('id');
+    expect(typeof res.body.confirm_changes[0].id).toBe('string');
   });
 
   test('POST /confirm-contact stores clientPreferences and /review-cv passes them through', async () => {
@@ -470,9 +485,10 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   });
 
   test('POST /coach/discuss returns 200 with a reply string', async () => {
+    const gapId = await currentGapId();
     const res = await agent
       .post('/coach/discuss')
-      .send({ message: 'I have 10 years of RF hardware experience.', gapIndex: 0 });
+      .send({ message: 'I have 10 years of RF hardware experience.', gapId });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('reply');
     expect(typeof res.body.reply).toBe('string');
@@ -480,21 +496,37 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   });
 
   test('POST /hr/refine returns 200 with verdict and refined_description', async () => {
-    const res = await agent.post('/hr/refine').send({
-      gapIndex: 0,
-      conversation: [{ role: 'user', content: 'I am studying for PMP right now.' }],
-    });
+    // The conversation /hr/refine reads now comes from the server-side gap record, not a
+    // client-submitted transcript — populate it via /coach/discuss first.
+    const gapId = await currentGapId();
+    await agent.post('/coach/discuss').send({ message: 'I am studying for PMP right now.', gapId });
+    const res = await agent.post('/hr/refine').send({ gapId });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('refined_description');
     expect(res.body).toHaveProperty('verdict');
     expect(['add', 'skip', 'candidate_decides']).toContain(res.body.verdict);
   });
 
-  test('POST /hr/refine → 400 when gapIndex is out of range', async () => {
-    const res = await agent.post('/hr/refine').send({
-      gapIndex: 999,
-      conversation: [],
-    });
+  test('POST /hr/refine → 400 when gapId does not exist', async () => {
+    const res = await agent.post('/hr/refine').send({ gapId: 'no-such-gap' });
+    expect(res.status).toBe(400);
+  });
+
+  test('POST /gap-decision marks a gap accepted, and /rewrite picks it up without any client-submitted change list', async () => {
+    const gapId = await currentGapId();
+    const res = await agent.post('/gap-decision').send({ gapId, status: 'accepted' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    await agent.post('/rewrite').send({ job: MOCK_JOB });
+    const lastCall = rewriteCVWithChanges.mock.calls[rewriteCVWithChanges.mock.calls.length - 1];
+    const confirmedChanges = lastCall[3];
+    expect(confirmedChanges.some(c => c.description === MOCK_GAPS[0].description)).toBe(true);
+  });
+
+  test('POST /gap-decision → 400 for an invalid status value', async () => {
+    const gapId = await currentGapId();
+    const res = await agent.post('/gap-decision').send({ gapId, status: 'maybe' });
     expect(res.status).toBe(400);
   });
 
@@ -592,9 +624,12 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   });
 
   test('Career Coach thread persists across /review-cv calls (not reset per job)', async () => {
-    await agent.post('/coach/discuss').send({ message: 'I led a 12-person RF team.', gapIndex: 0 });
-    await agent.post('/review-cv').send({ job: MOCK_JOB });
-    await agent.post('/coach/discuss').send({ message: 'Anything else I should mention?', gapIndex: 0 });
+    const firstGapId = await currentGapId();
+    await agent.post('/coach/discuss').send({ message: 'I led a 12-person RF team.', gapId: firstGapId });
+    // /review-cv regenerates the gap list (and its ids) from scratch for the new job — grab
+    // the fresh id rather than reusing one from before this call.
+    const secondGapId = await currentGapId();
+    await agent.post('/coach/discuss').send({ message: 'Anything else I should mention?', gapId: secondGapId });
 
     // The history passed into this last call would be [] if /review-cv still wiped
     // appSession.coachHistory — instead it must carry over the first exchange.

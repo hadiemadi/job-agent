@@ -2,6 +2,10 @@ let _cvPath = null;
 let _currentJob = null;
 let _hrReview = null;
 let _selectedDir = null;
+// Maps each rendered gap card's positional index (i) to the server-assigned gap id
+// (services/gapStore.js) — set fresh by showChanges() on every /review-cv response. Accept/Skip
+// and the coach/HR endpoints address gaps by this id now, not by index.
+let _gapIds = [];
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -251,6 +255,8 @@ function showChanges(review) {
     `).join('')}
   ` : '';
 
+  _gapIds = (review.confirm_changes || []).map(c => c.id);
+
   el('confirmBlock').innerHTML = (review.confirm_changes || []).length ? `
     <div class="changes-section-title">Your input needed</div>
     <p class="changes-hint">These go beyond your current CV — discuss with your coach or accept/skip directly:</p>
@@ -291,6 +297,15 @@ function confirmChange(i, accept) {
   el('cc-yes-' + i).style.cssText = accept ? 'background:#1A7A3C;color:white;' : '';
   el('cc-no-' + i).style.cssText = !accept ? 'background:#888;color:white;' : 'background:#f5f5f5;color:#888;';
   el('chat-' + i).style.display = 'none';
+  // Persists the decision server-side (services/gapStore.js) — /rewrite reads this directly
+  // instead of re-scanning these CSS classes from a request body.
+  const gapId = _gapIds[i];
+  if (gapId) {
+    fetch('/gap-decision', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ gapId, status: accept ? 'accepted' : 'skipped' }),
+    }).catch(() => {}); // best-effort — the visible card state is the immediate feedback either way
+  }
 }
 
 // ── Coach & HR chat (per confirm-change card) ─────────────────────────────────
@@ -348,7 +363,7 @@ async function sendChat(i) {
   try {
     const res = await fetch('/coach/discuss', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ message: text, gapIndex: i })
+      body: JSON.stringify({ message: text, gapId: _gapIds[i] })
     });
     const data = await res.json();
     hide('chat-status-' + i);
@@ -368,7 +383,7 @@ async function askHR(i) {
   try {
     const res = await fetch('/hr/refine', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ gapIndex: i, conversation: _cardChats[i] || [] })
+      body: JSON.stringify({ gapId: _gapIds[i] })
     });
     const data = await res.json();
     btn.disabled = false; btn.textContent = 'Ask HR to update suggestion →';
@@ -404,37 +419,14 @@ async function applyChanges() {
   show('progressCard');
   setStep(3, 'run');
 
-  const confirmedChanges = (_hrReview.confirm_changes || []).filter((c, i) => {
-    const card = el('cc-' + i);
-    return card && card.classList.contains('accepted');
-  });
-
-  // One entry per gap the HR review raised, carrying the coach conversation (if discussed)
-  // and the final outcome — lets the tailored CV page's HR sidebar open with an accurate
-  // "what we discussed and what happened" summary instead of just the applied change list.
-  // Any gap the candidate never explicitly accepted — whether they clicked Skip or just
-  // left it untouched — resolves to "skipped". The candidate gave no real signal either
-  // way for an untouched gap, so it must never silently end up treated as accepted; "skip"
-  // is also already the only outcome that doesn't add unconfirmed content to the CV.
-  const gapDiscussions = (_hrReview.confirm_changes || []).map((c, i) => {
-    const card = el('cc-' + i);
-    const status = card && card.classList.contains('accepted') ? 'accepted' : 'skipped';
-    const refined = _refinedChanges[i];
-    return {
-      description: c.description,
-      rationale: c.rationale,
-      status,
-      coachConversation: _cardChats[i] || [],
-      refinedDescription: refined ? refined.refined_description : null,
-      verdict: refined ? refined.verdict : null,
-    };
-  });
-
+  // Gap accept/skip status and the coach conversation are now tracked server-side as each
+  // happens (services/gapStore.js, via /gap-decision and /coach/discuss) — /rewrite reads
+  // them directly instead of this resending a snapshot built from the DOM.
   try {
     const res = await fetch('/rewrite', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ job: _currentJob, cvPath: _cvPath, autoChanges: _hrReview.auto_changes || [], confirmedChanges, gapDiscussions })
+      body: JSON.stringify({ job: _currentJob })
     });
     const data = await res.json();
     if (data.error) { setStep(3,'err', data.error); el('applyBtn').disabled=false; show('changesCard'); return; }

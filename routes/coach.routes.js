@@ -1,6 +1,7 @@
 const express = require('express');
 const { chatWithCoach, analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath } = require('../agent');
 const { getSession } = require('../services/session');
+const { getGap, appendGapMessage } = require('../services/gapStore');
 
 const router = express.Router();
 
@@ -8,13 +9,19 @@ router.post('/coach/discuss', async (req, res) => {
   try {
     const appSession = getSession();
     if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
-    const { message, gapIndex } = req.body;
-    const gap = appSession.hrReview?.confirm_changes?.[gapIndex];
+    const { message, gapId } = req.body;
+    const gap = getGap(gapId);
     const { reply, history } = await chatWithCoach(
       appSession.cvText, appSession.currentJob, appSession.hrReview,
       appSession.coachHistory, message, gap?.description, appSession.clientPreferences
     );
     appSession.coachHistory = history;
+    // Persisted server-side (services/gapStore.js) so /hr/refine can read this conversation
+    // directly, instead of trusting a client-resubmitted transcript.
+    if (gap) {
+      appendGapMessage(gapId, 'user', message);
+      appendGapMessage(gapId, 'assistant', reply);
+    }
     res.json({ reply });
   } catch (err) {
     res.status(500).json({ error: err.message });

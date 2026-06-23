@@ -31,6 +31,7 @@ function createSession() {
     currentJob: null, hrReview: null,
     coachHistory: [], hrThread: [], hrDisplayHistory: [],
     confirmedContact: null,
+    gaps: [], // see services/gapStore.js — HR-review gap cards, server-side accept/skip + conversation state
     clientPreferences: {
       tone: 4, customInstructions: '', languageLevel: 2, extensiveSearch: false, conventionsResearch: '',
       gapSeverities: ['major'], refreshDiscipline: false, routedInstruction: null, routedInstructionApplied: false,
