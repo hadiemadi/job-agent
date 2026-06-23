@@ -5,7 +5,7 @@ const {
 } = require('../agent');
 const { generateCoverLetterWord } = require('../src/wordExport');
 const { getSession } = require('../services/session');
-const { setGaps, getGap, updateGapStatus, appendGapMessage, setGapConclusion } = require('../services/gapStore');
+const { setGaps, getGap, proposeStatement, acceptGap, declineGap } = require('../services/gapStore');
 
 const router = express.Router();
 
@@ -46,11 +46,18 @@ router.post('/review-cv', async (req, res) => {
     const gapRecords = setGaps(selected);
     const fullReview = {
       ...review,
-      confirm_changes: gapRecords.map(g => ({ id: g.id, description: g.description, rationale: g.rationale, severity: g.severity })),
+      confirm_changes: gapRecords.map(g => ({
+        id: g.id, description: g.description, rationale: g.rationale, severity: g.severity,
+        status: g.status, proposedStatement: g.proposedStatement,
+      })),
     };
     appSession.currentJob = job;
     appSession.hrReview = fullReview;
     appSession.hrThread = thread;
+    // Persisted so /coach/discuss can ground its reasoning in this candidate's discipline
+    // rubric (services/curator.js's knowledge store) instead of just the gap slogan — see
+    // agents/coach.js's chatWithCoach.
+    appSession.field = field || null;
     res.json(fullReview);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -102,6 +109,11 @@ router.post('/generate-interview-questions', async (req, res) => {
   }
 });
 
+// HR drafts ONE concrete CV-ready sentence for this gap — allowed whether or not the candidate
+// discussed it with the coach first (coach discussion is optional, see agents/coach.js). On
+// success, the gap moves to 'proposed' unconditionally: HR's own "this is weakly evidenced"
+// judgment lives in the returned rationale, not in an auto-resolution — only the candidate's
+// own /gap-decision accept/decline ever moves a gap to a terminal state.
 router.post('/hr/refine', async (req, res) => {
   try {
     const appSession = getSession();
@@ -114,22 +126,31 @@ router.post('/hr/refine', async (req, res) => {
       gap, gap.coachConversation, appSession.hrThread, appSession.clientPreferences
     );
     appSession.hrThread = thread;
-    setGapConclusion(gapId, { refinedDescription: result.refined_description, rationale: result.rationale, verdict: result.verdict });
-    res.json(result);
+    const updated = proposeStatement(gapId, result.refined_description, { rationale: result.rationale, verdict: result.verdict });
+    if (!updated) return res.status(400).json({ error: 'This gap has already been accepted or declined.' });
+    res.json({ proposedStatement: updated.proposedStatement, rationale: result.rationale, verdict: result.verdict, status: updated.status });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// The Accept/Skip buttons on a gap card — the only way a gap's status becomes 'accepted' or
-// 'skipped' server-side. /rewrite reads this directly instead of trusting a client-submitted
-// accept/skip list.
+// The Accept/Decline buttons on a gap card — the only way a gap's status becomes 'accepted' or
+// 'declined' server-side. /rewrite reads this directly instead of trusting a client-submitted
+// accept/decline list. accept is guarded to 'proposed' only — there must be an actual HR-drafted
+// sentence before anything can be accepted. decline is allowed from open/discussing/proposed
+// (the "early skip" path, deciding before ever asking HR to draft anything).
 router.post('/gap-decision', (req, res) => {
-  const { gapId, status } = req.body;
-  if (!['accepted', 'skipped'].includes(status)) return res.status(400).json({ error: 'status must be "accepted" or "skipped".' });
-  const gap = updateGapStatus(gapId, status);
-  if (!gap) return res.status(400).json({ error: 'Gap not found.' });
-  res.json({ ok: true });
+  const { gapId, action } = req.body;
+  if (!['accept', 'decline'].includes(action)) return res.status(400).json({ error: 'action must be "accept" or "decline".' });
+  const gap = action === 'accept' ? acceptGap(gapId) : declineGap(gapId);
+  if (!gap) {
+    return res.status(400).json({
+      error: action === 'accept'
+        ? 'This gap has no proposed statement yet — ask HR to draft one first.'
+        : 'Gap not found, or already accepted/declined.',
+    });
+  }
+  res.json({ ok: true, status: gap.status });
 });
 
 router.post('/hr/chat', async (req, res) => {

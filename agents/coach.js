@@ -2,6 +2,7 @@ const { client, MODEL } = require('../core/claude');
 const { extractJSON } = require('../core/json');
 const { loadCore } = require('../core/knowledge');
 const { preferencesBlock } = require('../core/preferences');
+const { fieldBlock } = require('./recruiter');
 
 const DIRECTION_DESCRIPTIONS = {
   specialist:  'Deep technical expert, Individual Contributor, architect, domain authority — going deeper not broader',
@@ -197,7 +198,7 @@ function selectTopGaps(gaps, severities = ['major', 'mild', 'minor'], minCount =
 // Word export), so this is the same coach throughout, exactly like the HR thread. Lives here
 // (not agents/recruiter.js) since it's a Coach interaction, even though it runs during the
 // HR review step — the candidate is talking to their coach about a gap HR flagged.
-async function chatWithCoach(cvText, job, hrReview, history, userMessage, gapDescription, preferences) {
+async function chatWithCoach(cvText, job, hrReview, history, userMessage, gapDescription, preferences, field, disciplineStore) {
   const gapContext = gapDescription ? `The candidate is currently discussing this specific gap: "${gapDescription}"\n\n` : '';
   const systemPrompt = `${CAREER_COACH_PERSONA}
 
@@ -208,7 +209,7 @@ TARGET JOB: ${job.job_title} at ${job.employer_name || job.company || ''}
 ${(job.job_description || job.description || '').slice(0, 400)}
 
 GAPS IDENTIFIED BY HR:
-${(hrReview.confirm_changes || []).map(c => '- ' + c.description).join('\n')}
+${(hrReview.confirm_changes || []).map(c => '- ' + c.description).join('\n')}${fieldBlock(field, disciplineStore)}
 
 Your role:
 - Assess whether the candidate's previous assignments and accomplishments genuinely align with what this job requires

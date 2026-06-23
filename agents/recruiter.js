@@ -307,5 +307,5 @@ Go through the checklist one item at a time. Return JSON only:
 
 module.exports = {
   reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions,
-  hrSystemPrompt, stealthWritingDirective, pinDisciplineSkill, reviewTailoredCV,
+  hrSystemPrompt, stealthWritingDirective, pinDisciplineSkill, reviewTailoredCV, fieldBlock,
 };

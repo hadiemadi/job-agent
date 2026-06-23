@@ -495,14 +495,14 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(res.body.reply.length).toBeGreaterThan(0);
   });
 
-  test('POST /hr/refine returns 200 with verdict and refined_description', async () => {
-    // The conversation /hr/refine reads now comes from the server-side gap record, not a
-    // client-submitted transcript — populate it via /coach/discuss first.
+  test('POST /hr/refine returns 200 with status=proposed and a proposedStatement — coach discussion is optional, not required first', async () => {
+    // No /coach/discuss call before this — HR may draft directly from 'open' (locked decision #1).
     const gapId = await currentGapId();
-    await agent.post('/coach/discuss').send({ message: 'I am studying for PMP right now.', gapId });
     const res = await agent.post('/hr/refine').send({ gapId });
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('refined_description');
+    expect(res.body).toHaveProperty('proposedStatement');
+    expect(typeof res.body.proposedStatement).toBe('string');
+    expect(res.body.status).toBe('proposed');
     expect(res.body).toHaveProperty('verdict');
     expect(['add', 'skip', 'candidate_decides']).toContain(res.body.verdict);
   });
@@ -512,21 +512,40 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(res.status).toBe(400);
   });
 
-  test('POST /gap-decision marks a gap accepted, and /rewrite picks it up without any client-submitted change list', async () => {
+  test('POST /gap-decision accept → 400 when the gap is still open (no proposed statement yet)', async () => {
     const gapId = await currentGapId();
-    const res = await agent.post('/gap-decision').send({ gapId, status: 'accepted' });
+    const res = await agent.post('/gap-decision').send({ gapId, action: 'accept' });
+    expect(res.status).toBe(400);
+  });
+
+  test('POST /gap-decision allows an early decline straight from open, before ever asking HR to draft anything', async () => {
+    const gapId = await currentGapId();
+    const res = await agent.post('/gap-decision').send({ gapId, action: 'decline' });
     expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
+    expect(res.body.status).toBe('declined');
+  });
+
+  test('POST /gap-decision accept only succeeds once HR has proposed a statement, and /rewrite inserts that exact statement — never the raw slogan', async () => {
+    const gapId = await currentGapId();
+    const refineRes = await agent.post('/hr/refine').send({ gapId });
+    const proposedStatement = refineRes.body.proposedStatement;
+
+    const res = await agent.post('/gap-decision').send({ gapId, action: 'accept' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('accepted');
 
     await agent.post('/rewrite').send({ job: MOCK_JOB });
     const lastCall = rewriteCVWithChanges.mock.calls[rewriteCVWithChanges.mock.calls.length - 1];
     const confirmedChanges = lastCall[3];
-    expect(confirmedChanges.some(c => c.description === MOCK_GAPS[0].description)).toBe(true);
+    expect(confirmedChanges.some(c => c.description === proposedStatement)).toBe(true);
+    // The raw HR-review slogan (MOCK_GAPS[0].description) must never be what gets inserted —
+    // only the HR-drafted, candidate-accepted sentence is.
+    expect(confirmedChanges.some(c => c.description === MOCK_GAPS[0].description)).toBe(false);
   });
 
-  test('POST /gap-decision → 400 for an invalid status value', async () => {
+  test('POST /gap-decision → 400 for an invalid action value', async () => {
     const gapId = await currentGapId();
-    const res = await agent.post('/gap-decision').send({ gapId, status: 'maybe' });
+    const res = await agent.post('/gap-decision').send({ gapId, action: 'maybe' });
     expect(res.status).toBe(400);
   });
 

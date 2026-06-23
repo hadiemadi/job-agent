@@ -195,7 +195,8 @@ input[type="range"] { width:100%; cursor:pointer; accent-color:var(--accent); }
 .auto-rationale { font-size:11px; color:var(--muted-light); margin-top:2px; }
 .confirm-change { border:1px solid var(--border); border-radius:var(--radius-md); padding:var(--space-3) 14px; margin-bottom:var(--space-2); display:flex; align-items:flex-start; gap:var(--space-3); }
 .confirm-change.accepted { border-color:var(--success); background:#f5fbf0; }
-.confirm-change.skipped { opacity:0.45; }
+.confirm-change.declined { opacity:0.45; }
+.confirm-change.proposed { border-color:var(--accent); background:#f3f8fd; }
 .confirm-change-text { flex:1; }
 .confirm-desc { font-size:13px; color:var(--ink); }
 .gap-severity { display:inline-block; font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; padding:2px 7px; border-radius:10px; margin-left:6px; vertical-align:middle; }

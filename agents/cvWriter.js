@@ -249,8 +249,19 @@ function buildSessionSummary(preferences, originalCvData, tailoredCvData, modifi
 // Tailor CV applying specific changes from HR review + client confirmations
 async function rewriteCVWithChanges(cvText, job, autoChanges, confirmedChanges, recommendedSections, originalName, confirmedContact, thread = [], preferences, hrDisplayHistory = [], originalCvData = null, gapDiscussions = []) {
   const allChanges = [...(autoChanges || []), ...(confirmedChanges || [])];
-  const changesText = allChanges.length
-    ? allChanges.map(c => `- ${c.description}`).join('\n')
+  // autoChanges are already directly evidenced in the CV (HR review's safe, auto-applied
+  // edits) — confirmedChanges are different in kind: each one is a single sentence HR drafted
+  // from a gap discussion and the candidate explicitly accepted (#21's gap lifecycle). That's
+  // net-new content sourced from a side conversation, not an edit to something already on the
+  // CV — a materially different risk from "polish an existing bullet," so it gets its own
+  // labeled block and its own explicit guardrail rather than being flattened into one list.
+  const autoChangesText = (autoChanges || []).length ? autoChanges.map(c => `- ${c.description}`).join('\n') : '';
+  const confirmedChangesText = (confirmedChanges || []).length ? confirmedChanges.map(c => `- "${c.description}"`).join('\n') : '';
+  const changesText = (autoChangesText || confirmedChangesText)
+    ? [
+        autoChangesText ? `AUTO-APPLIED CHANGES (directly evidenced in the CV — integrate naturally):\n${autoChangesText}` : null,
+        confirmedChangesText ? `CANDIDATE-ACCEPTED STATEMENTS (drafted by HR from a gap discussion, then explicitly accepted by the candidate — insert each one with wording-only polish to match the CV's voice; do NOT add specifics, numbers, scope, or supporting detail beyond what the sentence already states; never invent context for it):\n${confirmedChangesText}` : null,
+      ].filter(Boolean).join('\n\n')
     : 'Optimize for the job description keywords where they match existing experience.';
 
   const sections = recommendedSections && recommendedSections.length

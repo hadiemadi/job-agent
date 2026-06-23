@@ -9,8 +9,14 @@ const { getSession } = require('./session');
 // of an array index, since index-based lookups (the old gapIndex param on /hr/refine and
 // /coach/discuss) silently break the moment the gap list is re-filtered or re-ordered.
 
-const VALID_STATUSES = ['open', 'accepted', 'skipped', 'hr-concluded'];
+// Corrected lifecycle (#21): a gap moves open -> [discussing] -> proposed -> accepted|declined.
+// HR may draft a statement from 'open' OR 'discussing' (coach discussion is optional) — but
+// nothing can be accepted until HR has actually proposed a concrete sentence. HR's own "this
+// is weakly evidenced" judgment lives in hrConclusion (rationale/verdict metadata) — it no
+// longer auto-resolves the gap; only the candidate's explicit accept/decline does that.
+const VALID_STATUSES = ['open', 'discussing', 'proposed', 'accepted', 'declined'];
 const VALID_SEVERITIES = ['major', 'mild', 'minor'];
+const TERMINAL_STATUSES = ['accepted', 'declined'];
 
 function createGap(raw) {
   return {
@@ -21,6 +27,7 @@ function createGap(raw) {
     status: 'open',
     userResponse: null,
     coachConversation: [],
+    proposedStatement: null,
     hrConclusion: null,
   };
 }
@@ -42,38 +49,52 @@ function getGap(id) {
   return getGaps().find(g => g.id === id) || null;
 }
 
-// The Accept/Skip buttons — the only way a gap's status becomes 'accepted' or 'skipped'.
-function updateGapStatus(id, status) {
-  if (!['accepted', 'skipped'].includes(status)) return null;
-  const gap = getGap(id);
-  if (!gap) return null;
-  gap.status = status;
-  return gap;
-}
-
 // One turn of the gap-specific coach conversation — the server-side record refineWithHR reads
-// from, instead of trusting a client-submitted transcript.
+// from, instead of trusting a client-submitted transcript. The first message moves the gap
+// from 'open' to 'discussing'; discussion is optional, so this is purely informational and
+// never required before HR can draft a statement (see proposeStatement below).
 function appendGapMessage(id, role, content) {
   const gap = getGap(id);
   if (!gap) return null;
   gap.coachConversation.push({ role, content });
+  if (gap.status === 'open') gap.status = 'discussing';
   return gap;
 }
 
-// HR's refined take on a gap, after refineWithHR(). If HR's OWN verdict is "skip", the gap
-// resolves to the terminal 'hr-concluded' status automatically — but only while still 'open':
-// an explicit accept/skip the candidate already made via updateGapStatus is never overridden.
-function setGapConclusion(id, hrConclusion) {
+// HR drafts ONE concrete CV-ready sentence, after refineWithHR(). Succeeds from 'open' or
+// 'discussing' (coach discussion is optional) and from 'proposed' itself (re-drafting after
+// further discussion) — never from a terminal status, since accepted/declined are final.
+// Always lands on 'proposed' unconditionally: HR's "this is weakly evidenced" judgment lives
+// in hrConclusion, not in an auto-resolution — only the candidate's own accept/decline (below)
+// ever moves a gap to a terminal state.
+function proposeStatement(id, statement, hrConclusion) {
   const gap = getGap(id);
-  if (!gap) return null;
-  gap.hrConclusion = hrConclusion;
-  if (hrConclusion && hrConclusion.verdict === 'skip' && gap.status === 'open') {
-    gap.status = 'hr-concluded';
-  }
+  if (!gap || TERMINAL_STATUSES.includes(gap.status)) return null;
+  gap.proposedStatement = statement;
+  gap.hrConclusion = hrConclusion || null;
+  gap.status = 'proposed';
+  return gap;
+}
+
+// Accept — only valid once HR has actually drafted something. Accepting a slogan with no
+// proposed sentence behind it is exactly the bug this lifecycle exists to close.
+function acceptGap(id) {
+  const gap = getGap(id);
+  if (!gap || gap.status !== 'proposed') return null;
+  gap.status = 'accepted';
+  return gap;
+}
+
+// Decline — the "early skip" path included: valid from 'open', 'discussing', or 'proposed'.
+// The candidate can walk away from a gap at any point before accepting it.
+function declineGap(id) {
+  const gap = getGap(id);
+  if (!gap || TERMINAL_STATUSES.includes(gap.status)) return null;
+  gap.status = 'declined';
   return gap;
 }
 
 module.exports = {
-  setGaps, getGaps, getGap, updateGapStatus, appendGapMessage, setGapConclusion,
+  setGaps, getGaps, getGap, appendGapMessage, proposeStatement, acceptGap, declineGap,
   VALID_STATUSES, VALID_SEVERITIES,
 };

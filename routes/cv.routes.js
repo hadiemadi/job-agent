@@ -82,15 +82,27 @@ router.post('/rewrite', async (req, res) => {
     // 'accepted' (open, skipped, or hr-concluded) resolves to skipped: the candidate gave no
     // real signal either way for anything else, so nothing unconfirmed is ever added to the CV.
     const gaps = getGaps();
+    // Only a gap's HR-drafted, candidate-accepted proposedStatement is ever inserted — never
+    // the raw slogan (g.description). An 'accepted' gap with no proposedStatement would be a
+    // logic error elsewhere in the lifecycle (accept is guarded to status==='proposed' in
+    // services/gapStore.js's acceptGap) — skip it defensively rather than insert the
+    // unverified slogan or throw and block the whole tailoring step over one bad record.
     const confirmedChanges = gaps
       .filter(g => g.status === 'accepted')
-      .map(g => ({ description: (g.hrConclusion && g.hrConclusion.refinedDescription) || g.description, rationale: g.rationale }));
+      .map(g => {
+        if (!g.proposedStatement) {
+          console.warn('[gap] accepted gap has no proposedStatement — skipping it, not inserting the slogan. id:', g.id);
+          return null;
+        }
+        return { description: g.proposedStatement, rationale: g.rationale };
+      })
+      .filter(Boolean);
     const gapDiscussions = gaps.map(g => ({
       description: g.description,
       rationale: g.rationale,
       status: g.status === 'accepted' ? 'accepted' : 'skipped',
       coachConversation: g.coachConversation,
-      refinedDescription: g.hrConclusion ? g.hrConclusion.refinedDescription : null,
+      refinedDescription: g.proposedStatement || null,
     }));
     const { filePath, cvData, modified_sections, thread, hrDisplayHistory, review } = await tailorCvWithReview({
       cvText, job, autoChanges, confirmedChanges,

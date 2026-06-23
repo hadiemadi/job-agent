@@ -2,10 +2,12 @@ let _cvPath = null;
 let _currentJob = null;
 let _hrReview = null;
 let _selectedDir = null;
-// Maps each rendered gap card's positional index (i) to the server-assigned gap id
-// (services/gapStore.js) — set fresh by showChanges() on every /review-cv response. Accept/Skip
-// and the coach/HR endpoints address gaps by this id now, not by index.
-let _gapIds = [];
+// One entry per rendered gap card (services/gapStore.js's lifecycle: open -> [discussing] ->
+// proposed -> accepted|declined) — {id, description, rationale, severity, status,
+// proposedStatement}. Set fresh by showChanges() on every /review-cv response, then mutated
+// locally as askHR()/decideGap() succeed, so the card can re-render from local state without
+// a full re-fetch.
+let _gaps = [];
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -255,63 +257,111 @@ function showChanges(review) {
     `).join('')}
   ` : '';
 
-  _gapIds = (review.confirm_changes || []).map(c => c.id);
+  _gaps = (review.confirm_changes || []).map(c => ({ ...c }));
 
-  el('confirmBlock').innerHTML = (review.confirm_changes || []).length ? `
+  el('confirmBlock').innerHTML = _gaps.length ? `
     <div class="changes-section-title">Your input needed</div>
-    <p class="changes-hint">These go beyond your current CV — discuss with your coach or accept/skip directly:</p>
-    ${review.confirm_changes.map((c, i) => `
-      <div class="confirm-change" id="cc-${i}">
-        <div class="confirm-change-text">
-          <div class="confirm-desc" id="cc-desc-${i}">${c.description}${c.severity ? ` <span class="gap-severity ${c.severity}">${c.severity}</span>` : ''}</div>
-          <div class="confirm-rationale" id="cc-rationale-${i}">${c.rationale}</div>
-        </div>
-        <div class="confirm-btns">
-          <button class="btn btn-ghost btn-sm" id="cc-yes-${i}" onclick="confirmChange(${i}, true)">Accept</button>
-          <button class="btn btn-sm" style="background:#f5f5f5;color:#888;" id="cc-no-${i}" onclick="confirmChange(${i}, false)">Skip</button>
-          <button class="btn btn-sm" style="background:#2C2C2A;color:white;" onclick="toggleDiscuss(${i})">Discuss →</button>
-        </div>
-      </div>
-      <div class="chat-panel" id="chat-${i}" style="display:none;">
-        <div class="chat-messages" id="chat-msgs-${i}"></div>
-        <div class="chat-input-row">
-          <textarea class="chat-input" id="chat-input-${i}" placeholder="Talk to your Career Coach…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat(${i});}"></textarea>
-          <button class="btn btn-blue btn-sm" onclick="sendChat(${i})">Send</button>
-        </div>
-        <div class="chat-footer">
-          <button class="btn btn-sm" id="hr-refine-btn-${i}" style="background:#185FA5;color:white;display:none;" onclick="askHR(${i})">Ask HR to update suggestion →</button>
-        </div>
-        <div id="chat-status-${i}" class="info-msg" style="display:none;margin-top:6px;"></div>
-      </div>
-    `).join('')}
+    <p class="changes-hint">These go beyond your current CV — discuss with your coach (optional), ask HR to draft a sentence, or skip:</p>
+    ${_gaps.map((g, i) => renderGapCard(i)).join('')}
   ` : '';
 
   show('changesCard');
   el('changesCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function confirmChange(i, accept) {
+// Renders ONE gap card from its current lifecycle status (services/gapStore.js: open ->
+// [discussing] -> proposed -> accepted|declined). open and discussing render identically
+// (discussion is optional — it doesn't gate anything) and include the chat panel; proposed
+// shows the HR-drafted sentence with Accept/Decline; accepted/declined are terminal, read-only.
+function renderGapCard(i) {
+  const g = _gaps[i];
+  const severityTag = g.severity ? ` <span class="gap-severity ${g.severity}">${g.severity}</span>` : '';
+
+  if (g.status === 'accepted' || g.status === 'declined') {
+    return `
+      <div class="confirm-change resolved ${g.status}" id="cc-${i}">
+        <div class="confirm-change-text">
+          <div class="confirm-desc">${g.status === 'accepted' ? g.proposedStatement : g.description}${severityTag}</div>
+          <div class="confirm-rationale">${g.status === 'accepted' ? 'Added to your CV.' : 'Declined — not added.'}</div>
+        </div>
+      </div>`;
+  }
+
+  if (g.status === 'proposed') {
+    return `
+      <div class="confirm-change proposed" id="cc-${i}">
+        <div class="confirm-change-text">
+          <div class="confirm-desc">${severityTag}
+            <div style="font-size:11px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:#185FA5;margin-top:4px;">HR proposed this sentence for your CV</div>
+          </div>
+          <div class="confirm-rationale" style="color:#2C2C2A;font-weight:500;">${g.proposedStatement}</div>
+        </div>
+        <div class="confirm-btns">
+          <button class="btn btn-ghost btn-sm" onclick="decideGap(${i}, 'accept', this)">Accept</button>
+          <button class="btn btn-sm" style="background:#f5f5f5;color:#888;" onclick="decideGap(${i}, 'decline', this)">Decline</button>
+        </div>
+      </div>`;
+  }
+
+  // 'open' or 'discussing' — coach discussion is optional, so "Ask HR to draft a sentence" is
+  // always available; Discuss is just one path toward it, not a prerequisite.
+  return `
+    <div class="confirm-change" id="cc-${i}">
+      <div class="confirm-change-text">
+        <div class="confirm-desc" id="cc-desc-${i}">${g.description}${severityTag}</div>
+        <div class="confirm-rationale" id="cc-rationale-${i}">${g.rationale}</div>
+      </div>
+      <div class="confirm-btns">
+        <button class="btn btn-sm" style="background:#185FA5;color:white;" onclick="askHR(${i}, this)">Ask HR to draft a sentence →</button>
+        <button class="btn btn-sm" style="background:#2C2C2A;color:white;" onclick="toggleDiscuss(${i})">Discuss with coach first →</button>
+        <button class="btn btn-sm" style="background:#f5f5f5;color:#888;" onclick="decideGap(${i}, 'decline', this)">Skip</button>
+      </div>
+    </div>
+    <div class="chat-panel" id="chat-${i}" style="display:none;">
+      <div class="chat-messages" id="chat-msgs-${i}"></div>
+      <div class="chat-input-row">
+        <textarea class="chat-input" id="chat-input-${i}" placeholder="Talk to your Career Coach…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat(${i});}"></textarea>
+        <button class="btn btn-blue btn-sm" onclick="sendChat(${i})">Send</button>
+      </div>
+      <div id="chat-status-${i}" class="info-msg" style="display:none;margin-top:6px;"></div>
+    </div>`;
+}
+
+// Re-renders one card in place after a state-changing action (askHR success, decideGap). The
+// chat panel (only present for open/discussing) is removed first since proposed/terminal
+// renders don't include one — re-opening it later, if ever, starts a fresh transcript view.
+function reRenderGapCard(i) {
+  const chatPanel = el('chat-' + i);
+  if (chatPanel) chatPanel.remove();
   const card = el('cc-' + i);
-  card.classList.toggle('accepted', accept);
-  card.classList.toggle('skipped', !accept);
-  el('cc-yes-' + i).style.cssText = accept ? 'background:#1A7A3C;color:white;' : '';
-  el('cc-no-' + i).style.cssText = !accept ? 'background:#888;color:white;' : 'background:#f5f5f5;color:#888;';
-  el('chat-' + i).style.display = 'none';
-  // Persists the decision server-side (services/gapStore.js) — /rewrite reads this directly
-  // instead of re-scanning these CSS classes from a request body.
-  const gapId = _gapIds[i];
-  if (gapId) {
-    fetch('/gap-decision', {
+  if (card) card.outerHTML = renderGapCard(i);
+}
+
+// Accept/Decline (proposed) and Skip (open/discussing, the "early decline" path) all go
+// through this one action — services/gapStore.js's acceptGap/declineGap are the only things
+// that ever move a gap to a terminal status, and /rewrite trusts that server state directly.
+async function decideGap(i, action, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/gap-decision', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ gapId, status: accept ? 'accepted' : 'skipped' }),
-    }).catch(() => {}); // best-effort — the visible card state is the immediate feedback either way
+      body: JSON.stringify({ gapId: _gaps[i].id, action }),
+    });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || 'Could not update this gap.'); if (btn) btn.disabled = false; return; }
+    _gaps[i].status = data.status;
+    reRenderGapCard(i);
+  } catch (err) {
+    alert(err.message);
+    if (btn) btn.disabled = false;
   }
 }
 
 // ── Coach & HR chat (per confirm-change card) ─────────────────────────────────
 
+// Local-only cache of each card's chat bubbles, purely for re-rendering the conversation UI —
+// the server (services/gapStore.js) is the authoritative copy /hr/refine reads from.
 const _cardChats = {};
-const _refinedChanges = {};
 
 function toggleDiscuss(i) {
   const panel = el('chat-' + i);
@@ -363,53 +413,44 @@ async function sendChat(i) {
   try {
     const res = await fetch('/coach/discuss', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ message: text, gapId: _gapIds[i] })
+      body: JSON.stringify({ message: text, gapId: _gaps[i].id })
     });
     const data = await res.json();
     hide('chat-status-' + i);
     if (data.reply) {
       _cardChats[i].push({ role: 'assistant', content: data.reply });
       appendBubble(i, 'coach', data.reply);
-      el('hr-refine-btn-' + i).style.display = '';
     }
   } catch (err) {
     el('chat-status-' + i).textContent = err.message;
   }
 }
 
-async function askHR(i) {
-  const btn = el('hr-refine-btn-' + i);
-  btn.disabled = true; btn.textContent = 'HR is reviewing…';
+// Asks HR to draft ONE concrete CV-ready sentence for this gap — available directly from
+// open/discussing, with or without a coach discussion first (discussion is optional). On
+// success the gap moves to 'proposed' and the card re-renders showing the sentence with
+// Accept/Decline.
+async function askHR(i, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'HR is drafting…'; }
   try {
     const res = await fetch('/hr/refine', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ gapId: _gapIds[i] })
+      body: JSON.stringify({ gapId: _gaps[i].id })
     });
     const data = await res.json();
-    btn.disabled = false; btn.textContent = 'Ask HR to update suggestion →';
-    if (data.refined_description) {
-      _refinedChanges[i] = { refined_description: data.refined_description, rationale: data.rationale, verdict: data.verdict };
-      const originalDesc = el('cc-desc-' + i).textContent;
-      el('chat-' + i).style.display = 'none';
-      el('cc-desc-' + i).innerHTML = `
-        <div style="font-size:11px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:#888;margin-bottom:4px;">Original</div>
-        <div style="color:#999;text-decoration:line-through;margin-bottom:10px;">${originalDesc}</div>
-        <div style="font-size:11px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:#185FA5;margin-bottom:4px;">HR updated</div>
-        <div style="color:#2C2C2A;font-weight:500;">${data.refined_description}</div>
-      `;
-      el('cc-rationale-' + i).textContent = data.rationale;
-      el('cc-yes-' + i).style.cssText = '';
-      el('cc-no-' + i).style.cssText = 'background:#f5f5f5;color:#888;';
-      el('cc-' + i).classList.remove('accepted', 'skipped');
-    } else {
-      el('chat-' + i).style.display = '';
-      el('chat-status-' + i).textContent = data.error || 'HR did not return an update — try discussing again.';
-      show('chat-status-' + i);
+    if (!res.ok || !data.proposedStatement) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Ask HR to draft a sentence →'; }
+      const statusEl = el('chat-status-' + i);
+      if (statusEl) { statusEl.textContent = data.error || 'HR did not return a draft — try again.'; show('chat-status-' + i); }
+      else alert(data.error || 'HR did not return a draft — try again.');
+      return;
     }
+    _gaps[i].status = data.status;
+    _gaps[i].proposedStatement = data.proposedStatement;
+    reRenderGapCard(i);
   } catch (err) {
-    btn.disabled = false; btn.textContent = 'Ask HR to update suggestion →';
-    el('chat-status-' + i).textContent = err.message;
-    show('chat-status-' + i);
+    if (btn) { btn.disabled = false; btn.textContent = 'Ask HR to draft a sentence →'; }
+    alert(err.message);
   }
 }
 
