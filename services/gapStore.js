@@ -92,7 +92,62 @@ function setUserDecision(id, decision) {
   return gap;
 }
 
+// Cross-agent memory (#26): a compact, derived view of every OTHER gap's outcome so far —
+// computed fresh from getGaps() on every call, never persisted separately, so there is no
+// second copy of gap state that can drift out of sync. Outputs only: this renders HR's lean/
+// statement and the candidate's decision, never raw coachConversation turns — that keeps
+// each agent's own current-gap detail as the one place the actual back-and-forth is visible,
+// and avoids one gap's verbatim discussion leaking wholesale into another gap's prompt.
+const MAX_SHARED_GAPS = 20;
+const EXCERPT_LEN = 120;
+const BLOCK_CHAR_CEILING = 4000;
+
+function truncate(str, len) {
+  const s = String(str || '').trim();
+  return s.length > len ? s.slice(0, len - 1).trim() + '…' : s;
+}
+
+function describeGapActivity(g) {
+  const decision = g.userDecision === 'added' ? 'candidate added it'
+    : g.userDecision === 'left-out' ? 'candidate left it out'
+    : 'candidate undecided';
+  const parts = [decision];
+  if (g.hrConclusion) {
+    parts.push(`HR leans ${g.hrConclusion.lean === 'add' ? 'add' : 'leave-out'}`);
+  }
+  if (g.proposedStatement) {
+    parts.push(`drafted: "${truncate(g.proposedStatement, EXCERPT_LEN)}"`);
+  }
+  return parts.join('; ');
+}
+
+function hasActivity(g) {
+  return g.status !== 'open' || g.userDecision !== 'undecided' || !!g.proposedStatement;
+}
+
+function buildSharedGapContext(excludeGapId) {
+  const active = getGaps()
+    .filter(g => g.id !== excludeGapId)
+    .filter(hasActivity)
+    .slice(0, MAX_SHARED_GAPS);
+  if (!active.length) return '';
+
+  const lines = [];
+  let omitted = 0;
+  for (const g of active) {
+    const line = `- "${truncate(g.description, EXCERPT_LEN)}" — ${describeGapActivity(g)}`;
+    const wouldBe = lines.join('\n') + (lines.length ? '\n' : '') + line;
+    if (wouldBe.length > BLOCK_CHAR_CEILING) { omitted++; continue; }
+    lines.push(line);
+  }
+  if (!lines.length) return '';
+  let block = 'OTHER GAPS IN THIS REVIEW (background for consistency — don\'t re-litigate):\n' + lines.join('\n');
+  if (omitted > 0) block += `\n+${omitted} more gaps not shown`;
+  return block;
+}
+
 module.exports = {
   setGaps, getGaps, getGap, appendGapMessage, proposeStatement, setUserDecision,
+  buildSharedGapContext,
   VALID_STATUSES, VALID_SEVERITIES, VALID_DECISIONS,
 };

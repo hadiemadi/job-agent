@@ -151,6 +151,11 @@ distinct gaps — anything the job description calls for (required or preferred)
 not clearly state or demonstrate. Look beyond just missing skills/certifications: also consider
 gaps in seniority, scope, domain experience, tools, methodologies, and leadership scope.
 
+Each gap's "description" must be a NEUTRAL TOPIC PHRASE naming the subject area only — no
+judgment words and no claim about absence or presence (never "No", "Lacks", "Missing", "Zero",
+"Limited", "Weak"). E.g. write "EMC engineering experience", not "No direct EMC engineering
+experience". The "rationale" field is where the actual gap/judgment belongs.
+
 Score each gap's severity:
 - "major": explicitly required by the job, and completely absent from the CV
 - "mild": explicitly required or strongly preferred, and only partially or ambiguously covered
@@ -198,7 +203,7 @@ function selectTopGaps(gaps, severities = ['major', 'mild', 'minor'], minCount =
 // Word export), so this is the same coach throughout, exactly like the HR thread. Lives here
 // (not agents/recruiter.js) since it's a Coach interaction, even though it runs during the
 // HR review step — the candidate is talking to their coach about a gap HR flagged.
-async function chatWithCoach(cvText, job, hrReview, history, userMessage, gapDescription, preferences, field, disciplineStore) {
+async function chatWithCoach(cvText, job, hrReview, history, userMessage, gapDescription, preferences, field, disciplineStore, sharedContext) {
   const gapContext = gapDescription ? `The candidate is currently discussing this specific gap: "${gapDescription}"\n\n` : '';
   const systemPrompt = `${CAREER_COACH_PERSONA}
 
@@ -222,7 +227,7 @@ Your role:
 KEEP THIS SHORT — this is a quick check on one specific gap, not an open-ended interview:
 - Ask at most 1-3 follow-up questions total for this gap, then converge on a clear verdict
 - The moment you have enough to judge the gap, say so plainly instead of asking more questions
-- Every response is 2-3 sentences maximum, no filler, no restating what the candidate just said${preferencesBlock(preferences)}`;
+- Every response is 2-3 sentences maximum, no filler, no restating what the candidate just said${preferencesBlock(preferences)}${sharedContext ? `\n\n${sharedContext}` : ''}`;
 
   const messages = [...history, { role: 'user', content: gapContext + userMessage }];
   const response = await client.messages.create({

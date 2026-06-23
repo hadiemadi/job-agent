@@ -5,7 +5,7 @@ const {
 } = require('../agent');
 const { generateCoverLetterWord } = require('../src/wordExport');
 const { getSession } = require('../services/session');
-const { setGaps, getGap, proposeStatement, setUserDecision } = require('../services/gapStore');
+const { setGaps, getGap, proposeStatement, setUserDecision, buildSharedGapContext } = require('../services/gapStore');
 
 const router = express.Router();
 
@@ -50,6 +50,7 @@ router.post('/review-cv', async (req, res) => {
         id: g.id, description: g.description, rationale: g.rationale, severity: g.severity,
         status: g.status, proposedStatement: g.proposedStatement,
         userDecision: g.userDecision, hrConclusion: g.hrConclusion,
+        targetSection: g.hrConclusion ? g.hrConclusion.targetSection : null,
       })),
     };
     appSession.currentJob = job;
@@ -114,11 +115,14 @@ router.post('/generate-interview-questions', async (req, res) => {
 // discussed it with the coach first (coach discussion is optional, see agents/coach.js), and
 // re-askable any time, including after a decision has already been made (the card v2 "re-ask
 // HR pulls latest coach chat" flow — gap.coachConversation is always read fresh here, so a
-// re-draft naturally reflects whatever was discussed since the last draft). HR leans 'add' or
-// 'leave-out' with one reason — that lean is informational only, stored in hrConclusion; it
-// never sets the candidate's own userDecision (services/gapStore.js's proposeStatement always
-// resets userDecision to 'undecided' on a fresh draft, since a prior decision was made against
-// a now-superseded sentence).
+// re-draft naturally reflects whatever was discussed since the last draft). HR only ever
+// receives Coach's FINAL takeaway for this gap (#26) — never the raw conversation — plus a
+// compact cross-gap summary (buildSharedGapContext) so HR stays consistent with what's already
+// been decided elsewhere in this review. HR leans 'add' or 'leave-out' with one reason — that
+// lean is informational only, stored in hrConclusion; it never sets the candidate's own
+// userDecision (services/gapStore.js's proposeStatement always resets userDecision to
+// 'undecided' on a fresh draft, since a prior decision was made against a now-superseded
+// sentence).
 router.post('/hr/refine', async (req, res) => {
   try {
     const appSession = getSession();
@@ -126,14 +130,19 @@ router.post('/hr/refine', async (req, res) => {
     const { gapId } = req.body;
     const gap = getGap(gapId);
     if (!gap) return res.status(400).json({ error: 'Gap not found.' });
+    // HR only ever sees Coach's FINAL takeaway for this gap (the last assistant turn) — never
+    // the raw back-and-forth. Coach's own full conversation stays visible to Coach only.
+    const lastCoachTurn = [...(gap.coachConversation || [])].reverse().find(m => m.role === 'assistant');
+    const coachFinalStatement = lastCoachTurn ? lastCoachTurn.content : null;
+    const sharedContext = buildSharedGapContext(gapId);
     const { result, thread } = await refineWithHR(
       appSession.cvText, appSession.currentJob, appSession.hrReview,
-      gap, gap.coachConversation, appSession.hrThread, appSession.clientPreferences
+      gap, coachFinalStatement, appSession.hrThread, appSession.clientPreferences, sharedContext
     );
     appSession.hrThread = thread;
-    const updated = proposeStatement(gapId, result.refined_description, { rationale: result.rationale, lean: result.lean });
+    const updated = proposeStatement(gapId, result.refined_description, { rationale: result.rationale, lean: result.lean, targetSection: result.targetSection || null });
     if (!updated) return res.status(400).json({ error: 'Gap not found.' });
-    res.json({ proposedStatement: updated.proposedStatement, rationale: result.rationale, lean: result.lean, status: updated.status });
+    res.json({ proposedStatement: updated.proposedStatement, rationale: result.rationale, lean: result.lean, targetSection: result.targetSection || null, status: updated.status });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -174,7 +183,8 @@ router.post('/hr/chat', async (req, res) => {
         (concern.isFirst ? '\n\n(This is the start of this discussion — first briefly quote or restate the excerpt above to confirm you understood what they\'re referring to, then respond to their point.)' : '');
     }
     const { reply, thread } = await chatWithHRExpert(
-      appSession.cvText, appSession.currentJob, appSession.hrThread, finalMessage, model, appSession.clientPreferences
+      appSession.cvText, appSession.currentJob, appSession.hrThread, finalMessage, model, appSession.clientPreferences,
+      buildSharedGapContext(null)
     );
     appSession.hrThread = thread;
     appSession.hrDisplayHistory = [...appSession.hrDisplayHistory, { role: 'user', text: message }, { role: 'expert', text: reply }];
@@ -191,7 +201,8 @@ router.post('/hr/apply-concern', async (req, res) => {
     const { job, fieldText, selectedText } = req.body;
     if (!fieldText || !selectedText) return res.status(400).json({ error: 'fieldText and selectedText are required.' });
     const { revisedText, changed, thread } = await applyConcernChange(
-      appSession.cvText, job || appSession.currentJob, fieldText, selectedText, appSession.hrThread, appSession.clientPreferences
+      appSession.cvText, job || appSession.currentJob, fieldText, selectedText, appSession.hrThread, appSession.clientPreferences,
+      buildSharedGapContext(null)
     );
     appSession.hrThread = thread;
     res.json({ revisedText, changed });

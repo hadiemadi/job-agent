@@ -413,7 +413,7 @@ Return JSON only:
 // discussed it with HR in the sidebar (that conversation already lives in `thread`). This
 // rewrites ONLY the one field/bullet/sentence that snippet belongs to, per the conclusion of
 // that discussion — never the rest of the CV.
-async function applyConcernChange(cvText, job, fieldText, selectedText, thread = [], preferences) {
+async function applyConcernChange(cvText, job, fieldText, selectedText, thread = [], preferences, sharedContext) {
   const userMessage = `The candidate selected this exact snippet from their tailored CV: "${selectedText}"
 
 That snippet is part of this single piece of CV content (one field/bullet/sentence):
@@ -429,7 +429,7 @@ Based on everything just discussed above in this conversation, decide the agreed
   keep it as-is, or the concern was resolved without needing an edit), return the original text
   unchanged and set "changed" to false — do not invent a cosmetic edit just to have something
   to return.
-${stealthWritingDirective()}
+${stealthWritingDirective()}${sharedContext ? `\n\n${sharedContext}` : ''}
 
 Return JSON only:
 { "revised_text": "", "changed": true }`;

@@ -311,7 +311,8 @@ function renderCollapsedGapCard(i) {
 // re-askable any time), (6) the Add-to-CV/Leave-out decision itself.
 function renderExpandedGapCard(i) {
   const g = _gaps[i];
-  const severityTag = g.severity ? ` <span class="gap-severity ${g.severity}">${g.severity}</span>` : '';
+  const severityLabel = g.severity ? `${g.severity.charAt(0).toUpperCase()}${g.severity.slice(1)} Gap` : '';
+  const severityTag = g.severity ? ` <span class="gap-severity ${g.severity}">${severityLabel}</span>` : '';
   const hasDraft = !!g.proposedStatement;
   const leanLabel = g.hrConclusion && g.hrConclusion.lean === 'add' ? 'Add' : 'Leave out';
   const leanClass = g.hrConclusion && g.hrConclusion.lean === 'add' ? 'lean-add' : 'lean-leave-out';
@@ -326,6 +327,7 @@ function renderExpandedGapCard(i) {
             <span class="gap-lean-reason">${g.hrConclusion ? g.hrConclusion.rationale : ''}</span>
           </div>
           <div class="gap-drafted-statement">${g.proposedStatement}</div>
+          ${g.targetSection ? `<div class="gap-target-section">→ goes in: ${g.targetSection}</div>` : ''}
         ` : ''}
       </div>
       <div class="confirm-btns">
@@ -482,7 +484,8 @@ async function askHR(i, btn) {
     }
     _gaps[i].status = data.status;
     _gaps[i].proposedStatement = data.proposedStatement;
-    _gaps[i].hrConclusion = { rationale: data.rationale, lean: data.lean };
+    _gaps[i].hrConclusion = { rationale: data.rationale, lean: data.lean, targetSection: data.targetSection || null };
+    _gaps[i].targetSection = data.targetSection || null;
     _gaps[i].userDecision = 'undecided';
     _gaps[i].expanded = true;
     reRenderGapCard(i);

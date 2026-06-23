@@ -188,40 +188,48 @@ async function analyzeJobFit(cvText, jobs, countryCode = 'GB') {
 // services/gapStore.js). HR takes a clear position every time: it leans "add" or "leave-out"
 // with one honest reason — it never hedges with a third, wait-and-see option. The candidate's
 // own accept/decline decision is separate and final regardless of which way HR leans.
-async function refineWithHR(cvText, job, hrReview, gap, conversation, thread, preferences) {
-  const conversationText = conversation.map(m =>
-    `${m.role === 'user' ? 'Candidate' : 'Coach'}: ${m.content}`
-  ).join('\n');
+// `coachFinalStatement` is Coach's FINAL takeaway for THIS gap only — never the raw
+// conversation transcript. HR never sees the candidate's back-and-forth with Coach, only the
+// conclusion Coach reached; keeps the candidate's own words from being re-litigated or quoted
+// out of context by a different agent persona.
+async function refineWithHR(cvText, job, hrReview, gap, coachFinalStatement, thread, preferences, sharedContext) {
+  const coachNote = coachFinalStatement
+    ? `Coach's takeaway on this gap: ${coachFinalStatement}`
+    : "The candidate hasn't discussed this gap with their coach — that's normal, not a reason to refuse drafting.";
 
+  // WARNING: HR must only use evidence actually present in the candidate's CV.
+  // Never invent or imply experience they don't have — fabrication breaks app trust
+  // and gets candidates caught in interviews. Do not loosen this when editing the prompt.
   const userMessage = `Your initial HR review identified this gap: ${gap.description}
 
-The candidate discussed this gap with their career coach. Here is the conversation (it may be
-empty — the candidate can ask you to draft a statement without discussing it first):
-
-${conversationText}
-
+${coachNote}
+${sharedContext ? `\n${sharedContext}\n` : ''}
 Draft ONE concrete, CV-ready statement for this gap. Look at the candidate's FULL CV (given to
 you above) for the closest genuinely-evidenced related experience, credential, coursework, or
 adjacent skill — even if it's not an exact match for what this gap asks for — and base the
 statement on that. refined_description must NEVER be empty, even when you lean "leave-out" or
-the conversation above is empty: the candidate needs to see exactly what would be added before
-deciding whether to follow or override your lean. An empty conversation is normal, not a reason
+there's no coach note above: the candidate needs to see exactly what would be added before
+deciding whether to follow or override your lean. No coach discussion is normal, not a reason
 to refuse — the candidate's CV is itself evidence. Only if the CV truly contains nothing even
 adjacent to this gap should you draft a plainly conditional statement (e.g. naming what's
 missing and what confirming it would require) — never return an empty string.
 
 Then take a clear position on whether THIS drafted statement belongs on the CV as-is — lean
-"add" or "leave-out", never a hedge.
+"add" or "leave-out", never a hedge. Also pick which CV section this statement belongs in
+(e.g. "Summary", "Experience", "Skills", "Certifications", "Publications", "Education" — use
+the candidate's own section names where one already fits, or the closest standard CV section).
 
 Return JSON only:
 {
   "refined_description": "",
   "rationale": "",
-  "lean": "add|leave-out"
+  "lean": "add|leave-out",
+  "targetSection": ""
 }
 
 lean: "add" if the statement is clearly evidenced by the discussion/CV, "leave-out" if it would
-overclaim or isn't well-supported. rationale is the one-sentence reason for that lean.`;
+overclaim or isn't well-supported. rationale is the reason for that lean — at most 2 short
+sentences, crisp and direct, never a paragraph.`;
 
   const messages = [...thread, { role: 'user', content: userMessage }];
   const response = await client.messages.create({
@@ -238,8 +246,9 @@ overclaim or isn't well-supported. rationale is the one-sentence reason for that
 // Sidebar Q&A on the editable tailored CV page — continues the same HR thread, so the
 // expert remembers everything discussed during review/rewrite/placement. `model` lets the
 // sidebar's picker override the default model for this turn only.
-async function chatWithHRExpert(cvText, job, thread, userMessage, model, preferences) {
-  const messages = [...(thread || []), { role: 'user', content: userMessage }];
+async function chatWithHRExpert(cvText, job, thread, userMessage, model, preferences, sharedContext) {
+  const finalUserMessage = sharedContext ? `${userMessage}\n\n${sharedContext}` : userMessage;
+  const messages = [...(thread || []), { role: 'user', content: finalUserMessage }];
   const response = await client.messages.create({
     model: model || MODEL,
     max_tokens: 900,
