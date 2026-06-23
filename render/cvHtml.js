@@ -119,7 +119,7 @@ function renderCVPage(cv, job, opts = {}) {
 
 // ── Standalone tailored CV (editable, with toolbar) ───────────────────────────
 function generateExecutiveTemplate(cv, job, opts = {}) {
-  const { hrDisplayHistory = [] } = opts;
+  const { hrDisplayHistory = [], aiSpendUsd = 0 } = opts;
   const pageHtml = renderCVPage(cv, job, { editable: true, showBadge: true });
 
   return `<!DOCTYPE html>
@@ -159,6 +159,7 @@ ${CV_CSS}
   .tb-link { font-size: 11px; color: rgba(255,255,255,0.55); text-decoration: underline; cursor: pointer; display: block; }
   .tb-link:hover { color: white; }
   .tb-status { font-size: 11px; color: rgba(255,255,255,0.55); }
+  .tb-cost { margin-top: auto; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.12); font-size: 11px; color: rgba(255,255,255,0.4); }
   .tb-btn:disabled, .tb-select:disabled, .hr-sb-model:disabled { opacity: 0.45; cursor: not-allowed; }
   .tb-row { display: flex; gap: 6px; align-items: center; }
   .tb-row .tb-select { flex: 1; min-width: 0; }
@@ -244,6 +245,7 @@ ${CV_CSS}
     .tb-hint { display: none; }
     .tb-actions { flex-direction: row; flex-wrap: wrap; }
     .tb-btn, .tb-select { width: auto; }
+    .tb-cost { margin-top: 0; border-top: none; padding-top: 0; }
     .cv-main { margin-left: 0; margin-right: 0 !important; }
     .hr-sidebar { width: 86%; }
   }
@@ -285,6 +287,7 @@ ${CV_CSS}
     <span class="tb-status" id="templateStatus"></span>
     <button class="tb-btn tb-save" id="hrToggleBtn" onclick="toggleHrSidebar()">Hide HR Expert</button>
   </div>
+  <div class="tb-cost" title="Total Anthropic API cost for this session's CV — not the global daily budget, not other users' usage">AI cost for this CV: $${Number(aiSpendUsd || 0).toFixed(2)}</div>
 </div>
 
 <div class="hr-sidebar" id="hrSidebar">

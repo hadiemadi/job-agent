@@ -1,5 +1,6 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { extractJSON } = require('./json');
+const { addSessionSpend } = require('../services/session');
 
 // The one Anthropic client + model constant for the whole app — both src/ai.js and
 // src/coach.js used to instantiate their own copy of this; centralizing it here means a
@@ -70,6 +71,7 @@ function recordUsage(usage, model) {
   const outputTokens = usage.output_tokens || 0;
   const costUsd = (inputTokens / 1e6) * PRICE_INPUT_PER_MTOK + (outputTokens / 1e6) * PRICE_OUTPUT_PER_MTOK;
   spendTodayUsd += costUsd;
+  addSessionSpend(costUsd); // per-session running total — see services/session.js, surfaced as "AI cost for this CV"
   console.log(`[ai-spend] ${model || MODEL}: ~$${costUsd.toFixed(4)} this call — $${spendTodayUsd.toFixed(4)} / $${DAILY_AI_BUDGET_USD} today`);
 }
 

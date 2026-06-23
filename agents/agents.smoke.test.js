@@ -133,6 +133,24 @@ describe('agents/cvWriter', () => {
       fs.rmSync(result.filePath, { force: true });
     }
   });
+  test('rewriteCVWithChanges renders this session\'s running AI cost on the tailored CV page, not the global daily total', async () => {
+    mockTextResponse(JSON.stringify({
+      cv: { name: 'Jane Doe', summary: 'Senior TPM.', experience: [], education: [] },
+      modified_sections: ['summary'],
+    }));
+    const fs = require('fs');
+    const { als, addSessionSpend } = require('../services/session');
+    const result = await als.run('cost-display-test-sid', async () => {
+      addSessionSpend(1.2345);
+      return cvWriter.rewriteCVWithChanges('cv text', { job_title: 'TPM', employer_name: 'Acme' }, [], [], null, null, null, [], undefined, [], null, []);
+    });
+    try {
+      const html = fs.readFileSync(result.filePath, 'utf8');
+      expect(html).toContain('AI cost for this CV: $1.23');
+    } finally {
+      fs.rmSync(result.filePath, { force: true });
+    }
+  });
 });
 
 describe('agents/coach', () => {
