@@ -4,7 +4,7 @@ const path = require('path');
 const express = require('express');
 const fse = require('fs-extra');
 const cookieParser = require('cookie-parser');
-const { sessionMiddleware, requestScope, isOwnedOutputFile } = require('./services/session');
+const { sessionMiddleware, requestScope, isOwnedOutputFile, getOutputDownloadName } = require('./services/session');
 const { globalLimiter, aiLimiter } = require('./services/ratelimit');
 const cvRoutes = require('./routes/cv.routes');
 const jobsRoutes = require('./routes/jobs.routes');
@@ -40,6 +40,21 @@ app.use('/templates', express.static('templates'));
 // registerOutputFile) and recorded on the session that generated it; this route is the
 // only way to read one back, and only for the session that owns it.
 const OUTPUT_DIR = path.resolve('output');
+
+// Builds a safe Content-Disposition value for a friendly download name (e.g. "Tailored
+// CV.docx") instead of the random on-disk filename — the random name is what makes the
+// file unguessable (see registerOutputFile), there's no reason the candidate has to see it
+// in their downloads folder. downloadName can ultimately trace back to AI-parsed job/
+// company text, so this strips anything that could break or inject into the header (CRLF,
+// quotes) and provides both a plain-ASCII fallback and a UTF-8 form (RFC 6266/5987) for
+// names with accented/non-ASCII characters.
+function contentDispositionFor(downloadName, ext) {
+  const full = `${downloadName}.${ext}`.replace(/[\r\n]/g, '');
+  const ascii = full.replace(/"/g, '').replace(/[^\x20-\x7E]/g, '_');
+  const utf8 = encodeURIComponent(full);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${utf8}`;
+}
+
 app.get('/output/:file', (req, res) => {
   const { file } = req.params;
   // Only the exact shape registerOutputFile() generates — also rules out '/', '\', and
@@ -50,7 +65,15 @@ app.get('/output/:file', (req, res) => {
   if (!isOwnedOutputFile(file)) return res.status(404).end();
   const resolved = path.join(OUTPUT_DIR, file);
   if (path.dirname(resolved) !== OUTPUT_DIR) return res.status(404).end(); // defense in depth
-  res.type(file.endsWith('.html') ? 'text/html' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  const isHtml = file.endsWith('.html');
+  res.type(isHtml ? 'text/html' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  // HTML pages (the standalone editable CV, the comparison page) open inline in a tab — no
+  // Content-Disposition. .docx files are always downloads (the frontend's <a download> /
+  // export buttons), so they get the friendly suggested filename.
+  if (!isHtml) {
+    const downloadName = getOutputDownloadName(file) || 'Tailored CV';
+    res.set('Content-Disposition', contentDispositionFor(downloadName, 'docx'));
+  }
   res.sendFile(resolved);
 });
 

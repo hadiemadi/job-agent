@@ -67,14 +67,18 @@ function setSession(next) {
 // serving anything. Every agents/src call site that writes into output/ should go through
 // this instead of building its own filename — one place to get the security property
 // right, instead of eight.
-// Map<fileName, { createdAt }> rather than a Set — createdAt backs the retention-TTL sweep
-// below, so a file expires even if its session stays active for a long time.
-function registerOutputFile(extension) {
+// Map<fileName, { createdAt, downloadName }> rather than a Set — createdAt backs the
+// retention-TTL sweep below, so a file expires even if its session stays active for a long
+// time; downloadName (optional) is what GET /output/:file suggests via Content-Disposition
+// when the file is downloaded, e.g. "Tailored CV.docx" instead of the random on-disk name —
+// the random name is what makes the file unguessable, but there's no reason the CANDIDATE
+// has to see it.
+function registerOutputFile(extension, downloadName = null) {
   const sid = als.getStore() || 'no-session'; // direct calls outside a request (e.g. test.js) have no sid
   const fileName = `${sid}_${crypto.randomBytes(16).toString('hex')}.${extension}`;
   const session = getSession();
   if (!session.outputFiles) session.outputFiles = new Map();
-  session.outputFiles.set(fileName, { createdAt: Date.now() });
+  session.outputFiles.set(fileName, { createdAt: Date.now(), downloadName });
   return `output/${fileName}`;
 }
 
@@ -84,6 +88,15 @@ function registerOutputFile(extension) {
 function isOwnedOutputFile(fileName) {
   const session = getSession();
   return !!(session.outputFiles && session.outputFiles.has(fileName));
+}
+
+// The friendly name registerOutputFile() was given for this file, if any — null for files
+// that don't need one (e.g. the standalone/comparison HTML pages, which open inline in a
+// tab rather than download).
+function getOutputDownloadName(fileName) {
+  const session = getSession();
+  const meta = session.outputFiles && session.outputFiles.get(fileName);
+  return meta ? meta.downloadName : null;
 }
 
 // Deletes every output/ file a session generated, both on disk and from its own
@@ -188,5 +201,5 @@ if (sweepInterval.unref) sweepInterval.unref();
 
 module.exports = {
   getSession, setSession, als, sessionMiddleware, requestScope, createSession,
-  registerOutputFile, isOwnedOutputFile, purgeSessionData,
+  registerOutputFile, isOwnedOutputFile, getOutputDownloadName, purgeSessionData,
 };

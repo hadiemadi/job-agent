@@ -6,6 +6,13 @@ const {
 const fse   = require('fs-extra');
 const { registerOutputFile } = require('../services/session');
 
+// Friendly download name shown to the candidate (e.g. "Tailored CV - Rivian.docx")
+// instead of the random on-disk filename — see registerOutputFile/getOutputDownloadName.
+function downloadNameFor(base, job) {
+  const company = job && (job.employer_name || job.company);
+  return company ? `${base} - ${company}` : base;
+}
+
 // half-point sizes: 22=11pt, 24=12pt, 26=13pt, 28=14pt, 36=18pt, 48=24pt
 // spacing in twips:  240=12pt, 120=6pt, 80=4pt, 60=3pt
 
@@ -172,7 +179,7 @@ function certificationsSection(certifications) {
 
 async function generateWordCV(cvData, job, outputDir = 'output') {
   const cv = cvData || {};
-  const filePath = registerOutputFile('docx'); // unguessable, session-scoped — see services/session.js
+  const filePath = registerOutputFile('docx', downloadNameFor('Tailored CV', job)); // unguessable on disk, friendly name on download — see services/session.js
 
   await fse.ensureDir(outputDir);
 
@@ -225,7 +232,7 @@ async function generateWordCV(cvData, job, outputDir = 'output') {
 // distinct second choice in the template picker, reusing the same section builders.
 async function generateWordCVAlt(cvData, job, outputDir = 'output') {
   const cv = cvData || {};
-  const filePath = registerOutputFile('docx'); // unguessable, session-scoped — see services/session.js
+  const filePath = registerOutputFile('docx', downloadNameFor('Tailored CV', job)); // unguessable on disk, friendly name on download — see services/session.js
 
   await fse.ensureDir(outputDir);
 
@@ -280,7 +287,7 @@ async function generateWordCVAlt(cvData, job, outputDir = 'output') {
 // by the letter body as one paragraph per blank-line-separated block.
 async function generateCoverLetterWord(coverLetterText, cvData, job, outputDir = 'output') {
   const cv = cvData || {};
-  const filePath = registerOutputFile('docx'); // unguessable, session-scoped — see services/session.js
+  const filePath = registerOutputFile('docx', downloadNameFor('Cover Letter', job)); // unguessable on disk, friendly name on download — see services/session.js
 
   await fse.ensureDir(outputDir);
 

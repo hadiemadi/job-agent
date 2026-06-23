@@ -46,7 +46,9 @@ function flattenDocxtemplaterError(err) {
 }
 
 async function renderTaggedTemplate(cvData, job, templatePath, outputDir) {
-  const filePath = registerOutputFile('docx'); // unguessable, session-scoped — see services/session.js
+  const company = job && (job.employer_name || job.company);
+  const downloadName = company ? `Tailored CV - ${company}` : 'Tailored CV';
+  const filePath = registerOutputFile('docx', downloadName); // unguessable on disk, friendly name on download — see services/session.js
 
   await fse.ensureDir(outputDir);
 
