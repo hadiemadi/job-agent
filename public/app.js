@@ -169,7 +169,7 @@ async function confirmContact() {
     tone:     parseInt(el('ci-tone').value, 10),
     extensiveSearch: el('ci-extensive-search').checked,
     refreshDiscipline: el('ci-refresh-discipline').checked,
-    gapSeverities: gapSeverities.length ? gapSeverities : ['major', 'mild', 'minor'],
+    gapSeverities: gapSeverities.length ? gapSeverities : ['major'],
   };
   hide('contactStatus');
   try {

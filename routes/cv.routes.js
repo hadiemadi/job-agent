@@ -58,7 +58,7 @@ router.post('/confirm-contact', async (req, res) => {
     // "Refresh discipline knowledge from web" — wired through but currently a no-op: the
     // Researcher (agents/researcher.js) is a deliberate stub until live search is enabled.
     refreshDiscipline: !!refreshDiscipline,
-    gapSeverities: validSeverities.length ? validSeverities : ['major', 'mild', 'minor'],
+    gapSeverities: validSeverities.length ? validSeverities : ['major'],
     routedInstruction, routedInstructionApplied: false,
   };
   if (appSession.cvData) Object.assign(appSession.cvData, appSession.confirmedContact);

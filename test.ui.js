@@ -355,7 +355,7 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     const lastCall = reviewCV.mock.calls[reviewCV.mock.calls.length - 1];
     expect(lastCall[3]).toEqual({
       tone: 2, customInstructions: 'Never mention my current employer by name', languageLevel: 2,
-      extensiveSearch: false, conventionsResearch: '', gapSeverities: ['major', 'mild', 'minor'],
+      extensiveSearch: false, conventionsResearch: '', gapSeverities: ['major'],
       refreshDiscipline: false, routedInstruction: { bucket: 'none', text: '' }, routedInstructionApplied: false,
     });
   });

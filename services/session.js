@@ -33,8 +33,9 @@ function createSession() {
     confirmedContact: null,
     clientPreferences: {
       tone: 4, customInstructions: '', languageLevel: 2, extensiveSearch: false, conventionsResearch: '',
-      gapSeverities: ['major', 'mild', 'minor'], refreshDiscipline: false, routedInstruction: null, routedInstructionApplied: false,
+      gapSeverities: ['major'], refreshDiscipline: false, routedInstruction: null, routedInstructionApplied: false,
     },
+    aiSpendUsd: 0,
     lastSeen: Date.now(),
   };
 }
@@ -80,6 +81,19 @@ function registerOutputFile(extension, downloadName = null) {
   if (!session.outputFiles) session.outputFiles = new Map();
   session.outputFiles.set(fileName, { createdAt: Date.now(), downloadName });
   return `output/${fileName}`;
+}
+
+// Per-session running total of metered Anthropic spend (see core/claude.js's recordUsage),
+// so the candidate can see "AI cost for this CV" without exposing the global daily total
+// (DAILY_AI_BUDGET_USD) or any other session's spend.
+function addSessionSpend(usd) {
+  const session = getSession();
+  session.aiSpendUsd = (session.aiSpendUsd || 0) + usd;
+}
+
+function getSessionSpend() {
+  const session = getSession();
+  return session.aiSpendUsd || 0;
 }
 
 // Used by the GET /output/:file route to decide 404 vs serve — true only if the CURRENT
@@ -202,4 +216,5 @@ if (sweepInterval.unref) sweepInterval.unref();
 module.exports = {
   getSession, setSession, als, sessionMiddleware, requestScope, createSession,
   registerOutputFile, isOwnedOutputFile, getOutputDownloadName, purgeSessionData,
+  addSessionSpend, getSessionSpend,
 };
