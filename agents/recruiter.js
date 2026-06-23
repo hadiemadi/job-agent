@@ -183,7 +183,11 @@ async function analyzeJobFit(cvText, jobs, countryCode = 'GB') {
   } catch (e) { return []; }
 }
 
-// HR agent refines a gap suggestion based on what the coach + client discussed
+// HR agent drafts ONE concrete, CV-ready statement for a gap, based on whatever the coach +
+// client discussed (the conversation may be empty — discussion is optional, see
+// services/gapStore.js). HR takes a clear position every time: it leans "add" or "leave-out"
+// with one honest reason — it never hedges with a third, wait-and-see option. The candidate's
+// own accept/decline decision is separate and final regardless of which way HR leans.
 async function refineWithHR(cvText, job, hrReview, gap, conversation, thread, preferences) {
   const conversationText = conversation.map(m =>
     `${m.role === 'user' ? 'Candidate' : 'Coach'}: ${m.content}`
@@ -191,20 +195,33 @@ async function refineWithHR(cvText, job, hrReview, gap, conversation, thread, pr
 
   const userMessage = `Your initial HR review identified this gap: ${gap.description}
 
-The candidate discussed this gap with their career coach. Here is the conversation:
+The candidate discussed this gap with their career coach. Here is the conversation (it may be
+empty — the candidate can ask you to draft a statement without discussing it first):
 
 ${conversationText}
 
-Based on this discussion, rewrite the suggestion as a concrete, CV-ready statement. Be specific and honest.
+Draft ONE concrete, CV-ready statement for this gap. Look at the candidate's FULL CV (given to
+you above) for the closest genuinely-evidenced related experience, credential, coursework, or
+adjacent skill — even if it's not an exact match for what this gap asks for — and base the
+statement on that. refined_description must NEVER be empty, even when you lean "leave-out" or
+the conversation above is empty: the candidate needs to see exactly what would be added before
+deciding whether to follow or override your lean. An empty conversation is normal, not a reason
+to refuse — the candidate's CV is itself evidence. Only if the CV truly contains nothing even
+adjacent to this gap should you draft a plainly conditional statement (e.g. naming what's
+missing and what confirming it would require) — never return an empty string.
+
+Then take a clear position on whether THIS drafted statement belongs on the CV as-is — lean
+"add" or "leave-out", never a hedge.
 
 Return JSON only:
 {
   "refined_description": "",
   "rationale": "",
-  "verdict": "add|skip|candidate_decides"
+  "lean": "add|leave-out"
 }
 
-verdict: "add" if clearly evidenced, "skip" if not justified, "candidate_decides" if borderline.`;
+lean: "add" if the statement is clearly evidenced by the discussion/CV, "leave-out" if it would
+overclaim or isn't well-supported. rationale is the one-sentence reason for that lean.`;
 
   const messages = [...thread, { role: 'user', content: userMessage }];
   const response = await client.messages.create({

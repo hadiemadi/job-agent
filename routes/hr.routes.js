@@ -5,7 +5,7 @@ const {
 } = require('../agent');
 const { generateCoverLetterWord } = require('../src/wordExport');
 const { getSession } = require('../services/session');
-const { setGaps, getGap, proposeStatement, acceptGap, declineGap } = require('../services/gapStore');
+const { setGaps, getGap, proposeStatement, setUserDecision } = require('../services/gapStore');
 
 const router = express.Router();
 
@@ -49,6 +49,7 @@ router.post('/review-cv', async (req, res) => {
       confirm_changes: gapRecords.map(g => ({
         id: g.id, description: g.description, rationale: g.rationale, severity: g.severity,
         status: g.status, proposedStatement: g.proposedStatement,
+        userDecision: g.userDecision, hrConclusion: g.hrConclusion,
       })),
     };
     appSession.currentJob = job;
@@ -110,10 +111,14 @@ router.post('/generate-interview-questions', async (req, res) => {
 });
 
 // HR drafts ONE concrete CV-ready sentence for this gap — allowed whether or not the candidate
-// discussed it with the coach first (coach discussion is optional, see agents/coach.js). On
-// success, the gap moves to 'proposed' unconditionally: HR's own "this is weakly evidenced"
-// judgment lives in the returned rationale, not in an auto-resolution — only the candidate's
-// own /gap-decision accept/decline ever moves a gap to a terminal state.
+// discussed it with the coach first (coach discussion is optional, see agents/coach.js), and
+// re-askable any time, including after a decision has already been made (the card v2 "re-ask
+// HR pulls latest coach chat" flow — gap.coachConversation is always read fresh here, so a
+// re-draft naturally reflects whatever was discussed since the last draft). HR leans 'add' or
+// 'leave-out' with one reason — that lean is informational only, stored in hrConclusion; it
+// never sets the candidate's own userDecision (services/gapStore.js's proposeStatement always
+// resets userDecision to 'undecided' on a fresh draft, since a prior decision was made against
+// a now-superseded sentence).
 router.post('/hr/refine', async (req, res) => {
   try {
     const appSession = getSession();
@@ -126,31 +131,32 @@ router.post('/hr/refine', async (req, res) => {
       gap, gap.coachConversation, appSession.hrThread, appSession.clientPreferences
     );
     appSession.hrThread = thread;
-    const updated = proposeStatement(gapId, result.refined_description, { rationale: result.rationale, verdict: result.verdict });
-    if (!updated) return res.status(400).json({ error: 'This gap has already been accepted or declined.' });
-    res.json({ proposedStatement: updated.proposedStatement, rationale: result.rationale, verdict: result.verdict, status: updated.status });
+    const updated = proposeStatement(gapId, result.refined_description, { rationale: result.rationale, lean: result.lean });
+    if (!updated) return res.status(400).json({ error: 'Gap not found.' });
+    res.json({ proposedStatement: updated.proposedStatement, rationale: result.rationale, lean: result.lean, status: updated.status });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// The Accept/Decline buttons on a gap card — the only way a gap's status becomes 'accepted' or
-// 'declined' server-side. /rewrite reads this directly instead of trusting a client-submitted
-// accept/decline list. accept is guarded to 'proposed' only — there must be an actual HR-drafted
-// sentence before anything can be accepted. decline is allowed from open/discussing/proposed
-// (the "early skip" path, deciding before ever asking HR to draft anything).
+// The Add-to-CV / Leave-out buttons on a gap card — the only way a gap's userDecision changes
+// server-side. /rewrite reads this directly instead of trusting a client-submitted decision
+// list. 'added' is guarded to gaps that actually have a drafted statement — there must be
+// something concrete to add. 'left-out' is always available (the candidate can walk away from
+// a gap at any point, with or without ever asking HR to draft anything). Neither is terminal —
+// changing (overriding) an existing decision is allowed and expected.
 router.post('/gap-decision', (req, res) => {
-  const { gapId, action } = req.body;
-  if (!['accept', 'decline'].includes(action)) return res.status(400).json({ error: 'action must be "accept" or "decline".' });
-  const gap = action === 'accept' ? acceptGap(gapId) : declineGap(gapId);
+  const { gapId, decision } = req.body;
+  if (!['added', 'left-out'].includes(decision)) return res.status(400).json({ error: 'decision must be "added" or "left-out".' });
+  const gap = setUserDecision(gapId, decision);
   if (!gap) {
     return res.status(400).json({
-      error: action === 'accept'
-        ? 'This gap has no proposed statement yet — ask HR to draft one first.'
-        : 'Gap not found, or already accepted/declined.',
+      error: decision === 'added'
+        ? 'This gap has no drafted statement yet — ask HR to draft one first.'
+        : 'Gap not found.',
     });
   }
-  res.json({ ok: true, status: gap.status });
+  res.json({ ok: true, userDecision: gap.userDecision });
 });
 
 router.post('/hr/chat', async (req, res) => {

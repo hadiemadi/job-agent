@@ -9,14 +9,15 @@ const { getSession } = require('./session');
 // of an array index, since index-based lookups (the old gapIndex param on /hr/refine and
 // /coach/discuss) silently break the moment the gap list is re-filtered or re-ordered.
 
-// Corrected lifecycle (#21): a gap moves open -> [discussing] -> proposed -> accepted|declined.
-// HR may draft a statement from 'open' OR 'discussing' (coach discussion is optional) — but
-// nothing can be accepted until HR has actually proposed a concrete sentence. HR's own "this
-// is weakly evidenced" judgment lives in hrConclusion (rationale/verdict metadata) — it no
-// longer auto-resolves the gap; only the candidate's explicit accept/decline does that.
-const VALID_STATUSES = ['open', 'discussing', 'proposed', 'accepted', 'declined'];
+// Corrected lifecycle (#21) + card v2 (#25): `status` tracks discuss/draft PROGRESS only
+// (open -> [discussing] -> proposed) — it is never terminal. The candidate's actual decision
+// lives in the separate `userDecision` field (undecided|added|left-out), which can be set,
+// changed, or overridden at any time, independently of HR's own lean. This split is what lets
+// a candidate re-ask HR for a fresh draft or override their own prior decision without the
+// lifecycle blocking them.
+const VALID_STATUSES = ['open', 'discussing', 'proposed'];
 const VALID_SEVERITIES = ['major', 'mild', 'minor'];
-const TERMINAL_STATUSES = ['accepted', 'declined'];
+const VALID_DECISIONS = ['added', 'left-out'];
 
 function createGap(raw) {
   return {
@@ -28,7 +29,8 @@ function createGap(raw) {
     userResponse: null,
     coachConversation: [],
     proposedStatement: null,
-    hrConclusion: null,
+    hrConclusion: null, // { rationale, lean: 'add'|'leave-out' } once HR has drafted
+    userDecision: 'undecided',
   };
 }
 
@@ -61,40 +63,36 @@ function appendGapMessage(id, role, content) {
   return gap;
 }
 
-// HR drafts ONE concrete CV-ready sentence, after refineWithHR(). Succeeds from 'open' or
-// 'discussing' (coach discussion is optional) and from 'proposed' itself (re-drafting after
-// further discussion) — never from a terminal status, since accepted/declined are final.
-// Always lands on 'proposed' unconditionally: HR's "this is weakly evidenced" judgment lives
-// in hrConclusion, not in an auto-resolution — only the candidate's own accept/decline (below)
-// ever moves a gap to a terminal state.
+// HR drafts ONE concrete CV-ready sentence, after refineWithHR(). Succeeds from any status —
+// re-drafting (e.g. after further discussion, or after the candidate re-opens a decided card)
+// always works, never blocked. Every successful draft resets userDecision back to 'undecided':
+// a prior decision was made against a DIFFERENT sentence, so it can't silently carry forward
+// onto a new one — the candidate must explicitly re-decide on whatever HR just drafted.
 function proposeStatement(id, statement, hrConclusion) {
   const gap = getGap(id);
-  if (!gap || TERMINAL_STATUSES.includes(gap.status)) return null;
+  if (!gap) return null;
   gap.proposedStatement = statement;
   gap.hrConclusion = hrConclusion || null;
   gap.status = 'proposed';
+  gap.userDecision = 'undecided';
   return gap;
 }
 
-// Accept — only valid once HR has actually drafted something. Accepting a slogan with no
-// proposed sentence behind it is exactly the bug this lifecycle exists to close.
-function acceptGap(id) {
+// The candidate's own Add-to-CV / Leave-out decision — independent of HR's lean (hrConclusion),
+// and never terminal: it can be changed (overridden) at any time, including after HR's lean
+// disagreed with it. 'added' requires an actual drafted sentence to exist — there must be
+// something concrete to add; 'left-out' is always available (the candidate can walk away from
+// a gap at any point, with or without ever asking HR to draft anything).
+function setUserDecision(id, decision) {
+  if (!VALID_DECISIONS.includes(decision)) return null;
   const gap = getGap(id);
-  if (!gap || gap.status !== 'proposed') return null;
-  gap.status = 'accepted';
-  return gap;
-}
-
-// Decline — the "early skip" path included: valid from 'open', 'discussing', or 'proposed'.
-// The candidate can walk away from a gap at any point before accepting it.
-function declineGap(id) {
-  const gap = getGap(id);
-  if (!gap || TERMINAL_STATUSES.includes(gap.status)) return null;
-  gap.status = 'declined';
+  if (!gap) return null;
+  if (decision === 'added' && !gap.proposedStatement) return null;
+  gap.userDecision = decision;
   return gap;
 }
 
 module.exports = {
-  setGaps, getGaps, getGap, appendGapMessage, proposeStatement, acceptGap, declineGap,
-  VALID_STATUSES, VALID_SEVERITIES,
+  setGaps, getGaps, getGap, appendGapMessage, proposeStatement, setUserDecision,
+  VALID_STATUSES, VALID_SEVERITIES, VALID_DECISIONS,
 };

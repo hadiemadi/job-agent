@@ -76,22 +76,23 @@ router.post('/rewrite', async (req, res) => {
     const recommendedSections = (appSession.hrReview || {}).recommended_sections;
     const originalName = (appSession.cvData || {}).name;
     const autoChanges = (appSession.hrReview || {}).auto_changes || [];
-    // Gap accept/skip/discuss state is now server-side (services/gapStore.js, via the
+    // Gap decision/discuss state is now server-side (services/gapStore.js, via the
     // /gap-decision and /coach/discuss routes) — derived here instead of trusting a
-    // client-submitted confirmedChanges/gapDiscussions list. Any gap not explicitly
-    // 'accepted' (open, skipped, or hr-concluded) resolves to skipped: the candidate gave no
+    // client-submitted confirmedChanges/gapDiscussions list. userDecision (card v2, #25) is
+    // the candidate's own Add-to-CV/Leave-out call, independent of HR's lean — anything not
+    // explicitly 'added' (undecided or left-out) resolves to skipped: the candidate gave no
     // real signal either way for anything else, so nothing unconfirmed is ever added to the CV.
     const gaps = getGaps();
     // Only a gap's HR-drafted, candidate-accepted proposedStatement is ever inserted — never
-    // the raw slogan (g.description). An 'accepted' gap with no proposedStatement would be a
-    // logic error elsewhere in the lifecycle (accept is guarded to status==='proposed' in
-    // services/gapStore.js's acceptGap) — skip it defensively rather than insert the
-    // unverified slogan or throw and block the whole tailoring step over one bad record.
+    // the raw slogan (g.description). A gap with userDecision==='added' but no proposedStatement
+    // would be a logic error elsewhere in the lifecycle (setUserDecision guards 'added' to
+    // gaps that already have a draft) — skip it defensively rather than insert the unverified
+    // slogan or throw and block the whole tailoring step over one bad record.
     const confirmedChanges = gaps
-      .filter(g => g.status === 'accepted')
+      .filter(g => g.userDecision === 'added')
       .map(g => {
         if (!g.proposedStatement) {
-          console.warn('[gap] accepted gap has no proposedStatement — skipping it, not inserting the slogan. id:', g.id);
+          console.warn('[gap] added gap has no proposedStatement — skipping it, not inserting the slogan. id:', g.id);
           return null;
         }
         return { description: g.proposedStatement, rationale: g.rationale };
@@ -100,7 +101,7 @@ router.post('/rewrite', async (req, res) => {
     const gapDiscussions = gaps.map(g => ({
       description: g.description,
       rationale: g.rationale,
-      status: g.status === 'accepted' ? 'accepted' : 'skipped',
+      status: g.userDecision === 'added' ? 'accepted' : 'skipped',
       coachConversation: g.coachConversation,
       refinedDescription: g.proposedStatement || null,
     }));

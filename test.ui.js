@@ -162,7 +162,7 @@ beforeEach(() => {
     history: [...(history || []), { role: 'user', content: userMessage }, { role: 'assistant', content: 'Highlight your RF work on 5G programs.' }],
   }));
   refineWithHR.mockResolvedValue({
-    result: { refined_description: 'Add PMP certification', rationale: 'JD prefers it', verdict: 'candidate_decides' },
+    result: { refined_description: 'Add PMP certification', rationale: 'JD prefers it', lean: 'add' },
     thread: [],
   });
   chatWithHRExpert.mockResolvedValue({ reply: 'Your PMP progress should resolve that gap.', thread: [] });
@@ -495,7 +495,7 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(res.body.reply.length).toBeGreaterThan(0);
   });
 
-  test('POST /hr/refine returns 200 with status=proposed and a proposedStatement — coach discussion is optional, not required first', async () => {
+  test('POST /hr/refine returns 200 with status=proposed, a proposedStatement, and HR\'s lean — coach discussion is optional, not required first', async () => {
     // No /coach/discuss call before this — HR may draft directly from 'open' (locked decision #1).
     const gapId = await currentGapId();
     const res = await agent.post('/hr/refine').send({ gapId });
@@ -503,8 +503,8 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(res.body).toHaveProperty('proposedStatement');
     expect(typeof res.body.proposedStatement).toBe('string');
     expect(res.body.status).toBe('proposed');
-    expect(res.body).toHaveProperty('verdict');
-    expect(['add', 'skip', 'candidate_decides']).toContain(res.body.verdict);
+    expect(res.body).toHaveProperty('lean');
+    expect(['add', 'leave-out']).toContain(res.body.lean);
   });
 
   test('POST /hr/refine → 400 when gapId does not exist', async () => {
@@ -512,27 +512,27 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(res.status).toBe(400);
   });
 
-  test('POST /gap-decision accept → 400 when the gap is still open (no proposed statement yet)', async () => {
+  test('POST /gap-decision "added" → 400 when the gap has no drafted statement yet', async () => {
     const gapId = await currentGapId();
-    const res = await agent.post('/gap-decision').send({ gapId, action: 'accept' });
+    const res = await agent.post('/gap-decision').send({ gapId, decision: 'added' });
     expect(res.status).toBe(400);
   });
 
-  test('POST /gap-decision allows an early decline straight from open, before ever asking HR to draft anything', async () => {
+  test('POST /gap-decision allows an early "left-out" straight from open, before ever asking HR to draft anything', async () => {
     const gapId = await currentGapId();
-    const res = await agent.post('/gap-decision').send({ gapId, action: 'decline' });
+    const res = await agent.post('/gap-decision').send({ gapId, decision: 'left-out' });
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe('declined');
+    expect(res.body.userDecision).toBe('left-out');
   });
 
-  test('POST /gap-decision accept only succeeds once HR has proposed a statement, and /rewrite inserts that exact statement — never the raw slogan', async () => {
+  test('POST /gap-decision "added" only succeeds once HR has proposed a statement, and /rewrite inserts that exact statement — never the raw slogan', async () => {
     const gapId = await currentGapId();
     const refineRes = await agent.post('/hr/refine').send({ gapId });
     const proposedStatement = refineRes.body.proposedStatement;
 
-    const res = await agent.post('/gap-decision').send({ gapId, action: 'accept' });
+    const res = await agent.post('/gap-decision').send({ gapId, decision: 'added' });
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe('accepted');
+    expect(res.body.userDecision).toBe('added');
 
     await agent.post('/rewrite').send({ job: MOCK_JOB });
     const lastCall = rewriteCVWithChanges.mock.calls[rewriteCVWithChanges.mock.calls.length - 1];
@@ -543,9 +543,18 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(confirmedChanges.some(c => c.description === MOCK_GAPS[0].description)).toBe(false);
   });
 
-  test('POST /gap-decision → 400 for an invalid action value', async () => {
+  test('POST /gap-decision overriding a decision is allowed — re-deciding "left-out" after "added" succeeds', async () => {
     const gapId = await currentGapId();
-    const res = await agent.post('/gap-decision').send({ gapId, action: 'maybe' });
+    await agent.post('/hr/refine').send({ gapId });
+    await agent.post('/gap-decision').send({ gapId, decision: 'added' });
+    const res = await agent.post('/gap-decision').send({ gapId, decision: 'left-out' });
+    expect(res.status).toBe(200);
+    expect(res.body.userDecision).toBe('left-out');
+  });
+
+  test('POST /gap-decision → 400 for an invalid decision value', async () => {
+    const gapId = await currentGapId();
+    const res = await agent.post('/gap-decision').send({ gapId, decision: 'maybe' });
     expect(res.status).toBe(400);
   });
 

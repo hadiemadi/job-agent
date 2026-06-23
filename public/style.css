@@ -193,18 +193,31 @@ input[type="range"] { width:100%; cursor:pointer; accent-color:var(--accent); }
 .auto-change::before { content:'✓'; position:absolute; left:0; color:var(--success); font-size:12px; top:9px; }
 .auto-desc { font-size:13px; color:var(--ink); }
 .auto-rationale { font-size:11px; color:var(--muted-light); margin-top:2px; }
-.confirm-change { border:1px solid var(--border); border-radius:var(--radius-md); padding:var(--space-3) 14px; margin-bottom:var(--space-2); display:flex; align-items:flex-start; gap:var(--space-3); }
-.confirm-change.accepted { border-color:var(--success); background:#f5fbf0; }
-.confirm-change.declined { opacity:0.45; }
-.confirm-change.proposed { border-color:var(--accent); background:#f3f8fd; }
+.confirm-change { border:1px solid var(--border); border-radius:var(--radius-md); padding:var(--space-3) 14px; margin-bottom:var(--space-2); display:flex; flex-direction:column; gap:var(--space-2); }
+.confirm-change.collapsed { cursor:pointer; }
+.confirm-change.collapsed:hover { border-color:var(--accent); }
 .confirm-change-text { flex:1; }
-.confirm-desc { font-size:13px; color:var(--ink); }
 .gap-severity { display:inline-block; font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; padding:2px 7px; border-radius:10px; margin-left:6px; vertical-align:middle; }
 .gap-severity.major { background:var(--danger-bg); color:var(--danger); }
 .gap-severity.mild { background:var(--warning-bg); color:var(--warning); }
 .gap-severity.minor { background:#eeeeec; color:var(--muted); }
 .confirm-rationale { font-size:11px; color:var(--muted-light); margin-top:2px; }
-.confirm-btns { display:flex; gap:6px; flex-shrink:0; margin-top:2px; }
+.confirm-btns, .confirm-decision-row { display:flex; gap:6px; flex-shrink:0; margin-top:2px; }
+
+/* ── HR Review card v2 (#25): slogan colored by the candidate's OWN decision, never by HR's
+   lean; the HR line below turns red only when the two disagree (an override). ── */
+.gap-slogan { font-size:13px; color:var(--ink); }
+.gap-slogan.added { color:var(--success); }
+.gap-slogan.left-out { color:var(--danger); }
+.gap-rationale { font-size:11px; color:var(--muted-light); margin-top:2px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.gap-hr-line { font-size:11px; color:var(--muted-light); margin-top:2px; }
+.gap-hr-line.override { color:var(--danger); }
+.gap-hr-advice { margin-top:8px; display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
+.gap-lean-tag { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.4px; padding:2px 7px; border-radius:10px; }
+.gap-lean-tag.lean-add { background:var(--success-bg); color:var(--success); }
+.gap-lean-tag.lean-leave-out { background:var(--danger-bg); color:var(--danger); }
+.gap-lean-reason { font-size:11px; color:var(--muted-light); }
+.gap-drafted-statement { font-size:13px; color:var(--ink); font-weight:500; margin-top:6px; }
 
 .adv-panel-label { font-size:11px; color:var(--muted); font-weight:600; letter-spacing:0.6px; text-transform:uppercase; margin-bottom:6px; }
 .adv-panel { border:1px solid var(--border); border-radius:var(--radius-md); background:#fafaf8; padding:var(--space-4); margin-top:var(--space-2); }
