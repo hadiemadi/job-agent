@@ -160,6 +160,19 @@ ${CV_CSS}
   .tb-link:hover { color: white; }
   .tb-status { font-size: 11px; color: rgba(255,255,255,0.55); }
   .tb-cost { margin-top: auto; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.12); font-size: 11px; color: rgba(255,255,255,0.4); }
+
+  /* ── Tooltips on toolbar actions ─────────────────────── */
+  /* Plain CSS, no JS: shows on mouse hover AND keyboard focus (:focus-visible, with :focus as
+     a fallback for browsers that don't support :focus-visible), so keyboard-only users get
+     the same explanation as mouse users. */
+  [data-tooltip] { position: relative; }
+  [data-tooltip]:hover::after, [data-tooltip]:focus::after, [data-tooltip]:focus-visible::after {
+    content: attr(data-tooltip);
+    position: absolute; left: 0; top: 100%; margin-top: 6px; z-index: 10030;
+    width: 210px; background: #111; color: #fff; font-size: 11.5px; line-height: 1.45;
+    font-weight: 400; font-family: var(--font-ui); padding: 7px 10px; border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35); pointer-events: none; white-space: normal;
+  }
   .tb-btn:disabled, .tb-select:disabled, .hr-sb-model:disabled { opacity: 0.45; cursor: not-allowed; }
   .tb-row { display: flex; gap: 6px; align-items: center; }
   .tb-row .tb-select { flex: 1; min-width: 0; }
@@ -259,33 +272,33 @@ ${CV_CSS}
 <body>
 
 <div class="cv-toolbar">
-  <span class="tb-hint"><strong>✏ Edit mode</strong> — click any text to modify it &nbsp;·&nbsp; Enter on bullet points adds a new bullet</span>
+  <span class="tb-hint"><strong>✏ Edit mode</strong> — click any text to edit it directly &nbsp;·&nbsp; select text first to discuss a change with HR instead &nbsp;·&nbsp; Enter on bullet points adds a new bullet</span>
   <div class="tb-actions">
-    <button class="tb-btn tb-save"  onclick="saveHTML()">Save as HTML</button>
-    <select class="tb-select" id="templateChoice">
+    <button class="tb-btn tb-save" onclick="saveHTML()" data-tooltip="Downloads the CV exactly as it currently appears on screen, including any edits you've made, as a standalone editable HTML file.">Save as HTML</button>
+    <select class="tb-select" id="templateChoice" data-tooltip="Which Word layout Export to Word will use.">
       <option value="default" selected>Default template</option>
       <option value="alternate">Alternate template</option>
       <option value="original" disabled title="Coming soon — requires your original CV to be a Word file">Similar to original CV</option>
       <option value="custom" disabled>Custom uploaded template</option>
     </select>
     <input type="file" id="templateFile" accept=".docx" hidden onchange="uploadTemplate()">
-    <button class="tb-btn tb-save" onclick="document.getElementById('templateFile').click()">Upload template…</button>
+    <button class="tb-btn tb-save" onclick="document.getElementById('templateFile').click()" data-tooltip="Use your own Word file as the export layout instead of the built-in templates.">Upload template…</button>
     <a class="tb-link" href="/templates/word/starter_template.docx" download>Download starter template ↓</a>
     <div class="tb-row">
-      <select class="tb-select" id="languageLevel" title="How polished should the CV's wording be?">
+      <select class="tb-select" id="languageLevel" data-tooltip="How polished the CV's wording should be — facts and structure stay the same, only word choice changes.">
         <option value="1">Wording: Original</option>
         <option value="2" selected>Wording: Slightly polished</option>
         <option value="3">Wording: Professional</option>
         <option value="4">Wording: Highly professional</option>
         <option value="5">Wording: Senior expert</option>
       </select>
-      <button class="tb-btn tb-print tb-go" id="regenWordingBtn" onclick="regenerateWording()" title="Regenerate wording at this level">Go</button>
+      <button class="tb-btn tb-print tb-go" id="regenWordingBtn" onclick="regenerateWording()" data-tooltip="Regenerates the wording at the level selected, using whatever is currently on screen.">Go</button>
     </div>
-    <button class="tb-btn tb-print" id="exportWordBtn" onclick="exportWord()">Export to Word</button>
-    <button class="tb-btn tb-save" id="coverLetterBtn" onclick="generateCoverLetterPanel()">Generate Cover Letter</button>
-    <button class="tb-btn tb-save" id="interviewQBtn" onclick="generateInterviewQuestionsPanel()">Generate Interview Questions</button>
+    <button class="tb-btn tb-print" id="exportWordBtn" onclick="exportWord()" data-tooltip="Always exports the LATEST version on screen — including any edits or HR-discussed changes you've made since this page loaded.">Export to Word</button>
+    <button class="tb-btn tb-save" id="coverLetterBtn" onclick="generateCoverLetterPanel()" data-tooltip="Writes a cover letter to match the CV exactly as it currently appears on screen, including your edits.">Generate Cover Letter</button>
+    <button class="tb-btn tb-save" id="interviewQBtn" onclick="generateInterviewQuestionsPanel()" data-tooltip="Generates likely interview questions and answer options based on the CV as it currently appears on screen.">Generate Interview Questions</button>
     <span class="tb-status" id="templateStatus"></span>
-    <button class="tb-btn tb-save" id="hrToggleBtn" onclick="toggleHrSidebar()">Hide HR Expert</button>
+    <button class="tb-btn tb-save" id="hrToggleBtn" onclick="toggleHrSidebar()" data-tooltip="Shows or hides the HR Expert chat panel — select any text in the CV to start a discussion about it.">Hide HR Expert</button>
   </div>
   <div class="tb-cost" title="Total Anthropic API cost for this session's CV — not the global daily budget, not other users' usage">AI cost for this CV: $${Number(aiSpendUsd || 0).toFixed(2)}</div>
 </div>
