@@ -587,6 +587,41 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(confirmedChanges.some(c => c.description === proposedStatement)).toBe(false);
   });
 
+  // #31's other override path: the candidate directly instructs a change against HR's stated
+  // opinion in the Tailored-CV sidebar (not the gap-decision card flow above). That instruction
+  // must reach the CV writer and take priority over HR's contrary stance — exercised via
+  // /hr/chat -> draftFromSidebarDiscussion -> /regenerate-cv.
+  test('POST /regenerate-cv prioritizes the candidate\'s sidebar directive over HR\'s contrary stance', async () => {
+    chatWithHRExpert.mockResolvedValueOnce({
+      reply: "I'd recommend leaving the MBA off the CV — it's not relevant to this technical role.",
+      thread: [],
+    });
+    await agent.post('/hr/chat').send({ message: 'I want my MBA included anyway — please add it.' });
+
+    // draftFromSidebarDiscussion (mocked at the module boundary) is what decides whether this
+    // sidebar exchange produced a CV-ready statement — simulate it concluding the candidate's
+    // own instruction is what should reach the CV writer, not HR's contrary recommendation.
+    draftFromSidebarDiscussion.mockResolvedValueOnce({
+      description: 'Include MBA in education section per candidate request',
+      rationale: 'Candidate explicitly requested it despite HR recommending against it',
+      targetSection: 'Education',
+    });
+
+    const res = await agent.post('/regenerate-cv').send({ job: MOCK_JOB });
+    expect(res.status).toBe(200);
+
+    // draftFromSidebarDiscussion must have been given the new sidebar conversation to weigh.
+    const draftCall = draftFromSidebarDiscussion.mock.calls[draftFromSidebarDiscussion.mock.calls.length - 1];
+    const newMessages = draftCall[2];
+    expect(newMessages.some(m => m.text.includes('I want my MBA included anyway'))).toBe(true);
+
+    // The candidate's directive — not HR's contrary stance — is what reaches the CV writer.
+    const lastCall = rewriteCVWithChanges.mock.calls[rewriteCVWithChanges.mock.calls.length - 1];
+    const confirmedChanges = lastCall[3];
+    expect(confirmedChanges.some(c => c.description === 'Include MBA in education section per candidate request')).toBe(true);
+    expect(confirmedChanges.some(c => c.description.includes('leaving the MBA off'))).toBe(false);
+  });
+
   test('POST /hr/chat returns 200 with a reply string', async () => {
     const res = await agent.post('/hr/chat').send({ message: 'Why was PMP flagged as a gap?' });
     expect(res.status).toBe(200);

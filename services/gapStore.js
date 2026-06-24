@@ -26,7 +26,6 @@ function createGap(raw) {
     rationale: raw.rationale || '',
     severity: VALID_SEVERITIES.includes(raw.severity) ? raw.severity : 'major',
     status: 'open',
-    userResponse: null,
     coachConversation: [],
     proposedStatement: null,
     hrConclusion: null, // { rationale, lean: 'add'|'leave-out', targetSection, statement } once HR has drafted — `statement` is the fixed-shape one-liner (#30): "Add to your X section: ..." or "Leave this out — ..."

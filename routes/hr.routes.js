@@ -40,8 +40,7 @@ router.post('/review-cv', async (req, res) => {
       pinDisciplineSkill(field, routedInstruction.text);
       appSession.clientPreferences = { ...appSession.clientPreferences, routedInstructionApplied: true };
     }
-    // Gaps are persisted server-side (services/gapStore.js) with a stable id each — replaces
-    // the old design where accept/skip/discuss state lived only in the browser until /rewrite.
+    // Gaps are persisted server-side (services/gapStore.js) with a stable id each.
     const selected = selectTopGaps(gaps, appSession.clientPreferences.gapSeverities);
     const gapRecords = setGaps(selected);
     const fullReview = {
