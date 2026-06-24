@@ -314,20 +314,15 @@ function renderExpandedGapCard(i) {
   const severityLabel = g.severity ? `${g.severity.charAt(0).toUpperCase()}${g.severity.slice(1)} Gap` : '';
   const severityTag = g.severity ? ` <span class="gap-severity ${g.severity}">${severityLabel}</span>` : '';
   const hasDraft = !!g.proposedStatement;
-  const leanLabel = g.hrConclusion && g.hrConclusion.lean === 'add' ? 'Add' : 'Leave out';
   const leanClass = g.hrConclusion && g.hrConclusion.lean === 'add' ? 'lean-add' : 'lean-leave-out';
+  const hrStatement = (g.hrConclusion && g.hrConclusion.statement) || g.hrStatement || '';
   return `
     <div class="confirm-change expanded" id="cc-${i}">
       <div class="confirm-change-text">
         <div class="gap-slogan ${gapDecisionClass(g)}" id="cc-desc-${i}">${g.description}${severityTag}</div>
         <div class="confirm-rationale gap-rationale" id="cc-rationale-${i}">${g.rationale}</div>
         ${hasDraft ? `
-          <div class="gap-hr-advice">
-            <span class="gap-lean-tag ${leanClass}">HR leans: ${leanLabel}</span>
-            <span class="gap-lean-reason">${g.hrConclusion ? g.hrConclusion.rationale : ''}</span>
-          </div>
-          <div class="gap-drafted-statement">${g.proposedStatement}</div>
-          ${g.targetSection ? `<div class="gap-target-section">→ goes in: ${g.targetSection}</div>` : ''}
+          <div class="gap-hr-advice ${leanClass}">${hrStatement}</div>
         ` : ''}
       </div>
       <div class="confirm-btns">
@@ -484,8 +479,9 @@ async function askHR(i, btn) {
     }
     _gaps[i].status = data.status;
     _gaps[i].proposedStatement = data.proposedStatement;
-    _gaps[i].hrConclusion = { rationale: data.rationale, lean: data.lean, targetSection: data.targetSection || null };
+    _gaps[i].hrConclusion = { rationale: data.rationale, lean: data.lean, targetSection: data.targetSection || null, statement: data.hrStatement || null };
     _gaps[i].targetSection = data.targetSection || null;
+    _gaps[i].hrStatement = data.hrStatement || null;
     _gaps[i].userDecision = 'undecided';
     _gaps[i].expanded = true;
     reRenderGapCard(i);

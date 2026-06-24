@@ -212,13 +212,12 @@ input[type="range"] { width:100%; cursor:pointer; accent-color:var(--accent); }
 .gap-rationale { font-size:11px; color:var(--muted-light); margin-top:2px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .gap-hr-line { font-size:11px; color:var(--muted-light); margin-top:2px; }
 .gap-hr-line.override { color:var(--danger); }
-.gap-hr-advice { margin-top:8px; display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
-.gap-lean-tag { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.4px; padding:2px 7px; border-radius:10px; }
-.gap-lean-tag.lean-add { background:var(--success-bg); color:var(--success); }
-.gap-lean-tag.lean-leave-out { background:var(--danger-bg); color:var(--danger); }
-.gap-lean-reason { font-size:11px; color:var(--muted-light); }
-.gap-drafted-statement { font-size:13px; color:var(--ink); font-weight:500; margin-top:6px; }
-.gap-target-section { font-size:11px; color:var(--muted-light); margin-top:2px; }
+/* #30: HR's advice is always ONE fixed-shape line — "Add to your X section: ..." or
+   "Leave this out — ...". Color signals the lean at a glance; no separate tag/reason/
+   drafted-statement lines to scan anymore. */
+.gap-hr-advice { font-size:13px; font-weight:500; margin-top:8px; line-height:1.4; }
+.gap-hr-advice.lean-add { color:var(--success); }
+.gap-hr-advice.lean-leave-out { color:var(--danger); }
 
 .adv-panel-label { font-size:11px; color:var(--muted); font-weight:600; letter-spacing:0.6px; text-transform:uppercase; margin-bottom:6px; }
 .adv-panel { border:1px solid var(--border); border-radius:var(--radius-md); background:#fafaf8; padding:var(--space-4); margin-top:var(--space-2); }

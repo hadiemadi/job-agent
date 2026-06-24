@@ -294,6 +294,7 @@ ${CV_CSS}
       </select>
       <button class="tb-btn tb-print tb-go" id="regenWordingBtn" onclick="regenerateWording()" data-tooltip="Regenerates the wording at the level selected, using whatever is currently on screen.">Go</button>
     </div>
+    <button class="tb-btn tb-save" id="regenerateCvBtn" onclick="regenerateCv()" data-tooltip="Rebuilds the CV from scratch using your latest settings, gap decisions, and any new HR sidebar discussion since this page was generated — not just a wording tweak.">Regenerate CV</button>
     <button class="tb-btn tb-print" id="exportWordBtn" onclick="exportWord()" data-tooltip="Always exports the LATEST version on screen — including any edits or HR-discussed changes you've made since this page loaded.">Export to Word</button>
     <button class="tb-btn tb-save" id="coverLetterBtn" onclick="generateCoverLetterPanel()" data-tooltip="Writes a cover letter to match the CV exactly as it currently appears on screen, including your edits.">Generate Cover Letter</button>
     <button class="tb-btn tb-save" id="interviewQBtn" onclick="generateInterviewQuestionsPanel()" data-tooltip="Generates likely interview questions and answer options based on the CV as it currently appears on screen.">Generate Interview Questions</button>
@@ -512,6 +513,33 @@ ${pageHtml}
       location.reload();
     } catch (err) {
       alert('Regenerate wording failed: ' + err.message);
+      btn.disabled = false; btn.textContent = original;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // #29/#31: full rebuild from the original CV + job + the LATEST gap decisions/preferences/
+  // sidebar discussion — distinct from regenerateWording() above, which only rewords whatever
+  // is currently on screen and never adds/removes content. Reuses the same wording-level
+  // dropdown as the "tone/style variant" choice for this regeneration.
+  async function regenerateCv() {
+    const btn = document.getElementById('regenerateCvBtn');
+    const original = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Regenerating…';
+    setBusy(true, 'Regenerating your CV from your latest decisions and HR discussion…');
+    try {
+      const languageLevel = parseInt(document.getElementById('languageLevel').value, 10);
+      const res = await fetch('/regenerate-cv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job: JOB_DATA, languageLevel }),
+      });
+      const data = await res.json();
+      if (!data.filePath) throw new Error(data.error || 'Regeneration failed');
+      location.reload();
+    } catch (err) {
+      alert('Regenerate CV failed: ' + err.message);
       btn.disabled = false; btn.textContent = original;
     } finally {
       setBusy(false);

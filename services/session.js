@@ -37,6 +37,11 @@ function createSession() {
       gapSeverities: ['major'], refreshDiscipline: false, routedInstruction: null, routedInstructionApplied: false,
     },
     aiSpendUsd: 0,
+    // #29/#31: how many hrDisplayHistory entries existed as of the last FULL CV generation
+    // (/rewrite or /regenerate-cv) — lets a later regeneration tell which sidebar exchanges
+    // are genuinely NEW since then, so it only pulls fresh HR input instead of re-stating
+    // conversation already baked into the CV.
+    lastGenHrCount: 0,
     lastSeen: Date.now(),
   };
 }

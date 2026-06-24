@@ -2,13 +2,41 @@ const express = require('express');
 const path = require('path');
 const fse = require('fs-extra');
 const PizZip = require('pizzip');
-const { readCV, parseCVStructure, adjustLanguageLevel, classify, generateComparisonTemplate } = require('../agent');
+const { readCV, parseCVStructure, adjustLanguageLevel, classify, generateComparisonTemplate, draftFromSidebarDiscussion } = require('../agent');
 const { generateWordCV, generateWordCVAlt } = require('../src/wordExport');
 const { generateWordFromTemplate } = require('../src/wordTemplateExport');
 const { upload, templateUpload } = require('../services/uploads');
 const { getSession, setSession, registerOutputFile, purgeSessionData } = require('../services/session');
 const { getGaps } = require('../services/gapStore');
 const { tailorCvWithReview } = require('../services/workflows');
+
+// Shared by /rewrite and /regenerate-cv (#29/#31) — derives the gap-sourced inputs to the CV
+// writer from the server-side gap store, instead of trusting a client-submitted list. Only a
+// gap's HR-drafted, candidate-accepted proposedStatement is ever inserted — never the raw
+// slogan (g.description). A gap with userDecision==='added' but no proposedStatement would be
+// a logic error elsewhere in the lifecycle (setUserDecision guards 'added' to gaps that already
+// have a draft) — skip it defensively rather than insert the unverified slogan or throw and
+// block the whole tailoring step over one bad record.
+function buildGapInputs(gaps) {
+  const confirmedChanges = gaps
+    .filter(g => g.userDecision === 'added')
+    .map(g => {
+      if (!g.proposedStatement) {
+        console.warn('[gap] added gap has no proposedStatement — skipping it, not inserting the slogan. id:', g.id);
+        return null;
+      }
+      return { description: g.proposedStatement, rationale: g.rationale };
+    })
+    .filter(Boolean);
+  const gapDiscussions = gaps.map(g => ({
+    description: g.description,
+    rationale: g.rationale,
+    status: g.userDecision === 'added' ? 'accepted' : 'skipped',
+    coachConversation: g.coachConversation,
+    refinedDescription: g.proposedStatement || null,
+  }));
+  return { confirmedChanges, gapDiscussions };
+}
 
 const router = express.Router();
 
@@ -82,29 +110,7 @@ router.post('/rewrite', async (req, res) => {
     // the candidate's own Add-to-CV/Leave-out call, independent of HR's lean — anything not
     // explicitly 'added' (undecided or left-out) resolves to skipped: the candidate gave no
     // real signal either way for anything else, so nothing unconfirmed is ever added to the CV.
-    const gaps = getGaps();
-    // Only a gap's HR-drafted, candidate-accepted proposedStatement is ever inserted — never
-    // the raw slogan (g.description). A gap with userDecision==='added' but no proposedStatement
-    // would be a logic error elsewhere in the lifecycle (setUserDecision guards 'added' to
-    // gaps that already have a draft) — skip it defensively rather than insert the unverified
-    // slogan or throw and block the whole tailoring step over one bad record.
-    const confirmedChanges = gaps
-      .filter(g => g.userDecision === 'added')
-      .map(g => {
-        if (!g.proposedStatement) {
-          console.warn('[gap] added gap has no proposedStatement — skipping it, not inserting the slogan. id:', g.id);
-          return null;
-        }
-        return { description: g.proposedStatement, rationale: g.rationale };
-      })
-      .filter(Boolean);
-    const gapDiscussions = gaps.map(g => ({
-      description: g.description,
-      rationale: g.rationale,
-      status: g.userDecision === 'added' ? 'accepted' : 'skipped',
-      coachConversation: g.coachConversation,
-      refinedDescription: g.proposedStatement || null,
-    }));
+    const { confirmedChanges, gapDiscussions } = buildGapInputs(getGaps());
     const { filePath, cvData, modified_sections, thread, hrDisplayHistory, review } = await tailorCvWithReview({
       cvText, job, autoChanges, confirmedChanges,
       recommendedSections, originalName, confirmedContact: appSession.confirmedContact,
@@ -114,6 +120,9 @@ router.post('/rewrite', async (req, res) => {
     });
     appSession.hrThread = thread;
     appSession.hrDisplayHistory = hrDisplayHistory;
+    // #29/#31: marks "fully incorporated up to here" — a later /regenerate-cv only pulls
+    // sidebar HR statements newer than this count, so it never re-states this conversation.
+    appSession.lastGenHrCount = hrDisplayHistory.length;
     // Comparison page is NOT built here — it's a side artifact most clients never open, and
     // building it eagerly only slows down the main path (getting the tailored CV). Stash what
     // /build-comparison needs and build it lazily, only if the client actually asks for it.
@@ -122,6 +131,60 @@ router.post('/rewrite', async (req, res) => {
     appSession.lastTailoredJob        = job;
     // The independent pre-release review (services/workflows.js) gets up to 2 revision passes.
     // If it still isn't SHIP after that, surface the remaining issues rather than hide them.
+    const reviewIssues = review && review.verdict === 'FIX_REQUIRED' ? review.required_edits : [];
+    res.json({ filePath, reviewIssues });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// #29/#31: full CV regeneration from the Tailored-CV page — distinct from /adjust-language
+// (which only rewords whatever is already on screen, never adding/removing content). This
+// rebuilds the tailored CV from the ORIGINAL CV + job + the LATEST state of every input:
+// (1) USER INPUT — current clientPreferences (tone/wording level/instructions) and each gap's
+//     userDecision; (2) HR INPUT — HR's drafted gap statements (confirmedChanges, same as
+//     /rewrite); (3) SIDEBAR HR INPUT — gated: only pulled if there's been new Tailored-CV
+//     sidebar conversation since the last full generation (appSession.lastGenHrCount), so HR
+//     never re-states discussion already incorporated into the CV that's currently on screen.
+router.post('/regenerate-cv', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    const { job, languageLevel } = req.body;
+    const targetJob = job || appSession.lastTailoredJob || appSession.currentJob;
+    if (!targetJob) return res.status(400).json({ error: 'No job to regenerate against.' });
+    if (languageLevel) {
+      appSession.clientPreferences = { ...appSession.clientPreferences, languageLevel };
+    }
+
+    const cvText = appSession.cvText;
+    const recommendedSections = (appSession.hrReview || {}).recommended_sections;
+    const originalName = (appSession.cvData || {}).name;
+    const autoChanges = (appSession.hrReview || {}).auto_changes || [];
+    const { confirmedChanges, gapDiscussions } = buildGapInputs(getGaps());
+
+    // Gate: only call HR about sidebar discussion if something genuinely new happened since
+    // the last full generation — otherwise this step makes zero extra AI calls.
+    const newSidebarMessages = (appSession.hrDisplayHistory || []).slice(appSession.lastGenHrCount || 0);
+    let sidebarChange = null;
+    try {
+      sidebarChange = await draftFromSidebarDiscussion(cvText, targetJob, newSidebarMessages, appSession.clientPreferences);
+    } catch (e) { /* best-effort — a failed sidebar-drafting call should not block the regeneration itself */ }
+    const allConfirmedChanges = sidebarChange ? [...confirmedChanges, sidebarChange] : confirmedChanges;
+
+    const { filePath, cvData, modified_sections, thread, hrDisplayHistory, review } = await tailorCvWithReview({
+      cvText, job: targetJob, autoChanges, confirmedChanges: allConfirmedChanges,
+      recommendedSections, originalName, confirmedContact: appSession.confirmedContact,
+      thread: appSession.hrThread, preferences: appSession.clientPreferences,
+      hrDisplayHistory: appSession.hrDisplayHistory, originalCvData: appSession.cvData,
+      gapDiscussions,
+    });
+    appSession.hrThread = thread;
+    appSession.hrDisplayHistory = hrDisplayHistory;
+    appSession.lastGenHrCount = hrDisplayHistory.length;
+    appSession.lastTailoredCvData   = cvData;
+    appSession.lastModifiedSections = modified_sections;
+    appSession.lastTailoredJob      = targetJob;
     const reviewIssues = review && review.verdict === 'FIX_REQUIRED' ? review.required_edits : [];
     res.json({ filePath, reviewIssues });
   } catch (err) {

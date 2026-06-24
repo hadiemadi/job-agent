@@ -39,9 +39,26 @@ describe('agents/extractor', () => {
 
 describe('agents/recruiter', () => {
   const recruiter = require('./recruiter');
-  test('exports reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions, hrSystemPrompt, stealthWritingDirective, pinDisciplineSkill, reviewTailoredCV', () => {
-    ['reviewCV', 'analyzeJobFit', 'refineWithHR', 'chatWithHRExpert', 'researchCvConventions', 'hrSystemPrompt', 'stealthWritingDirective', 'pinDisciplineSkill', 'reviewTailoredCV']
+  test('exports reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions, hrSystemPrompt, stealthWritingDirective, pinDisciplineSkill, reviewTailoredCV, draftFromSidebarDiscussion', () => {
+    ['reviewCV', 'analyzeJobFit', 'refineWithHR', 'chatWithHRExpert', 'researchCvConventions', 'hrSystemPrompt', 'stealthWritingDirective', 'pinDisciplineSkill', 'reviewTailoredCV', 'draftFromSidebarDiscussion']
       .forEach(name => expect(typeof recruiter[name]).toBe('function'));
+    expect(typeof recruiter.EVIDENCE_HIERARCHY).toBe('string');
+  });
+  test('draftFromSidebarDiscussion makes zero AI calls and returns null when there is no new sidebar conversation (#29/#31 gating)', async () => {
+    const callsBefore = client.messages.create.mock.calls.length;
+    const result = await recruiter.draftFromSidebarDiscussion('cv text', { job_title: 'TPM' }, [], {});
+    expect(result).toBeNull();
+    expect(client.messages.create.mock.calls.length).toBe(callsBefore);
+  });
+  test('draftFromSidebarDiscussion returns the drafted statement when new conversation produced one', async () => {
+    mockTextResponse(JSON.stringify({ added: true, description: 'Led a cross-functional team of 8', rationale: 'Confirmed in sidebar chat', targetSection: 'Experience' }));
+    const result = await recruiter.draftFromSidebarDiscussion('cv text', { job_title: 'TPM' }, [{ role: 'user', text: 'I actually led 8 people on that project' }, { role: 'expert', text: 'Got it, noted.' }], {});
+    expect(result).toMatchObject({ description: 'Led a cross-functional team of 8', targetSection: 'Experience' });
+  });
+  test('draftFromSidebarDiscussion returns null when HR concludes nothing new emerged', async () => {
+    mockTextResponse(JSON.stringify({ added: false, description: '', rationale: '', targetSection: '' }));
+    const result = await recruiter.draftFromSidebarDiscussion('cv text', { job_title: 'TPM' }, [{ role: 'user', text: 'just asking a question' }, { role: 'expert', text: 'here is the answer' }], {});
+    expect(result).toBeNull();
   });
   test('pinDisciplineSkill persists a pinned entry into that field\'s discipline store', () => {
     const fs = require('fs');

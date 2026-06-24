@@ -4,7 +4,7 @@ const { client, MODEL, createJsonCompletion } = require('../core/claude');
 const { extractJSON } = require('../core/json');
 const { loadCore } = require('../core/knowledge');
 const { registerOutputFile, getSessionSpend } = require('../services/session');
-const { hrSystemPrompt, stealthWritingDirective } = require('./recruiter');
+const { hrSystemPrompt, stealthWritingDirective, EVIDENCE_HIERARCHY } = require('./recruiter');
 
 // The writer's own generation directive, appended on top of the shared HR persona/rules
 // (hrSystemPrompt). Keeps the writer and the independent pre-release reviewer (recruiter.js's
@@ -429,6 +429,8 @@ Based on everything just discussed above in this conversation, decide the agreed
   keep it as-is, or the concern was resolved without needing an edit), return the original text
   unchanged and set "changed" to false — do not invent a cosmetic edit just to have something
   to return.
+
+${EVIDENCE_HIERARCHY}
 ${stealthWritingDirective()}${sharedContext ? `\n\n${sharedContext}` : ''}
 
 Return JSON only:

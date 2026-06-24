@@ -51,6 +51,7 @@ router.post('/review-cv', async (req, res) => {
         status: g.status, proposedStatement: g.proposedStatement,
         userDecision: g.userDecision, hrConclusion: g.hrConclusion,
         targetSection: g.hrConclusion ? g.hrConclusion.targetSection : null,
+        hrStatement: g.hrConclusion ? g.hrConclusion.statement : null,
       })),
     };
     appSession.currentJob = job;
@@ -140,9 +141,20 @@ router.post('/hr/refine', async (req, res) => {
       gap, coachFinalStatement, appSession.hrThread, appSession.clientPreferences, sharedContext
     );
     appSession.hrThread = thread;
-    const updated = proposeStatement(gapId, result.refined_description, { rationale: result.rationale, lean: result.lean, targetSection: result.targetSection || null });
+    // #30: the candidate-facing advice line is always this fixed 1-2 line shape — built here,
+    // deterministically, from the model's own structured fields, rather than trusting the model
+    // to format it consistently itself.
+    const hrStatement = result.lean === 'add'
+      ? `Add to your ${result.targetSection || 'CV'} section: ${result.refined_description}`
+      : `Leave this out — ${result.rationale}`;
+    const updated = proposeStatement(gapId, result.refined_description, {
+      rationale: result.rationale, lean: result.lean, targetSection: result.targetSection || null, statement: hrStatement,
+    });
     if (!updated) return res.status(400).json({ error: 'Gap not found.' });
-    res.json({ proposedStatement: updated.proposedStatement, rationale: result.rationale, lean: result.lean, targetSection: result.targetSection || null, status: updated.status });
+    res.json({
+      proposedStatement: updated.proposedStatement, rationale: result.rationale, lean: result.lean,
+      targetSection: result.targetSection || null, hrStatement, status: updated.status,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

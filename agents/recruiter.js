@@ -15,6 +15,20 @@ function stealthWritingDirective() {
   return `\n\nWRITING STYLE — read naturally, like a real person wrote it: Vary sentence length and structure; avoid a uniform, metronomic rhythm. Avoid AI-cliché phrases and buzzwords ("leverage", "synergy", "passionate about", "I am writing to express my interest", "in today's fast-paced environment", "proven track record", "delve", "robust", "seamless", "unlock potential") unless genuinely the most accurate word. Avoid repeating the exact same sentence structure across consecutive bullets or lines. Use em dashes and semicolons sparingly, the way a person naturally would. Prefer concrete, specific detail (numbers, named tools, named outcomes) over generic claims. Never mention, hint at, or disclose that AI was used to write or assist with this content. All of this is about STYLE ONLY — never invent facts, achievements, or numbers not already present in the candidate's CV.`;
 }
 
+// #28: source hierarchy for any claim HR drafts/refines into a CV statement — the same
+// anti-fabrication guardrail as the WARNING comments below, made explicit and reusable so
+// every drafting/refining call site (refineWithHR, applyConcernChange, the sidebar-discussion
+// drafter) states it the same way instead of each call site phrasing it slightly differently.
+const EVIDENCE_HIERARCHY = `EVIDENCE HIERARCHY for any claim in this statement:
+- TIER 1 (may ground a claim): the candidate's CV text, AND direct candidate-to-HR conversation
+  in this thread (the candidate discussing/selecting a CV passage is first-hand evidence).
+- TIER 2 (may sharpen phrasing/placement only — may NOT invent evidence): the Career Coach's
+  final takeaway on a gap, if mentioned above.
+- TIER 3 (context only — tone, target role, constraints — never the sole basis for a claim):
+  the candidate's stated preferences/instructions, if mentioned above.
+The underlying CLAIM in any statement you draft or revise must trace to Tier 1. Tier 2/3 may
+shape wording and placement but can never manufacture experience the candidate doesn't have.`;
+
 // CV layout/section norms differ by country, industry, and seniority (e.g. a photo and
 // hobbies are customary on a Swedish engineer's CV but a red flag on a US one). Rather than
 // hardcoding one country's rules, this either hands Claude its own live research findings
@@ -204,15 +218,17 @@ async function refineWithHR(cvText, job, hrReview, gap, coachFinalStatement, thr
 
 ${coachNote}
 ${sharedContext ? `\n${sharedContext}\n` : ''}
+${EVIDENCE_HIERARCHY}
+
 Draft ONE concrete, CV-ready statement for this gap. Look at the candidate's FULL CV (given to
 you above) for the closest genuinely-evidenced related experience, credential, coursework, or
 adjacent skill — even if it's not an exact match for what this gap asks for — and base the
 statement on that. refined_description must NEVER be empty, even when you lean "leave-out" or
 there's no coach note above: the candidate needs to see exactly what would be added before
 deciding whether to follow or override your lean. No coach discussion is normal, not a reason
-to refuse — the candidate's CV is itself evidence. Only if the CV truly contains nothing even
-adjacent to this gap should you draft a plainly conditional statement (e.g. naming what's
-missing and what confirming it would require) — never return an empty string.
+to refuse — the candidate's CV is itself evidence (Tier 1). Only if the CV truly contains
+nothing even adjacent to this gap should you draft a plainly conditional statement (e.g. naming
+what's missing and what confirming it would require) — never return an empty string.
 
 Then take a clear position on whether THIS drafted statement belongs on the CV as-is — lean
 "add" or "leave-out", never a hedge. Also pick which CV section this statement belongs in
@@ -227,9 +243,9 @@ Return JSON only:
   "targetSection": ""
 }
 
-lean: "add" if the statement is clearly evidenced by the discussion/CV, "leave-out" if it would
-overclaim or isn't well-supported. rationale is the reason for that lean — at most 2 short
-sentences, crisp and direct, never a paragraph.`;
+lean: "add" if the statement's CLAIM traces to Tier 1 evidence, "leave-out" if it would overclaim
+or isn't well-supported. rationale is the one-clause reason for that lean — a single short
+clause, never a full sentence with subordinate clauses, never a paragraph.`;
 
   const messages = [...thread, { role: 'user', content: userMessage }];
   const response = await client.messages.create({
@@ -257,6 +273,49 @@ async function chatWithHRExpert(cvText, job, thread, userMessage, model, prefere
   });
   const reply = response.content[0].text;
   return { reply, thread: [...messages, { role: 'assistant', content: reply }] };
+}
+
+// #29/#31: when the Tailored-CV page regenerates the CV, the writer should pull in any NEW
+// concrete statement that emerged from sidebar HR discussion SINCE the last generation — but
+// only if such discussion actually happened, never re-stating something already incorporated.
+// `newMessages` is the slice of hrDisplayHistory ({role:'user'|'expert', text}) added since the
+// last generation; gated by the caller (routes/cv.routes.js) so this function makes zero AI
+// calls when there's nothing new to consider.
+async function draftFromSidebarDiscussion(cvText, job, newMessages, preferences) {
+  if (!newMessages || !newMessages.length) return null;
+  const conversationText = newMessages.map(m => `${m.role === 'user' ? 'Candidate' : 'HR'}: ${m.text}`).join('\n');
+  const userMessage = `Since the CV was last generated, the candidate had this NEW conversation
+with you in the Tailored-CV sidebar — it counts as Tier 1 evidence (direct candidate-to-HR
+conversation):
+
+${conversationText}
+
+${EVIDENCE_HIERARCHY}
+
+Decide: did this conversation produce a concrete, CV-ready statement worth adding to the CV that
+isn't already reflected in it? Most sidebar conversation is just Q&A and does NOT warrant a new
+statement — only say yes if something genuinely new and concrete emerged (e.g. the candidate
+confirmed a fact, scope, or detail HR can now state plainly).
+
+Return JSON only:
+{
+  "added": true,
+  "description": "",
+  "rationale": "",
+  "targetSection": ""
+}
+Set "added" to false (and leave the other fields as empty strings) if nothing concrete emerged —
+do not invent a statement just to have something to return.`;
+
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 400,
+    system: hrSystemPrompt(cvText, job, preferences),
+    messages: [{ role: 'user', content: userMessage }],
+  });
+  const raw = extractJSON(response.content[0].text);
+  const result = JSON.parse(raw);
+  return result.added ? { description: result.description, rationale: result.rationale, targetSection: result.targetSection || null } : null;
 }
 
 // Opt-in "extensive search" — the client checked a box asking for live web research into
@@ -334,4 +393,5 @@ Go through the checklist one item at a time. Return JSON only:
 module.exports = {
   reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions,
   hrSystemPrompt, stealthWritingDirective, pinDisciplineSkill, reviewTailoredCV, fieldBlock,
+  draftFromSidebarDiscussion, EVIDENCE_HIERARCHY,
 };

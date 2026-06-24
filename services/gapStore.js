@@ -29,7 +29,7 @@ function createGap(raw) {
     userResponse: null,
     coachConversation: [],
     proposedStatement: null,
-    hrConclusion: null, // { rationale, lean: 'add'|'leave-out' } once HR has drafted
+    hrConclusion: null, // { rationale, lean: 'add'|'leave-out', targetSection, statement } once HR has drafted — `statement` is the fixed-shape one-liner (#30): "Add to your X section: ..." or "Leave this out — ..."
     userDecision: 'undecided',
   };
 }
