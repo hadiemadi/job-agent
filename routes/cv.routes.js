@@ -9,6 +9,8 @@ const { upload, templateUpload } = require('../services/uploads');
 const { getSession, setSession, registerOutputFile, purgeSessionData } = require('../services/session');
 const { getGaps } = require('../services/gapStore');
 const { tailorCvWithReview } = require('../services/workflows');
+const { sendError } = require('../core/respondError');
+const { logEvent } = require('../core/logger');
 
 // Shared by /rewrite and /regenerate-cv (#29/#31) — derives the gap-sourced inputs to the CV
 // writer from the server-side gap store, instead of trusting a client-submitted list. Only a
@@ -52,10 +54,11 @@ router.post('/upload-cv', upload.single('cv'), async (req, res) => {
     // source file never lingers on disk past this one request.
     await fse.remove(cvPath);
     setSession({ ...getSession(), cvText, cvPath: null, cvData });
+    logEvent('cv_uploaded', { route: '/upload-cv', outcome: 'ok' });
     res.json({ cvPath, cvData });
   } catch (err) {
     await fse.remove(cvPath).catch(() => {}); // still scrub it even on a parse failure
-    res.status(500).json({ error: err.message });
+    sendError(res, '/upload-cv', 'ERR-CV-002', err);
   }
 });
 
@@ -132,9 +135,10 @@ router.post('/rewrite', async (req, res) => {
     // The independent pre-release review (services/workflows.js) gets up to 2 revision passes.
     // If it still isn't SHIP after that, surface the remaining issues rather than hide them.
     const reviewIssues = review && review.verdict === 'FIX_REQUIRED' ? review.required_edits : [];
+    logEvent('cv_tailored', { route: '/rewrite', outcome: 'ok' });
     res.json({ filePath, reviewIssues });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/rewrite', 'ERR-CV-004', err);
   }
 });
 
@@ -149,10 +153,10 @@ router.post('/rewrite', async (req, res) => {
 router.post('/regenerate-cv', async (req, res) => {
   try {
     const appSession = getSession();
-    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    if (!appSession.cvText) return sendError(res, '/regenerate-cv', 'ERR-GEN-001');
     const { job, languageLevel } = req.body;
     const targetJob = job || appSession.lastTailoredJob || appSession.currentJob;
-    if (!targetJob) return res.status(400).json({ error: 'No job to regenerate against.' });
+    if (!targetJob) return sendError(res, '/regenerate-cv', 'ERR-GEN-002');
     if (languageLevel) {
       appSession.clientPreferences = { ...appSession.clientPreferences, languageLevel };
     }
@@ -186,23 +190,24 @@ router.post('/regenerate-cv', async (req, res) => {
     appSession.lastModifiedSections = modified_sections;
     appSession.lastTailoredJob      = targetJob;
     const reviewIssues = review && review.verdict === 'FIX_REQUIRED' ? review.required_edits : [];
+    logEvent('cv_regenerated', { route: '/regenerate-cv', outcome: 'ok' });
     res.json({ filePath, reviewIssues });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/regenerate-cv', 'ERR-GEN-003', err);
   }
 });
 
 router.post('/build-comparison', async (req, res) => {
   try {
     const appSession = getSession();
-    if (!appSession.lastTailoredCvData) return res.status(400).json({ error: 'No tailored CV yet.' });
+    if (!appSession.lastTailoredCvData) return sendError(res, '/build-comparison', 'ERR-CV-005');
     const job = req.body.job || appSession.lastTailoredJob;
     const comparisonHtml = generateComparisonTemplate(appSession.cvData, appSession.lastTailoredCvData, job, appSession.lastModifiedSections);
     const comparisonPath = registerOutputFile('html'); // unguessable, session-scoped — see services/session.js
     await fse.outputFile(comparisonPath, comparisonHtml);
     res.json({ comparisonPath });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/build-comparison', 'ERR-CV-011', err);
   }
 });
 
@@ -210,19 +215,19 @@ router.post('/export-word', async (req, res) => {
   try {
     const appSession = getSession();
     const { cvData, job, templatePath, templateStyle } = req.body;
-    if (!cvData || !job) return res.status(400).json({ error: 'cvData and job are required.' });
+    if (!cvData || !job) return sendError(res, '/export-word', 'ERR-CV-003');
 
     if (templateStyle === 'alternate') {
       const wordPath = await generateWordCVAlt(cvData, job);
       return res.json({ wordPath });
     }
     if (templateStyle === 'original') {
-      return res.status(501).json({ error: "Style mimicry from your original CV isn't available yet — your CV was read as a PDF, and this feature needs a Word-format source. Use 'Upload your own template' instead." });
+      return sendError(res, '/export-word', 'ERR-CV-009');
     }
     if (templatePath) {
       const resolved = path.resolve(templatePath);
       const templatesDir = path.resolve('uploads/templates');
-      if (!resolved.startsWith(templatesDir)) return res.status(400).json({ error: 'Invalid template path.' });
+      if (!resolved.startsWith(templatesDir)) return sendError(res, '/export-word', 'ERR-CV-006');
       const { wordPath, thread } = await generateWordFromTemplate(cvData, job, resolved, appSession.cvText, appSession.hrThread, appSession.clientPreferences);
       appSession.hrThread = thread;
       return res.json({ wordPath });
@@ -230,16 +235,16 @@ router.post('/export-word', async (req, res) => {
     const wordPath = await generateWordCV(cvData, job);
     res.json({ wordPath });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/export-word', 'ERR-CV-008', err);
   }
 });
 
 router.post('/adjust-language', async (req, res) => {
   try {
     const appSession = getSession();
-    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    if (!appSession.cvText) return sendError(res, '/adjust-language', 'ERR-CV-001');
     const { cvData, job, languageLevel } = req.body;
-    if (!cvData || !job) return res.status(400).json({ error: 'cvData and job are required.' });
+    if (!cvData || !job) return sendError(res, '/adjust-language', 'ERR-CV-003');
     const level = languageLevel || 2;
     const { cvData: updatedCv, templateSuggestion, filePath, thread, hrDisplayHistory } = await adjustLanguageLevel(
       appSession.cvText, job, cvData, level, appSession.hrThread, appSession.clientPreferences, appSession.hrDisplayHistory
@@ -249,17 +254,17 @@ router.post('/adjust-language', async (req, res) => {
     appSession.clientPreferences = { ...appSession.clientPreferences, languageLevel: level };
     res.json({ cvData: updatedCv, templateSuggestion, filePath });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/adjust-language', 'ERR-CV-010', err);
   }
 });
 
 router.post('/upload-template', templateUpload.single('template'), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No .docx template file uploaded.' });
+    if (!req.file) return sendError(res, '/upload-template', 'ERR-CV-007');
     new PizZip(await fse.readFile(req.file.path));
     res.json({ templatePath: req.file.path.replace(/\\/g, '/') });
   } catch (err) {
-    res.status(400).json({ error: 'Invalid Word template file.' });
+    sendError(res, '/upload-template', 'ERR-CV-007', err);
   }
 });
 

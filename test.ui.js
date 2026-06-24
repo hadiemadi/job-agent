@@ -201,54 +201,72 @@ describe('Error handling — no CV in session', () => {
     const res = await agent.post('/review-cv').send({ job: MOCK_JOB });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('POST /coach/discuss → 400 when no CV is loaded', async () => {
     const res = await agent.post('/coach/discuss').send({ message: 'Hello', gapId: 'whatever' });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('POST /hr/refine → 400 when no CV is loaded', async () => {
     const res = await agent.post('/hr/refine').send({ gapId: 'whatever' });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('POST /hr/chat → 400 when no CV is loaded', async () => {
     const res = await agent.post('/hr/chat').send({ message: 'Hello' });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('POST /hr/apply-concern → 400 when no CV is loaded', async () => {
     const res = await agent.post('/hr/apply-concern').send({ fieldText: 'x', selectedText: 'x' });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('POST /coach/analyze → 400 when no CV is loaded', async () => {
     const res = await agent.post('/coach/analyze').send({ direction: 'leadership' });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('POST /coach/path → 400 when no CV is loaded', async () => {
     const res = await agent.post('/coach/path').send({ roleTitle: 'Director of Engineering' });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('POST /adjust-language → 400 when no CV is loaded', async () => {
     const res = await agent.post('/adjust-language').send({ cvData: MOCK_CV_DATA, job: MOCK_JOB, languageLevel: 3 });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('POST /build-comparison → 400 when no CV has been tailored yet', async () => {
     const res = await agent.post('/build-comparison').send({ job: MOCK_JOB });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 });
 
@@ -259,6 +277,8 @@ describe('Error handling — missing required fields', () => {
     const res = await agent.post('/fetch-job').send({});
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('POST /review-cv → 400 when job field is missing', async () => {
@@ -266,12 +286,16 @@ describe('Error handling — missing required fields', () => {
     const res = await agent.post('/review-cv').send({});
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('POST /coach/analyze → 400 when direction field is missing', async () => {
     const res = await agent.post('/coach/analyze').send({});
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 });
 
@@ -361,6 +385,16 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     // /coach/discuss, /hr/refine, and /gap-decision all key off now.
     expect(res.body.confirm_changes[0]).toHaveProperty('id');
     expect(typeof res.body.confirm_changes[0].id).toBe('string');
+  });
+
+  // An unhandled rejection deep inside the agent call (reviewCV here) must still reach the
+  // client as a structured, cataloged error — not a bare 500 with a raw stack-trace message.
+  test('POST /review-cv returns ERR-HR-003 when the HR review agent call fails', async () => {
+    reviewCV.mockRejectedValueOnce(new Error('Anthropic API unreachable'));
+    const res = await agent.post('/review-cv').send({ job: MOCK_JOB });
+    expect(res.status).toBe(500);
+    expect(res.body).toHaveProperty('error_code', 'ERR-HR-003');
+    expect(res.body).toHaveProperty('error');
   });
 
   test('POST /confirm-contact stores clientPreferences and /review-cv passes them through', async () => {
@@ -633,6 +667,8 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     const res = await agent.post('/hr/chat').send({});
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('POST /hr/chat with a concern injects the selected excerpt and first-turn quote instruction', async () => {
@@ -668,6 +704,8 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     const res = await agent.post('/hr/apply-concern').send({ job: MOCK_JOB });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('POST /coach/analyze returns 200 with profile and suggestedRoles array', async () => {
@@ -702,6 +740,8 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     const res = await agent.post('/adjust-language').send({ job: MOCK_JOB });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('HR sidebar display history survives a wording regeneration (not cleared)', async () => {
@@ -743,12 +783,16 @@ describe('POST /export-word', () => {
     const res = await agent.post('/export-word').send({ job: MOCK_JOB });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('returns 400 when job is missing', async () => {
     const res = await agent.post('/export-word').send({ cvData: MOCK_CV_DATA });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('uses the custom template renderer when templatePath is provided', async () => {
@@ -767,6 +811,8 @@ describe('POST /export-word', () => {
     });
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 
   test('uses the alternate built-in template when templateStyle is "alternate"', async () => {
@@ -785,6 +831,8 @@ describe('POST /export-word', () => {
     });
     expect(res.status).toBe(501);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 });
 
@@ -804,6 +852,8 @@ describe('POST /upload-template', () => {
     const res = await agent.post('/upload-template');
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
+    expect(res.body).toHaveProperty('error_code');
+    expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
   });
 });
 

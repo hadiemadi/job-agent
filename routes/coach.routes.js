@@ -3,13 +3,14 @@ const { chatWithCoach, analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPa
 const { getSession } = require('../services/session');
 const { getGap, appendGapMessage, buildSharedGapContext } = require('../services/gapStore');
 const { loadDiscipline } = require('../core/knowledge');
+const { sendError } = require('../core/respondError');
 
 const router = express.Router();
 
 router.post('/coach/discuss', async (req, res) => {
   try {
     const appSession = getSession();
-    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    if (!appSession.cvText) return sendError(res, '/coach/discuss', 'ERR-COACH-001');
     const { message, gapId } = req.body;
     const gap = getGap(gapId);
     // Grounds the coach's reasoning in this candidate's discipline rubric (skills/keywords/
@@ -31,36 +32,36 @@ router.post('/coach/discuss', async (req, res) => {
     }
     res.json({ reply });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/coach/discuss', 'ERR-COACH-005', err);
   }
 });
 
 router.post('/coach/analyze', async (req, res) => {
   try {
     const appSession = getSession();
-    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    if (!appSession.cvText) return sendError(res, '/coach/analyze', 'ERR-COACH-001');
     const { direction } = req.body;
-    if (!direction) return res.status(400).json({ error: 'direction is required.' });
+    if (!direction) return sendError(res, '/coach/analyze', 'ERR-COACH-002');
     const result = await analyzeAndSuggestRoles(appSession.cvText, direction);
-    if (!result) return res.status(500).json({ error: 'Analysis failed.' });
+    if (!result) return sendError(res, '/coach/analyze', 'ERR-COACH-003');
     const rankedJobs = appSession.rankedJobs || [];
     const marketMatches = rankedJobs.length > 0 ? await matchRolesToMarket(result.suggested_roles, rankedJobs) : [];
     res.json({ profile: result.profile, suggestedRoles: result.suggested_roles, marketMatches });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/coach/analyze', 'ERR-COACH-003', err);
   }
 });
 
 router.post('/coach/path', async (req, res) => {
   try {
     const appSession = getSession();
-    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    if (!appSession.cvText) return sendError(res, '/coach/path', 'ERR-COACH-001');
     const { roleTitle } = req.body;
     const path = await buildCareerPath(roleTitle, appSession.cvText);
-    if (!path) return res.status(500).json({ error: 'Path analysis failed.' });
+    if (!path) return sendError(res, '/coach/path', 'ERR-COACH-004');
     res.json(path);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/coach/path', 'ERR-COACH-004', err);
   }
 });
 

@@ -10,6 +10,21 @@ const cvRoutes = require('./routes/cv.routes');
 const jobsRoutes = require('./routes/jobs.routes');
 const hrRoutes = require('./routes/hr.routes');
 const coachRoutes = require('./routes/coach.routes');
+const { sendError } = require('./core/respondError');
+const { logError } = require('./core/logger');
+
+// Process-level safety net — these fire OUTSIDE any request's try/catch (e.g. a bug in a
+// timer/event callback). Per the task's hardening goal, a logging/DB failure (or any other
+// uncaught error) must never silently crash the whole site without at least a server-side
+// trace and a best-effort, sanitized DB record.
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+  logError('ERR-SYS-001', 'process', { errName: err && err.name });
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+  logError('ERR-SYS-001', 'process', { errName: reason && reason.name });
+});
 
 // Render's disk is ephemeral — these must exist fresh every boot, not just on first
 // install. uploads/templates is ensured separately by services/uploads.js.
@@ -86,6 +101,13 @@ app.use(cvRoutes);
 app.use(jobsRoutes);
 app.use(hrRoutes);
 app.use(coachRoutes);
+
+// Fallback for anything that escapes a route's own try/catch (e.g. express.json() rejecting
+// malformed request bodies before a route handler ever runs) — every other error path already
+// goes through core/respondError.js's sendError directly from inside its route.
+app.use((err, req, res, next) => {
+  sendError(res, req.path, 'ERR-SYS-002', err);
+});
 
 // requestScope() wraps the whole request in one AsyncLocalStorage scope starting at the raw
 // http.Server level — see services/session.js's comment on sessionMiddleware for why this

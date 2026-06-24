@@ -1,3 +1,5 @@
+const { taggedError } = require('../core/errorCodes');
+
 const COUNTRY_CITIES = {
   GB: { city: 'London',    country: 'GB' },
   SE: { city: 'Stockholm', country: 'SE' },
@@ -31,7 +33,7 @@ function checkJobSearchCap() {
   const today = utcDateString();
   if (today !== searchDate) { searchDate = today; searchCountToday = 0; }
   if (searchCountToday >= DAILY_JOB_SEARCH_CAP) {
-    throw new Error('Daily job-search limit reached.');
+    throw taggedError('ERR-RATE-003');
   }
   searchCountToday += 1;
 }

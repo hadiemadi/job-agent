@@ -40,6 +40,7 @@
     "multer": "^2.1.1",
     "node-fetch": "^3.3.2",
     "pdf2json": "^4.0.3",
+    "pg": "^8.22.0",
     "pizzip": "^3.2.0",
     "puppeteer": "^25.1.0",
     "puppeteer-extra": "^3.3.6",

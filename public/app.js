@@ -60,6 +60,59 @@ function escapeHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// ── Copyable error popup ─────────────────────────────────────────────────────
+// Shown whenever a server response includes an error_code (see core/respondError.js's
+// sendError) — alongside whatever inline message a given call site already shows, not instead
+// of it, so existing error-handling paths are untouched. The popup + the copyable blob inside
+// it are technical metadata ONLY: code, route, timestamp. Never the candidate's CV text, job
+// description body, name, or email — those never reach this function in the first place,
+// since the server only ever sends back a code + a static catalog message (core/errorCodes.js).
+function showErrorPopup(data, route) {
+  if (!data || !data.error_code) return;
+  const code = data.error_code;
+  const message = data.error || 'Something unexpected went wrong.';
+  const timestamp = new Date().toISOString();
+  const blob = `error_code: ${code}\nroute: ${route || 'unknown'}\ntimestamp: ${timestamp}`;
+
+  let overlay = el('errPopupOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'errPopupOverlay';
+    overlay.className = 'modal-overlay err-popup-overlay';
+    overlay.style.display = 'none';
+    overlay.innerHTML =
+      '<div class="card modal-box">' +
+        '<h2>Something went wrong</h2>' +
+        '<div class="err-popup-message" id="errPopupMessage"></div>' +
+        '<div class="err-popup-code" id="errPopupCode"></div>' +
+        '<div class="err-popup-time" id="errPopupTime"></div>' +
+        '<div class="err-popup-blob" id="errPopupBlob"></div>' +
+        '<div class="err-popup-note">You can copy the technical details above and send them to support — they contain no personal data, just a code, the page, and a timestamp.</div>' +
+        '<div class="err-popup-actions">' +
+          '<span class="err-popup-copy-status" id="errPopupCopyStatus" style="display:none;">Copied</span>' +
+          '<button class="btn btn-ghost btn-sm" id="errPopupCopyBtn" type="button">Copy</button>' +
+          '<button class="btn btn-blue btn-sm" id="errPopupCloseBtn" type="button">Close</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    el('errPopupCloseBtn').addEventListener('click', () => hide('errPopupOverlay'));
+    el('errPopupCopyBtn').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(el('errPopupBlob').textContent);
+        show('errPopupCopyStatus');
+        setTimeout(() => hide('errPopupCopyStatus'), 2000);
+      } catch (e) { /* clipboard API unavailable — the blob is still selectable/copyable by hand */ }
+    });
+  }
+
+  el('errPopupMessage').textContent = message;
+  el('errPopupCode').textContent = code;
+  el('errPopupTime').textContent = timestamp;
+  el('errPopupBlob').textContent = blob;
+  hide('errPopupCopyStatus');
+  show('errPopupOverlay');
+}
+
 // Turns the raw pasted job text into readable paragraphs — needs to stay legible in a
 // nicer font/larger box since it remains on screen behind the contact-info and progress
 // pop-ups that follow, long after the plain textarea would have been cramped.
@@ -141,6 +194,7 @@ async function go() {
     if (upData.error) {
       setStep(0,'err', upData.error); el('goBtn').disabled=false; show('goBtn');
       show('cvPickerGroup'); hide('fileChosenDisplay'); show('jobTextGroup'); hide('jobDescDisplay');
+      showErrorPopup(upData, '/upload-cv');
       return;
     }
     _cvPath = upData.cvPath;
@@ -181,9 +235,15 @@ async function confirmContact() {
   };
   hide('contactStatus');
   try {
-    await fetch('/confirm-contact', {
+    const res = await fetch('/confirm-contact', {
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(contact)
     });
+    const data = await res.json();
+    if (data.error) {
+      el('contactStatus').textContent = data.error; el('contactStatus').className = 'err-msg'; show('contactStatus');
+      showErrorPopup(data, '/confirm-contact');
+      return;
+    }
     hide('contactCard');
     await continueToJobAndHR();
   } catch (err) {
@@ -204,7 +264,7 @@ async function continueToJobAndHR() {
   try {
     const res = await fetch('/fetch-job', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobText }) });
     const data = await res.json();
-    if (data.error || !data.job) { setStep(1,'err', data.error || 'Could not parse job'); el('goBtn').disabled=false; show('goBtn'); return; }
+    if (data.error || !data.job) { setStep(1,'err', data.error || 'Could not parse job'); el('goBtn').disabled=false; show('goBtn'); showErrorPopup(data, '/fetch-job'); return; }
     _currentJob = data.job;
     setStep(1, 'ok', (data.job.job_title || 'Job') + (data.job.employer_name ? ' at ' + data.job.employer_name : ''));
   } catch (err) { setStep(1,'err', err.message); el('goBtn').disabled=false; show('goBtn'); return; }
@@ -214,7 +274,7 @@ async function continueToJobAndHR() {
   try {
     const res = await fetch('/review-cv', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ job: _currentJob }) });
     const data = await res.json();
-    if (data.error) { setStep(2,'err', data.error); el('goBtn').disabled=false; show('goBtn'); return; }
+    if (data.error) { setStep(2,'err', data.error); el('goBtn').disabled=false; show('goBtn'); showErrorPopup(data, '/review-cv'); return; }
     _hrReview = data;
     setStep(2, 'ok', (data.overall_match || 'Moderate') + ' match');
     await new Promise(r => setTimeout(r, 600));
@@ -368,7 +428,7 @@ async function decideGap(i, decision, btn) {
       body: JSON.stringify({ gapId: _gaps[i].id, decision }),
     });
     const data = await res.json();
-    if (!res.ok) { alert(data.error || 'Could not update this gap.'); if (btn) btn.disabled = false; return; }
+    if (!res.ok) { alert(data.error || 'Could not update this gap.'); showErrorPopup(data, '/gap-decision'); if (btn) btn.disabled = false; return; }
     _gaps[i].userDecision = data.userDecision;
     _gaps[i].expanded = false;
     reRenderGapCard(i);
@@ -449,6 +509,8 @@ async function sendChat(i) {
     if (data.reply) {
       _cardChats[i].push({ role: 'assistant', content: data.reply });
       appendBubble(i, 'coach', data.reply);
+    } else if (data.error) {
+      showErrorPopup(data, '/coach/discuss');
     }
   } catch (err) {
     el('chat-status-' + i).textContent = err.message;
@@ -475,6 +537,7 @@ async function askHR(i, btn) {
       const statusEl = el('chat-status-' + i);
       if (statusEl) { statusEl.textContent = data.error || 'HR did not return a draft — try again.'; show('chat-status-' + i); }
       else alert(data.error || 'HR did not return a draft — try again.');
+      showErrorPopup(data, '/hr/refine');
       return;
     }
     _gaps[i].status = data.status;
@@ -507,7 +570,7 @@ async function applyChanges() {
       body: JSON.stringify({ job: _currentJob })
     });
     const data = await res.json();
-    if (data.error) { setStep(3,'err', data.error); el('applyBtn').disabled=false; show('changesCard'); return; }
+    if (data.error) { setStep(3,'err', data.error); el('applyBtn').disabled=false; show('changesCard'); showErrorPopup(data, '/rewrite'); return; }
     if (!data.filePath) {
       setStep(3,'err', 'Server returned an unexpected response — check the server terminal for errors.');
       el('applyBtn').disabled=false; show('changesCard'); return;
@@ -545,7 +608,7 @@ async function viewComparison() {
       body: JSON.stringify({ job: _currentJob }),
     });
     const data = await res.json();
-    if (!data.comparisonPath) throw new Error(data.error || 'Failed to build comparison');
+    if (!data.comparisonPath) { showErrorPopup(data, '/build-comparison'); throw new Error(data.error || 'Failed to build comparison'); }
     window.open('/' + data.comparisonPath, '_blank');
   } catch (err) {
     alert('Could not build comparison: ' + err.message);
@@ -581,7 +644,7 @@ async function runCoach() {
   el('coachBtn').disabled = false;
   hide('coachStatus');
 
-  if (data.error) { el('coachStatus').textContent = data.error; el('coachStatus').className='err-msg'; show('coachStatus'); return; }
+  if (data.error) { el('coachStatus').textContent = data.error; el('coachStatus').className='err-msg'; show('coachStatus'); showErrorPopup(data, '/coach/analyze'); return; }
 
   el('coachResults').innerHTML = `
     <div class="coach-section-title">Ideal roles for you</div>
@@ -613,7 +676,7 @@ async function getCareerPath(title, i) {
   const res = await fetch('/coach/path', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ roleTitle: title }) });
   const d = await res.json();
   btn.textContent='Career path →'; btn.disabled=false;
-  if (d.error) { panel.innerHTML='<p class="err-msg">'+d.error+'</p>'; return; }
+  if (d.error) { panel.innerHTML='<p class="err-msg">'+d.error+'</p>'; showErrorPopup(d, '/coach/path'); return; }
   panel.innerHTML=`<div class="path-panel">
     <div class="path-label">Key Challenges</div>
     <ul class="path-list">${d.key_challenges.map(c=>'<li>'+c+'</li>').join('')}</ul>

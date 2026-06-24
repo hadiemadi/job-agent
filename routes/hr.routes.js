@@ -6,15 +6,17 @@ const {
 const { generateCoverLetterWord } = require('../src/wordExport');
 const { getSession } = require('../services/session');
 const { setGaps, getGap, proposeStatement, setUserDecision, buildSharedGapContext } = require('../services/gapStore');
+const { sendError } = require('../core/respondError');
+const { logEvent } = require('../core/logger');
 
 const router = express.Router();
 
 router.post('/review-cv', async (req, res) => {
   try {
     const appSession = getSession();
-    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    if (!appSession.cvText) return sendError(res, '/review-cv', 'ERR-HR-001');
     const { job } = req.body;
-    if (!job) return res.status(400).json({ error: 'job is required.' });
+    if (!job) return sendError(res, '/review-cv', 'ERR-HR-002');
     // Opt-in live research into this job's country/industry-specific CV conventions — runs
     // once per job, then cached on clientPreferences so every later HR-thread call (rewrite,
     // refine, sidebar chat, Word placement) reuses it without re-searching.
@@ -67,18 +69,19 @@ router.post('/review-cv', async (req, res) => {
     // rubric (services/curator.js's knowledge store) instead of just the gap slogan — see
     // agents/coach.js's chatWithCoach.
     appSession.field = field || null;
+    logEvent('hr_review_run', { route: '/review-cv', outcome: 'ok' });
     res.json(fullReview);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/review-cv', 'ERR-HR-003', err);
   }
 });
 
 router.post('/generate-cover-letter', async (req, res) => {
   try {
     const appSession = getSession();
-    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    if (!appSession.cvText) return sendError(res, '/generate-cover-letter', 'ERR-HR-001');
     const { cvData, job } = req.body;
-    if (!cvData || !job) return res.status(400).json({ error: 'cvData and job are required.' });
+    if (!cvData || !job) return sendError(res, '/generate-cover-letter', 'ERR-CV-003');
     const { coverLetter, thread, hrDisplayHistory } = await generateCoverLetter(
       appSession.cvText, job, cvData, appSession.hrThread, appSession.clientPreferences, appSession.hrDisplayHistory
     );
@@ -86,27 +89,27 @@ router.post('/generate-cover-letter', async (req, res) => {
     appSession.hrDisplayHistory = hrDisplayHistory;
     res.json({ coverLetter });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/generate-cover-letter', 'ERR-HR-009', err);
   }
 });
 
 router.post('/export-cover-letter-word', async (req, res) => {
   try {
     const { coverLetter, cvData, job } = req.body;
-    if (!coverLetter || !cvData || !job) return res.status(400).json({ error: 'coverLetter, cvData and job are required.' });
+    if (!coverLetter || !cvData || !job) return sendError(res, '/export-cover-letter-word', 'ERR-CV-003');
     const wordPath = await generateCoverLetterWord(coverLetter, cvData, job);
     res.json({ wordPath });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/export-cover-letter-word', 'ERR-CV-008', err);
   }
 });
 
 router.post('/generate-interview-questions', async (req, res) => {
   try {
     const appSession = getSession();
-    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    if (!appSession.cvText) return sendError(res, '/generate-interview-questions', 'ERR-HR-001');
     const { cvData, job } = req.body;
-    if (!cvData || !job) return res.status(400).json({ error: 'cvData and job are required.' });
+    if (!cvData || !job) return sendError(res, '/generate-interview-questions', 'ERR-CV-003');
     const { questions, hrMessage, thread, hrDisplayHistory } = await generateInterviewQuestions(
       appSession.cvText, job, cvData, appSession.hrThread, appSession.clientPreferences, appSession.hrDisplayHistory
     );
@@ -114,7 +117,7 @@ router.post('/generate-interview-questions', async (req, res) => {
     appSession.hrDisplayHistory = hrDisplayHistory;
     res.json({ questions, hrMessage });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/generate-interview-questions', 'ERR-HR-010', err);
   }
 });
 
@@ -133,10 +136,10 @@ router.post('/generate-interview-questions', async (req, res) => {
 router.post('/hr/refine', async (req, res) => {
   try {
     const appSession = getSession();
-    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    if (!appSession.cvText) return sendError(res, '/hr/refine', 'ERR-HR-001');
     const { gapId } = req.body;
     const gap = getGap(gapId);
-    if (!gap) return res.status(400).json({ error: 'Gap not found.' });
+    if (!gap) return sendError(res, '/hr/refine', 'ERR-HR-004');
     // HR only ever sees Coach's FINAL takeaway for this gap (the last assistant turn) — never
     // the raw back-and-forth. Coach's own full conversation stays visible to Coach only.
     const lastCoachTurn = [...(gap.coachConversation || [])].reverse().find(m => m.role === 'assistant');
@@ -156,13 +159,13 @@ router.post('/hr/refine', async (req, res) => {
     const updated = proposeStatement(gapId, result.refined_description, {
       rationale: result.rationale, lean: result.lean, targetSection: result.targetSection || null, statement: hrStatement,
     });
-    if (!updated) return res.status(400).json({ error: 'Gap not found.' });
+    if (!updated) return sendError(res, '/hr/refine', 'ERR-HR-004');
     res.json({
       proposedStatement: updated.proposedStatement, rationale: result.rationale, lean: result.lean,
       targetSection: result.targetSection || null, hrStatement, status: updated.status,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/hr/refine', 'ERR-HR-005', err);
   }
 });
 
@@ -174,24 +177,19 @@ router.post('/hr/refine', async (req, res) => {
 // changing (overriding) an existing decision is allowed and expected.
 router.post('/gap-decision', (req, res) => {
   const { gapId, decision } = req.body;
-  if (!['added', 'left-out'].includes(decision)) return res.status(400).json({ error: 'decision must be "added" or "left-out".' });
+  if (!['added', 'left-out'].includes(decision)) return sendError(res, '/gap-decision', 'ERR-GAP-001');
   const gap = setUserDecision(gapId, decision);
-  if (!gap) {
-    return res.status(400).json({
-      error: decision === 'added'
-        ? 'This gap has no drafted statement yet — ask HR to draft one first.'
-        : 'Gap not found.',
-    });
-  }
+  if (!gap) return sendError(res, '/gap-decision', decision === 'added' ? 'ERR-GAP-002' : 'ERR-GAP-003');
+  logEvent('gap_decided', { route: '/gap-decision', outcome: 'ok' });
   res.json({ ok: true, userDecision: gap.userDecision });
 });
 
 router.post('/hr/chat', async (req, res) => {
   try {
     const appSession = getSession();
-    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    if (!appSession.cvText) return sendError(res, '/hr/chat', 'ERR-HR-001');
     const { message, model, concern } = req.body;
-    if (!message) return res.status(400).json({ error: 'message is required.' });
+    if (!message) return sendError(res, '/hr/chat', 'ERR-HR-006');
     // When the candidate selected a CV snippet to discuss, ground every turn in that exact
     // text and — on the first turn only — instruct HR to quote it back, confirming it
     // understood what's being raised before responding.
@@ -208,16 +206,16 @@ router.post('/hr/chat', async (req, res) => {
     appSession.hrDisplayHistory = [...appSession.hrDisplayHistory, { role: 'user', text: message }, { role: 'expert', text: reply }];
     res.json({ reply });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/hr/chat', 'ERR-HR-007', err);
   }
 });
 
 router.post('/hr/apply-concern', async (req, res) => {
   try {
     const appSession = getSession();
-    if (!appSession.cvText) return res.status(400).json({ error: 'No CV loaded.' });
+    if (!appSession.cvText) return sendError(res, '/hr/apply-concern', 'ERR-HR-001');
     const { job, fieldText, selectedText } = req.body;
-    if (!fieldText || !selectedText) return res.status(400).json({ error: 'fieldText and selectedText are required.' });
+    if (!fieldText || !selectedText) return sendError(res, '/hr/apply-concern', 'ERR-HR-011');
     const { revisedText, changed, thread } = await applyConcernChange(
       appSession.cvText, job || appSession.currentJob, fieldText, selectedText, appSession.hrThread, appSession.clientPreferences,
       buildSharedGapContext(null)
@@ -225,7 +223,7 @@ router.post('/hr/apply-concern', async (req, res) => {
     appSession.hrThread = thread;
     res.json({ revisedText, changed });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/hr/apply-concern', 'ERR-HR-008', err);
   }
 });
 

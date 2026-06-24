@@ -1,4 +1,6 @@
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+const { ERROR_CODES } = require('../core/errorCodes');
+const { logEvent, logError } = require('../core/logger');
 
 // See core/claude.js for why this isn't `Number(process.env.X) || fallback` — a legitimate
 // "0" would silently fall back to the default with that pattern.
@@ -24,7 +26,9 @@ function keyBySession(req) {
 }
 
 function tooManyRequests(req, res) {
-  res.status(429).json({ error: 'Too many requests — slow down and try again shortly.' });
+  res.status(429).json({ error: ERROR_CODES['ERR-RATE-002'].message, error_code: 'ERR-RATE-002' });
+  logEvent('rate_limit_hit', { route: req.path });
+  logError('ERR-RATE-002', req.path, {});
 }
 
 // test.ui.js drives dozens of requests per test file through one shared supertest agent

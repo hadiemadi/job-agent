@@ -4,6 +4,8 @@ const { readCV, extractJobTitles, searchAllLocations, analyzeJobFit, parseJobFro
 const { scrapeJobPage } = require('../src/scraper');
 const { upload } = require('../services/uploads');
 const { getSession, setSession } = require('../services/session');
+const { sendError } = require('../core/respondError');
+const { logEvent } = require('../core/logger');
 
 const router = express.Router();
 
@@ -28,20 +30,20 @@ router.post('/search/jobs', upload.single('cv'), async (req, res) => {
     setSession({ cvText, cvPath: null, jobs: uniqueJobs, rankedJobs: null });
     res.json({ count: uniqueJobs.length, titlesFound: jobTitles.length });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/search/jobs', 'ERR-JOB-001', err);
   }
 });
 
 router.post('/search/analyze', async (req, res) => {
   try {
     const appSession = getSession();
-    if (!appSession.jobs) return res.status(400).json({ error: 'No search session.' });
+    if (!appSession.jobs) return sendError(res, '/search/analyze', 'ERR-JOB-002');
     const country = req.body.country || 'US';
     const rankedJobs = await analyzeJobFit(appSession.cvText, appSession.jobs, country);
     appSession.rankedJobs = rankedJobs;
     res.json({ jobs: rankedJobs });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/search/analyze', 'ERR-JOB-003', err);
   }
 });
 
@@ -55,17 +57,18 @@ router.post('/fetch-job', async (req, res) => {
       try {
         rawText = await scrapeJobPage(url);
       } catch (err) {
-        if (err.message === 'LOGIN_WALL') return res.status(422).json({ error: 'LinkedIn requires login.', loginWall: true });
-        if (err.message === 'SCRAPER_DISABLED') return res.status(422).json({ error: 'URL scraping is off — paste the job description text instead.', scraperDisabled: true });
+        if (err.message === 'LOGIN_WALL') return sendError(res, '/fetch-job', 'ERR-JOB-004', null, { loginWall: true });
+        if (err.message === 'SCRAPER_DISABLED') return sendError(res, '/fetch-job', 'ERR-JOB-005', null, { scraperDisabled: true });
         throw err;
       }
     } else {
-      return res.status(400).json({ error: 'Provide url or jobText.' });
+      return sendError(res, '/fetch-job', 'ERR-JOB-006');
     }
     const job = await parseJobFromText(rawText, url || '');
+    logEvent('job_parsed', { route: '/fetch-job', outcome: 'ok' });
     res.json({ job });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, '/fetch-job', 'ERR-JOB-007', err);
   }
 });
 

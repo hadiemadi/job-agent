@@ -62,6 +62,18 @@ body { font-family:var(--font-ui); background:var(--bg); color:var(--ink); font-
 .modal-overlay { position:fixed; inset:0; background:rgba(20,20,18,0.5); z-index:500; display:flex; align-items:center; justify-content:center; padding:var(--space-6); }
 .modal-box { width:100%; max-width:560px; max-height:86vh; overflow-y:auto; margin:0; box-shadow:var(--shadow-modal); }
 
+/* Copyable error popup — a higher z-index than the regular modal-overlay since an API error
+   can surface while a progress/contact modal is already open (e.g. mid-upload), and it must
+   sit on top of that, not behind it. */
+.err-popup-overlay { z-index:900; }
+.err-popup-code { display:inline-block; font-family:'Courier New', monospace; font-size:13px; font-weight:700; color:var(--danger); background:var(--danger-bg); border-radius:var(--radius-sm); padding:3px 10px; margin:var(--space-2) 0 var(--space-4); }
+.err-popup-message { font-size:14px; color:var(--ink); margin-bottom:var(--space-4); }
+.err-popup-time { font-size:11px; color:var(--muted); margin-bottom:var(--space-4); }
+.err-popup-blob { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); padding:var(--space-3); font-family:'Courier New', monospace; font-size:11px; color:var(--muted); white-space:pre-wrap; word-break:break-word; margin-bottom:var(--space-3); }
+.err-popup-note { font-size:11px; color:var(--muted); margin-bottom:var(--space-5); }
+.err-popup-actions { display:flex; gap:var(--space-3); justify-content:flex-end; }
+.err-popup-copy-status { font-size:11px; color:var(--success); margin-right:auto; align-self:center; }
+
 /* Chosen-file readout — replaces the file input once a file is picked, so the user's
    selection is confirmed clearly instead of staying buried in a small file picker. */
 .file-chosen { display:flex; align-items:center; gap:var(--space-3); padding:var(--space-2) 2px var(--space-4); }

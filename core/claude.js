@@ -1,6 +1,8 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { extractJSON } = require('./json');
 const { addSessionSpend } = require('../services/session');
+const { taggedError } = require('./errorCodes');
+const { logEvent } = require('./logger');
 
 // The one Anthropic client + model constant for the whole app — both src/ai.js and
 // src/coach.js used to instantiate their own copy of this; centralizing it here means a
@@ -46,14 +48,11 @@ function rolloverIfNewUtcDay() {
 function checkBudget() {
   rolloverIfNewUtcDay();
   if (spendTodayUsd >= DAILY_AI_BUDGET_USD) {
-    // routes/ catch errors generically today and respond 500 JSON with err.message — that's
-    // an acceptable v1 behavior (per the task this was built against), so this isn't wired
-    // through to an actual 429 response without touching route files. The .status is set
-    // anyway in case a future, allowed change (e.g. a global Express error handler that
-    // routes opt into via next(err)) wants to honor it.
-    const err = new Error('AI budget for today reached — please try again tomorrow.');
-    err.status = 429;
-    throw err;
+    // Tagged with .status/.code (ERR-RATE-001) so core/respondError.js's sendError, in
+    // whichever route's catch block this bubbles up to, returns 429 with that code instead of
+    // a generic 500 — it prefers err.code/err.status over the route's own default code.
+    logEvent('cost_cap_hit', { route: 'core/claude' });
+    throw taggedError('ERR-RATE-001');
   }
 }
 
