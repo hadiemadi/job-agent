@@ -19,13 +19,14 @@ jest.mock('./agents/extractor', () => ({
 }));
 
 jest.mock('./agents/recruiter', () => ({
-  reviewCV:              jest.fn(),
-  analyzeJobFit:         jest.fn(),
-  refineWithHR:          jest.fn(),
-  chatWithHRExpert:      jest.fn(),
-  researchCvConventions: jest.fn(),
-  pinDisciplineSkill:    jest.fn(),
-  reviewTailoredCV:      jest.fn(),
+  reviewCV:                  jest.fn(),
+  analyzeJobFit:             jest.fn(),
+  refineWithHR:              jest.fn(),
+  chatWithHRExpert:          jest.fn(),
+  researchCvConventions:     jest.fn(),
+  pinDisciplineSkill:        jest.fn(),
+  reviewTailoredCV:          jest.fn(),
+  draftFromSidebarDiscussion: jest.fn(),
 }));
 
 jest.mock('./agents/inputRouter', () => ({
@@ -111,7 +112,7 @@ const MOCK_GAPS = [
 // ── Module references (for setting return values in beforeEach / beforeAll) ────
 
 const { parseCVStructure, rewriteCVWithChanges, adjustLanguageLevel, applyConcernChange } = require('./agents/cvWriter');
-const { reviewCV, refineWithHR, chatWithHRExpert, researchCvConventions, pinDisciplineSkill, reviewTailoredCV } = require('./agents/recruiter');
+const { reviewCV, refineWithHR, chatWithHRExpert, researchCvConventions, pinDisciplineSkill, reviewTailoredCV, draftFromSidebarDiscussion } = require('./agents/recruiter');
 const { parseJobFromText } = require('./agents/extractor');
 const { classify } = require('./agents/inputRouter');
 const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps, chatWithCoach } = require('./agents/coach');
@@ -166,6 +167,8 @@ beforeEach(() => {
     thread: [],
   });
   chatWithHRExpert.mockResolvedValue({ reply: 'Your PMP progress should resolve that gap.', thread: [] });
+  // Default: no new sidebar conversation to consider — most tests never touch /hr/chat first.
+  draftFromSidebarDiscussion.mockResolvedValue(null);
   adjustLanguageLevel.mockResolvedValue({
     cvData: { ...MOCK_CV_DATA, summary: 'Polished senior-level summary.' },
     templateSuggestion: '',
@@ -556,6 +559,32 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     const gapId = await currentGapId();
     const res = await agent.post('/gap-decision').send({ gapId, decision: 'maybe' });
     expect(res.status).toBe(400);
+  });
+
+  // #29/#31, build.txt's USER-OVERRIDE-WINS case: HR's lean is informational only — the
+  // candidate's own decision is final regardless of which way HR leaned. /regenerate-cv must
+  // honor that exactly like /rewrite does (buildGapInputs in routes/cv.routes.js filters on
+  // userDecision, never on hrConclusion.lean).
+  test('POST /regenerate-cv excludes a gap HR leaned "add" on, once the candidate explicitly overrides to "left-out" — user decision wins, not HR\'s lean', async () => {
+    const gapId = await currentGapId();
+    refineWithHR.mockResolvedValue({
+      result: { refined_description: 'Add PMP certification', rationale: 'JD prefers it', lean: 'add', targetSection: 'Certifications' },
+      thread: [],
+    });
+    const refineRes = await agent.post('/hr/refine').send({ gapId });
+    expect(refineRes.body.lean).toBe('add');
+    const proposedStatement = refineRes.body.proposedStatement;
+
+    // Candidate overrides HR's "add" lean.
+    await agent.post('/gap-decision').send({ gapId, decision: 'left-out' });
+
+    const res = await agent.post('/regenerate-cv').send({ job: MOCK_JOB });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('filePath');
+
+    const lastCall = rewriteCVWithChanges.mock.calls[rewriteCVWithChanges.mock.calls.length - 1];
+    const confirmedChanges = lastCall[3];
+    expect(confirmedChanges.some(c => c.description === proposedStatement)).toBe(false);
   });
 
   test('POST /hr/chat returns 200 with a reply string', async () => {

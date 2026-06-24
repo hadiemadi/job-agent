@@ -57,6 +57,13 @@ router.post('/review-cv', async (req, res) => {
     appSession.currentJob = job;
     appSession.hrReview = fullReview;
     appSession.hrThread = thread;
+    // #29/#31 hardening: a NEW job review is a fresh start for this job, exactly like hrThread
+    // above — but hrDisplayHistory (the Tailored-CV sidebar transcript) is intentionally never
+    // wiped here, since it can span jobs. Without this, lastGenHrCount could still point at an
+    // old, lower count from a PRIOR job/generation, making a later /regenerate-cv mistake that
+    // prior job's leftover sidebar chat for "new" conversation about THIS job. Resetting it to
+    // the current length means only conversation from this point forward ever counts as new.
+    appSession.lastGenHrCount = (appSession.hrDisplayHistory || []).length;
     // Persisted so /coach/discuss can ground its reasoning in this candidate's discipline
     // rubric (services/curator.js's knowledge store) instead of just the gap slogan — see
     // agents/coach.js's chatWithCoach.
