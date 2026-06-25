@@ -891,6 +891,17 @@ describe('#contactCard Advanced options panel (public/index.html)', () => {
   });
 });
 
+// ── 8b. Trial-mode config endpoint (core/config.js, server.js) ────────────────
+
+describe('GET /config.js', () => {
+  test('serves window.TRIAL_MODE as plain JS, defaulting to true', async () => {
+    const res = await request(app).get('/config.js');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/javascript/);
+    expect(res.text).toBe('window.TRIAL_MODE = true;');
+  });
+});
+
 // ── 9. Per-browser session isolation (services/session.js) ─────────────────────
 
 describe('Per-browser session isolation', () => {

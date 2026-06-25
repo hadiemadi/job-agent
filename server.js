@@ -12,6 +12,7 @@ const hrRoutes = require('./routes/hr.routes');
 const coachRoutes = require('./routes/coach.routes');
 const { sendError } = require('./core/respondError');
 const { logError } = require('./core/logger');
+const { TRIAL_MODE } = require('./core/config');
 
 // Process-level safety net — these fire OUTSIDE any request's try/catch (e.g. a bug in a
 // timer/event callback). Per the task's hardening goal, a logging/DB failure (or any other
@@ -37,6 +38,14 @@ app.use(express.json());
 // Mounted before cookieParser/sessionMiddleware/the routers on purpose: a platform health
 // check should never depend on session state, rate limits, or any downstream router.
 app.get('/healthz', (req, res) => res.json({ ok: true }));
+
+// public/ is otherwise fully static (express.static below) — this is the one piece of
+// server-computed config the front end needs (core/config.js's TRIAL_MODE), served as plain
+// JS so index.html can load it with a normal synchronous <script> tag, no fetch/race needed.
+// Flipping TRIAL_MODE off in the environment is the only change required to stop sending it.
+app.get('/config.js', (req, res) => {
+  res.type('application/javascript').send(`window.TRIAL_MODE = ${JSON.stringify(TRIAL_MODE)};`);
+});
 
 app.use(cookieParser());
 app.use(sessionMiddleware);

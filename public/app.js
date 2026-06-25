@@ -106,6 +106,11 @@ const VALIDATION_COPY = {
 
 // Friendly nudge for a missing-input/wrong-order case — no error code, no timestamp, no route,
 // no support line, no red. A helpful teammate pointing at what's needed, not a system alarm.
+//
+// Trial-period addition: while window.TRIAL_MODE is true (core/config.js, default true — set
+// TRIAL_MODE=false in the environment to turn this back off, the one-flag switch), a quiet,
+// muted caption with just the code renders under the friendly body — never in the red/
+// technical style showTechnicalErrorDialog uses, no timestamp, no route, no support line.
 function showValidationNudge(data, route) {
   const copy = VALIDATION_COPY[data.error_code] || { title: 'One more thing', body: data.error, ctaLabel: 'Got it', action: null };
 
@@ -119,6 +124,7 @@ function showValidationNudge(data, route) {
       '<div class="card modal-box">' +
         '<div class="nudge-popup-title" id="nudgeTitle"></div>' +
         '<div class="nudge-popup-body" id="nudgeBody"></div>' +
+        '<div class="nudge-code" id="nudgeCode" style="display:none;"></div>' +
         '<div class="nudge-popup-actions">' +
           '<button class="btn btn-blue btn-sm" id="nudgeCtaBtn" type="button"></button>' +
         '</div>' +
@@ -127,6 +133,14 @@ function showValidationNudge(data, route) {
   }
   el('nudgeTitle').textContent = copy.title;
   el('nudgeBody').textContent = copy.body;
+  const codeEl = el('nudgeCode');
+  if (window.TRIAL_MODE && data.error_code) {
+    codeEl.textContent = data.error_code;
+    show('nudgeCode');
+  } else {
+    codeEl.textContent = '';
+    hide('nudgeCode');
+  }
   const ctaBtn = el('nudgeCtaBtn');
   ctaBtn.textContent = copy.ctaLabel;
   ctaBtn.onclick = () => {

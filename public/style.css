@@ -81,6 +81,10 @@ body { font-family:var(--font-ui); background:var(--bg); color:var(--ink); font-
 .nudge-popup-body { font-size:14px; color:var(--muted); margin-bottom:var(--space-5); }
 .nudge-popup-actions { display:flex; justify-content:flex-end; gap:var(--space-3); }
 
+/* Trial-period code caption — a quiet reference, not an alarm: small, muted/grey, no danger
+   colors at all (deliberately NOT reusing .err-popup-code's red/monospace-on-danger-bg look). */
+.nudge-code { font-size:11px; color:var(--muted-light); margin:0 0 var(--space-4); }
+
 /* Chosen-file readout — replaces the file input once a file is picked, so the user's
    selection is confirmed clearly instead of staying buried in a small file picker. */
 .file-chosen { display:flex; align-items:center; gap:var(--space-3); padding:var(--space-2) 2px var(--space-4); }
