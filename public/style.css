@@ -74,6 +74,13 @@ body { font-family:var(--font-ui); background:var(--bg); color:var(--ink); font-
 .err-popup-actions { display:flex; gap:var(--space-3); justify-content:flex-end; }
 .err-popup-copy-status { font-size:11px; color:var(--success); margin-right:auto; align-self:center; }
 
+/* Friendly validation nudge — deliberately the opposite visual register of the error dialog
+   above: no red, no code, no timestamp. A missing CV/job/decision isn't a failure, so it
+   shouldn't look like one (see build.txt's ERR-HR-001 fix). */
+.nudge-popup-title { font-size:16px; font-weight:600; color:var(--ink); margin-bottom:var(--space-3); }
+.nudge-popup-body { font-size:14px; color:var(--muted); margin-bottom:var(--space-5); }
+.nudge-popup-actions { display:flex; justify-content:flex-end; gap:var(--space-3); }
+
 /* Chosen-file readout — replaces the file input once a file is picked, so the user's
    selection is confirmed clearly instead of staying buried in a small file picker. */
 .file-chosen { display:flex; align-items:center; gap:var(--space-3); padding:var(--space-2) 2px var(--space-4); }

@@ -203,6 +203,10 @@ describe('Error handling — no CV in session', () => {
     expect(res.body).toHaveProperty('error');
     expect(res.body).toHaveProperty('error_code');
     expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
+    // build.txt: a missing-CV precondition is a friendly nudge, not a "Something went wrong"
+    // failure — confirmed at the catalog level too (core/errorCodes.test.js).
+    expect(res.body.error_code).toBe('ERR-HR-001');
+    expect(res.body).toHaveProperty('kind', 'validation');
   });
 
   test('POST /coach/discuss → 400 when no CV is loaded', async () => {
@@ -395,6 +399,8 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(res.status).toBe(500);
     expect(res.body).toHaveProperty('error_code', 'ERR-HR-003');
     expect(res.body).toHaveProperty('error');
+    // A real failure stays the full technical dialog — kind must stay 'error', not 'validation'.
+    expect(res.body).toHaveProperty('kind', 'error');
   });
 
   test('POST /confirm-contact stores clientPreferences and /review-cv passes them through', async () => {
@@ -872,6 +878,16 @@ describe('#contactCard Advanced options panel (public/index.html)', () => {
     const match = html.match(/<input[^>]*id="ci-extensive-search"[^>]*>/);
     expect(match).not.toBeNull();
     expect(match[0]).not.toMatch(/\bchecked\b/);
+  });
+
+  // build.txt: "Disable the 'Request HR review' control until a CV is present" — goBtn is
+  // that control (it kicks off upload -> /fetch-job -> /review-cv). Starts disabled with a
+  // tooltip; public/app.js's updateGoBtnAvailability() enables it once a file is chosen.
+  test('goBtn starts disabled with a tooltip explaining why', () => {
+    const match = html.match(/<button[^>]*id="goBtn"[^>]*>/);
+    expect(match).not.toBeNull();
+    expect(match[0]).toMatch(/\bdisabled\b/);
+    expect(match[0]).toMatch(/title="Upload your CV first\."/);
   });
 });
 

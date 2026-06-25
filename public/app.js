@@ -45,6 +45,19 @@ function dismissIntro() {
 // so this can't block or slow down anyone who's already used the app.
 if (!getCookie(ONBOARD_COOKIE)) show('introPanel');
 
+// Prevents the ERR-HR-001/ERR-CV-001 nudge from firing in the first place (build.txt) — the
+// button starts disabled (see index.html) and only enables once a CV file is actually chosen,
+// with a tooltip explaining why while disabled. The validation popup stays as a rare fallback
+// (e.g. session/cookie loss between steps) rather than the normal path.
+function updateGoBtnAvailability() {
+  const hasFile = !!(el('cvFile').files && el('cvFile').files[0]);
+  const btn = el('goBtn');
+  btn.disabled = !hasFile;
+  btn.title = hasFile ? '' : 'Upload your CV first.';
+}
+el('cvFile').addEventListener('change', updateGoBtnAvailability);
+updateGoBtnAvailability();
+
 // "Delete my data now" — wipes the server-side session (CV text, parsed data, HR/coach
 // history, generated output files) and reloads, which naturally resets every bit of UI
 // state back to the upload screen instead of needing to manually reset a dozen elements.
@@ -60,15 +73,78 @@ function escapeHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// ── Copyable error popup ─────────────────────────────────────────────────────
-// Shown whenever a server response includes an error_code (see core/respondError.js's
-// sendError) — alongside whatever inline message a given call site already shows, not instead
-// of it, so existing error-handling paths are untouched. The popup + the copyable blob inside
-// it are technical metadata ONLY: code, route, timestamp. Never the candidate's CV text, job
-// description body, name, or email — those never reach this function in the first place,
-// since the server only ever sends back a code + a static catalog message (core/errorCodes.js).
+// ── Error popup — single choke point, branches on `kind` ─────────────────────
+// Every server error response carries error_code + kind (core/respondError.js's sendError,
+// core/errorCodes.js's catalog). This is the one place that decides which of the two renderers
+// below to use — never call showTechnicalErrorDialog/showValidationNudge directly from a
+// fetch call site, so the branch logic stays in one spot.
 function showErrorPopup(data, route) {
   if (!data || !data.error_code) return;
+  if (data.kind === 'validation') { showValidationNudge(data, route); return; }
+  showTechnicalErrorDialog(data, route);
+}
+
+// Per-code friendly copy for the validation nudge — title names what's needed, body is one
+// warm sentence, ctaLabel is the action itself. Codes not listed here (any validation code we
+// didn't anticipate) fall back to a generic, still-friendly card using the server's own
+// catalog message as the body, with a plain dismiss button and no specific action.
+const VALIDATION_COPY = {
+  'ERR-CV-001':  { title: 'Add your CV first', body: "Upload your CV and I'll pick this up automatically.", ctaLabel: 'Upload CV', action: 'upload-cv' },
+  'ERR-HR-001':  { title: 'Add your CV first', body: "Upload your CV and I'll run the HR review on it.", ctaLabel: 'Upload CV', action: 'upload-cv' },
+  'ERR-COACH-001': { title: 'Add your CV first', body: "Upload your CV and I'll bring in the Career Coach.", ctaLabel: 'Upload CV', action: 'upload-cv' },
+  'ERR-GEN-001': { title: 'Add your CV first', body: 'Upload your CV before regenerating it.', ctaLabel: 'Upload CV', action: 'upload-cv' },
+  'ERR-HR-002':  { title: 'Choose a job first', body: 'Paste or select a job description before requesting the HR review.', ctaLabel: 'Got it', action: null },
+  'ERR-GEN-002': { title: 'Choose a job first', body: "There's no job to regenerate your CV against yet.", ctaLabel: 'Got it', action: null },
+  'ERR-COACH-002': { title: 'Pick a direction', body: 'Choose a career direction so the Coach knows where to focus.', ctaLabel: 'Got it', action: null },
+  'ERR-GAP-002': { title: 'Ask HR first', body: 'Ask HR to draft a sentence for this before adding it to your CV.', ctaLabel: 'Got it', action: null },
+  'ERR-JOB-002': { title: 'Search for jobs first', body: 'Run a job search before analyzing fit.', ctaLabel: 'Got it', action: null },
+  'ERR-JOB-004': { title: 'Paste the description instead', body: "That site needs a login, so it can't be read automatically — paste the job description text instead.", ctaLabel: 'Got it', action: null },
+  'ERR-JOB-005': { title: 'Paste the description instead', body: 'Reading job pages from a link is turned off right now — paste the text instead.', ctaLabel: 'Got it', action: null },
+  'ERR-JOB-006': { title: 'Add a job link or text', body: 'Provide a job URL or paste the job description text.', ctaLabel: 'Got it', action: null },
+  'ERR-CV-009':  { title: 'Try a different template option', body: "Style-matching your original CV isn't ready yet — use 'Upload your own template' instead.", ctaLabel: 'Got it', action: null },
+};
+
+// Friendly nudge for a missing-input/wrong-order case — no error code, no timestamp, no route,
+// no support line, no red. A helpful teammate pointing at what's needed, not a system alarm.
+function showValidationNudge(data, route) {
+  const copy = VALIDATION_COPY[data.error_code] || { title: 'One more thing', body: data.error, ctaLabel: 'Got it', action: null };
+
+  let overlay = el('nudgePopupOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'nudgePopupOverlay';
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'none';
+    overlay.innerHTML =
+      '<div class="card modal-box">' +
+        '<div class="nudge-popup-title" id="nudgeTitle"></div>' +
+        '<div class="nudge-popup-body" id="nudgeBody"></div>' +
+        '<div class="nudge-popup-actions">' +
+          '<button class="btn btn-blue btn-sm" id="nudgeCtaBtn" type="button"></button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+  }
+  el('nudgeTitle').textContent = copy.title;
+  el('nudgeBody').textContent = copy.body;
+  const ctaBtn = el('nudgeCtaBtn');
+  ctaBtn.textContent = copy.ctaLabel;
+  ctaBtn.onclick = () => {
+    hide('nudgePopupOverlay');
+    if (copy.action === 'upload-cv' && el('cvPickerGroup')) {
+      show('cvPickerGroup');
+      el('cvPickerGroup').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el('cvFile').click();
+    }
+  };
+  show('nudgePopupOverlay');
+}
+
+// The full, unchanged "Something went wrong" dialog for real failures — technical metadata
+// ONLY: code, route, timestamp. Never the candidate's CV text, job description body, name, or
+// email — those never reach this function in the first place, since the server only ever sends
+// back a code + a static catalog message (core/errorCodes.js).
+function showTechnicalErrorDialog(data, route) {
   const code = data.error_code;
   const message = data.error || 'Something unexpected went wrong.';
   const timestamp = new Date().toISOString();

@@ -26,6 +26,11 @@ describe('sanitizeMeta', () => {
     expect(sanitizeMeta(meta)).toEqual(meta);
   });
 
+  test('passes through code and kind (the validation-nudge logging fields) — codes only, never free text', () => {
+    const meta = { route: '/review-cv', code: 'ERR-HR-001', kind: 'validation' };
+    expect(sanitizeMeta(meta)).toEqual(meta);
+  });
+
   test('drops an allowlisted key anyway if its value looks like an email or is too long', () => {
     const meta = { route: 'someone@example.com', outcome: 'x'.repeat(500) };
     expect(sanitizeMeta(meta)).toEqual({});
