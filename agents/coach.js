@@ -141,7 +141,6 @@ async function analyzeGaps(cvText, job) {
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 4000,
-    temperature: 0,
     messages: [{
       role: 'user',
       content: `${CAREER_COACH_PERSONA}

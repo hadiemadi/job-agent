@@ -52,7 +52,6 @@ async function detectField(cvText) {
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 150,
-    temperature: 0, // the same CV must resolve to the same field/seniority every time — it's a lookup key, not a creative judgment
     messages: [{ role: 'user', content: `Based on this CV, identify the candidate's professional field/discipline and seniority level.
 
 CV:

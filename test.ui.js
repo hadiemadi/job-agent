@@ -490,6 +490,21 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     });
   });
 
+  test('POST /confirm-contact with model picker + POST /review-cv → job succeeds (regression: ERR-HR-003 on temperature-rejecting models)', async () => {
+    // Bug: reviewCV passed temperature:0 to the API; meteredCreate overrides the model to the
+    // picker's selection; newer models reject temperature → API error → ERR-HR-003 job failure.
+    // Fix: remove temperature from all agent calls. This test confirms the full flow succeeds.
+    const contactRes = await agent.post('/confirm-contact').send({
+      name: 'Hadi Emadi', model: 'claude-sonnet-5',
+    });
+    expect(contactRes.status).toBe(200);
+    const reviewRes = await agent.post('/review-cv').send({ job: MOCK_JOB });
+    expect(reviewRes.status).toBe(200);
+    const job = await waitForJob(reviewRes.body.jobId);
+    expect(job.status).toBe('done');
+    expect(job.result).not.toHaveProperty('code');
+  });
+
   test('POST /confirm-contact routes a discipline-bucket comment, and /review-cv pins it once a field is known', async () => {
     classify.mockResolvedValue({ bucket: 'discipline', text: 'Hands-on GaN PA tuning experience' });
     reviewCV.mockResolvedValue({ review: MOCK_REVIEW, field: { field: 'RF/Hardware Engineering', seniority: 'senior' }, thread: [] });

@@ -126,6 +126,19 @@ describe('agents/recruiter', () => {
     expect(result.verdict).toBe('SHIP');
     expect(result.required_edits).toEqual([]);
   });
+  test('reviewCV and reviewTailoredCV do not pass temperature to the Claude API (regression: ERR-HR-003 on models that reject temperature)', async () => {
+    mockTextResponse(JSON.stringify({ overall_match: 'Strong', strengths: [], recommended_sections: [], section_rationale: '', auto_changes: [] }));
+    await recruiter.reviewCV('cv text', { job_title: 'TPM' }, [], {});
+    client.messages.create.mock.calls.forEach(([params]) => {
+      expect(params).not.toHaveProperty('temperature');
+    });
+    client.messages.create.mockClear();
+    mockTextResponse(JSON.stringify({ checks: [], verdict: 'SHIP', required_edits: [] }));
+    await recruiter.reviewTailoredCV({ tailoredCv: { summary: 'Senior TPM.' }, job: { job_title: 'TPM', employer_name: 'Acme' }, sourceCvText: 'cv text' });
+    client.messages.create.mock.calls.forEach(([params]) => {
+      expect(params).not.toHaveProperty('temperature');
+    });
+  });
 });
 
 describe('agents/cvWriter', () => {
@@ -196,5 +209,12 @@ describe('agents/coach', () => {
     const gaps = await coach.analyzeGaps('cv text', { job_title: 'TPM' });
     expect(gaps).toHaveLength(1);
     expect(gaps[0].severity).toBe('mild');
+  });
+  test('analyzeGaps does not pass temperature to the Claude API (regression: temperature deprecated on newer models)', async () => {
+    mockTextResponse(JSON.stringify({ gaps: [] }));
+    await coach.analyzeGaps('cv text', { job_title: 'TPM' });
+    client.messages.create.mock.calls.forEach(([params]) => {
+      expect(params).not.toHaveProperty('temperature');
+    });
   });
 });

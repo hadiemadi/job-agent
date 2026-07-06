@@ -169,7 +169,6 @@ Return JSON only:
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 3000,
-    temperature: 0, // classification, not creative writing — same CV/job must yield the same gap list every time
     system: hrSystemPrompt(cvText, job, preferences, field, disciplineStore),
     messages,
   });
@@ -382,7 +381,6 @@ Go through the checklist one item at a time. Return JSON only:
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 2500,
-    temperature: 0, // a gate, not a creative pass — same CV/job must get the same verdict every time
     system: preReleaseReviewPrompt(),
     messages: [{ role: 'user', content: userMessage }],
   });

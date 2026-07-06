@@ -3,13 +3,36 @@
 > Single source of truth for project state. Kept current automatically by Claude
 > Code (see CLAUDE.md). Update the date whenever it changes.
 
-**Last updated:** 2026-07-06
+**Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 311/311 green · **origin/main HEAD:** `3e92ee2`
+**Tests:** 314/314 green · **origin/main HEAD:** `751c59a`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Bug fixes: ERR-HR-003 + temperature deprecated** —
+
+  **Root cause**: `reviewCV`, `reviewTailoredCV`, `analyzeGaps`, `detectField`, `classify`,
+  and `rewriteCVWithChanges` all passed `temperature: 0` to the Claude API. When the model
+  picker selects a newer model (claude-sonnet-5, claude-fable-5, claude-opus-4-8) and
+  `meteredCreate` overrides `params.model` for that session, the API rejects the call with
+  "temperature is deprecated for this model" — which bubbles up as ERR-HR-003 in the HR review
+  background job, or crashes other agent calls silently.
+
+  **Fix**: Removed `temperature` from all 6 Claude API call sites across 5 agent files
+  (`agents/recruiter.js`, `agents/cvWriter.js`, `agents/extractor.js`, `agents/inputRouter.js`,
+  `agents/coach.js`). The determinism intent (same CV/job → same result) is maintained by the
+  prompts' explicit "same result every time" instructions, not by temperature clamping.
+
+  **Regression tests added** (+3):
+  - `agents/agents.smoke.test.js`: `reviewCV` + `reviewTailoredCV` call params have no
+    `temperature` key (smoke-level verification that the removal holds)
+  - `agents/agents.smoke.test.js`: `analyzeGaps` call params have no `temperature` key
+  - `test.ui.js`: `/confirm-contact` with `model: 'claude-sonnet-5'` → `/review-cv` →
+    job completes with `status: 'done'`, no ERR-HR-003
+
+  Tests: 314/314 (+3 new regression tests).
 
 - **Phase 2 Part 4 — Logged-in homepage redesign** —
 

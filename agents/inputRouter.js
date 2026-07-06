@@ -17,7 +17,6 @@ async function classify(comment) {
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 150,
-    temperature: 0, // the same comment must classify the same way every time
     messages: [{ role: 'user', content: `Classify this comment a CV candidate left for their HR reviewer.
 
 COMMENT: "${comment}"
