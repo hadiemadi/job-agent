@@ -798,3 +798,98 @@ describe('Model picker — initModelPicker', () => {
     });
   });
 });
+
+// ── applyProfilePrefill — Phase 2.5 ──────────────────────────────────────────
+
+describe('applyProfilePrefill — Profile & Preferences DB prefill (Phase 2.5)', () => {
+  const SAVED_PROFILE = {
+    name: 'Hadi Emadi', title: 'Sr TPM', phone: '+1 555 0000',
+    location: 'San Jose, CA', linkedin: 'linkedin.com/in/hadi',
+    customInstructions: 'Keep it concise', tone: 3,
+    gapSeverities: ['major', 'mild'], extensiveSearch: true, refreshDiscipline: false,
+  };
+
+  beforeEach(() => {
+    document.cookie = 'onboarded=1';
+    window.TRIAL_MODE = false;
+    loadAppInDom();
+  });
+
+  test('applyProfilePrefill fills all contactCard text fields from saved profile', async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    window.applyProfilePrefill(SAVED_PROFILE);
+    expect(document.getElementById('ci-name').value).toBe('Hadi Emadi');
+    expect(document.getElementById('ci-title').value).toBe('Sr TPM');
+    expect(document.getElementById('ci-phone').value).toBe('+1 555 0000');
+    expect(document.getElementById('ci-location').value).toBe('San Jose, CA');
+    expect(document.getElementById('ci-linkedin').value).toBe('linkedin.com/in/hadi');
+    expect(document.getElementById('ci-instructions').value).toBe('Keep it concise');
+  });
+
+  test('applyProfilePrefill sets the tone slider to the saved value', async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    window.applyProfilePrefill(SAVED_PROFILE);
+    expect(document.getElementById('ci-tone').value).toBe('3');
+  });
+
+  test('applyProfilePrefill checks only the saved gapSeverities checkboxes', async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    window.applyProfilePrefill(SAVED_PROFILE); // gapSeverities: ['major', 'mild']
+    expect(document.getElementById('ci-sev-major').checked).toBe(true);
+    expect(document.getElementById('ci-sev-mild').checked).toBe(true);
+    expect(document.getElementById('ci-sev-minor').checked).toBe(false);
+  });
+
+  test('applyProfilePrefill sets extensiveSearch checkbox to saved value', async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    window.applyProfilePrefill(SAVED_PROFILE); // extensiveSearch: true
+    expect(document.getElementById('ci-extensive-search').checked).toBe(true);
+  });
+
+  test('loadPrefillData caches profilePreferences from /auth/prefill', async () => {
+    window.fetch = jest.fn(url => {
+      if (url === '/auth/me') return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
+      });
+      if (url === '/auth/prefill') return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          preferredModel: 'claude-sonnet-5', lastJobText: null, latestCv: null,
+          profilePreferences: SAVED_PROFILE,
+        }),
+      });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    // After loadPrefillData runs, _prefillProfile should be cached — verified by checking
+    // that the contactCard fields are filled when it's visible (show the card first)
+    document.getElementById('contactCard').classList.remove('hidden');
+    document.getElementById('contactCard').style.display = 'block';
+    await window.loadPrefillData();
+    expect(document.getElementById('ci-name').value).toBe('Hadi Emadi');
+    expect(document.getElementById('ci-title').value).toBe('Sr TPM');
+  });
+
+  test('loadPrefillData leaves contactCard fields alone when profilePreferences is null (new user)', async () => {
+    window.fetch = jest.fn(url => {
+      if (url === '/auth/me') return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
+      });
+      if (url === '/auth/prefill') return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          preferredModel: 'claude-sonnet-5', lastJobText: null, latestCv: null,
+          profilePreferences: null,
+        }),
+      });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    // ci-name should be empty — no profile to apply
+    expect(document.getElementById('ci-name').value).toBe('');
+  });
+});

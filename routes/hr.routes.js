@@ -9,6 +9,23 @@ const { setGaps, getGap, proposeStatement, setUserDecision, buildSharedGapContex
 const { createJob, updateJob } = require('../services/jobQueue');
 const { sendError } = require('../core/respondError');
 const { logEvent } = require('../core/logger');
+const { saveProfilePreferences, getProfilePreferences } = require('../services/auth');
+
+// Builds the profile-preferences snapshot from the current session state — used by both the
+// confirm-contact save and the HR-completion safety upsert to guarantee they write the same shape.
+function buildProfilePrefs(session) {
+  const c = session.confirmedContact || {};
+  const p = session.clientPreferences || {};
+  return {
+    name: c.name || '', title: c.title || '', phone: c.phone || '',
+    location: c.location || '', linkedin: c.linkedin || '',
+    customInstructions: p.customInstructions || '',
+    tone: p.tone || 4,
+    gapSeverities: p.gapSeverities || ['major'],
+    extensiveSearch: !!p.extensiveSearch,
+    refreshDiscipline: !!p.refreshDiscipline,
+  };
+}
 
 const router = express.Router();
 
@@ -97,6 +114,25 @@ router.post('/review-cv', async (req, res) => {
         });
 
         logEvent('hr_review_run', { route: '/review-cv', outcome: 'ok' });
+
+        // Safety upsert: keep profile preferences in sync with whatever the user confirmed this
+        // session. Runs after every HR review so the DB stays current even in edge cases (e.g.
+        // mid-session login after confirm-contact, or a DB hiccup during the confirm-contact save).
+        // Guards on confirmedContact being present — if the user somehow reached HR review without
+        // going through confirm-contact (shouldn't happen in normal flow), skip silently.
+        if (appSession.userId && appSession.confirmedContact) {
+          const sessionPrefs = buildProfilePrefs(appSession);
+          const existingPrefs = await getProfilePreferences(appSession.userId).catch(() => null);
+          if (existingPrefs) {
+            const differs = Object.keys(sessionPrefs).some(
+              k => JSON.stringify(existingPrefs[k]) !== JSON.stringify(sessionPrefs[k])
+            );
+            if (differs) {
+              console.warn('[profile-prefs] HR-completion upsert: session differs from DB — last write wins (session)', { userId: appSession.userId });
+            }
+          }
+          saveProfilePreferences(appSession.userId, sessionPrefs).catch(() => {});
+        }
       } catch (err) {
         await updateJob(jobId, {
           status: 'failed', current_step: '',

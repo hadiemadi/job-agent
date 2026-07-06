@@ -2,20 +2,28 @@
 
 // Mock services/auth — all functions hit the DB which is not available in tests.
 jest.mock('../services/auth', () => ({
-  createUser:              jest.fn(),
-  findUserByEmail:         jest.fn(),
-  findUserByGoogleId:      jest.fn(),
-  findUserById:            jest.fn(),
-  hashPassword:            jest.fn(),
-  verifyPassword:          jest.fn(),
-  setUserPreference:       jest.fn(),
-  getUserPreference:       jest.fn(),
-  saveCv:                  jest.fn(),
-  listSavedCvs:            jest.fn(),
-  deleteSavedCv:           jest.fn(),
-  listConversationHistory: jest.fn(),
-  listCoachMemory:         jest.fn(),
-  getLatestSavedCv:        jest.fn(),
+  createUser:               jest.fn(),
+  findUserByEmail:          jest.fn(),
+  findUserByGoogleId:       jest.fn(),
+  findUserById:             jest.fn(),
+  hashPassword:             jest.fn(),
+  verifyPassword:           jest.fn(),
+  setUserPreference:        jest.fn(),
+  getUserPreference:        jest.fn(),
+  saveCv:                   jest.fn(),
+  listSavedCvs:             jest.fn(),
+  deleteSavedCv:            jest.fn(),
+  listConversationHistory:  jest.fn(),
+  listCoachMemory:          jest.fn(),
+  getLatestSavedCv:         jest.fn(),
+  saveProfilePreferences:   jest.fn(),
+  getProfilePreferences:    jest.fn(),
+}));
+
+// Mock agents/inputRouter — classify() is called by POST /confirm-contact; without a mock
+// it would try to reach the Claude API in tests.
+jest.mock('../agents/inputRouter', () => ({
+  classify: jest.fn(),
 }));
 
 // Mock core/passport — strategies would try to connect to Google / DB in the real impl.
@@ -42,7 +50,9 @@ const {
   createUser, findUserByEmail, findUserById, hashPassword, verifyPassword,
   listSavedCvs, deleteSavedCv, listConversationHistory, listCoachMemory,
   setUserPreference, getUserPreference, getLatestSavedCv,
+  saveProfilePreferences, getProfilePreferences,
 } = require('../services/auth');
+const { classify } = require('../agents/inputRouter');
 const passport = require('../core/passport');
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -64,6 +74,9 @@ beforeEach(() => {
   setUserPreference.mockResolvedValue(undefined);
   getUserPreference.mockResolvedValue(null);
   getLatestSavedCv.mockResolvedValue(null);
+  saveProfilePreferences.mockResolvedValue(undefined);
+  getProfilePreferences.mockResolvedValue(null);
+  classify.mockResolvedValue({ bucket: 'none', text: '' });
   // Default: authenticate calls callback with null (not authenticated).
   // When called with 2 args (no callback) — the OAuth redirect form — simulate a redirect
   // so the route doesn't fall through to a 404.
@@ -472,6 +485,29 @@ describe('GET /auth/prefill', () => {
     expect(res.body.preferredModel).toBe('claude-sonnet-5');
     expect(res.body.lastJobText).toBeNull();
     expect(res.body.latestCv).toBeNull();
+    // Phase 2.5: profilePreferences is null for a first-time user
+    expect(res.body.profilePreferences).toBeNull();
+  });
+
+  test('returns saved profilePreferences for a returning user (Phase 2.5)', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    findUserById.mockResolvedValue(MOCK_USER);
+    getUserPreference.mockResolvedValue(null);
+    getLatestSavedCv.mockResolvedValue(null);
+    const savedProfile = {
+      name: 'Hadi Emadi', title: 'Sr TPM', phone: '+1 555 0000',
+      location: 'San Jose, CA', linkedin: 'linkedin.com/in/hadi',
+      customInstructions: 'Keep it concise', tone: 4,
+      gapSeverities: ['major'], extensiveSearch: false, refreshDiscipline: false,
+    };
+    getProfilePreferences.mockResolvedValue(savedProfile);
+
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.get('/auth/prefill');
+    expect(res.status).toBe(200);
+    expect(res.body.profilePreferences).toMatchObject(savedProfile);
   });
 
   test('returns saved preferredModel when the user has set one', async () => {
@@ -564,6 +600,51 @@ describe('POST /auth/preferences', () => {
     await agent.post('/auth/preferences').send({ key: 'preferred_model', value: 'claude-haiku-4-5' });
     const prefillRes = await agent.get('/auth/prefill');
     expect(prefillRes.body.preferredModel).toBe('claude-haiku-4-5');
+  });
+});
+
+// ── POST /confirm-contact — Profile & Preferences DB persistence (Phase 2.5) ──
+
+describe('POST /confirm-contact — Profile & Preferences DB persistence', () => {
+  const CONTACT_BODY = {
+    name: 'Hadi Emadi', title: 'Sr TPM', email: 'hadi@example.com',
+    phone: '+1 555 0000', location: 'San Jose, CA', linkedin: 'linkedin.com/in/hadi',
+    customInstructions: 'Keep it concise', tone: 4,
+    gapSeverities: ['major'], extensiveSearch: false, refreshDiscipline: false,
+  };
+
+  test('logged-in user: POST /confirm-contact calls saveProfilePreferences with the correct shape', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.post('/confirm-contact').send(CONTACT_BODY);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('ok', true);
+
+    // DB write is fire-and-forget, so we need to drain microtasks before asserting
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(saveProfilePreferences).toHaveBeenCalledTimes(1);
+    const [calledUserId, calledPrefs] = saveProfilePreferences.mock.calls[0];
+    expect(calledUserId).toBe('usr-001');
+    expect(calledPrefs).toMatchObject({
+      name: 'Hadi Emadi', title: 'Sr TPM', phone: '+1 555 0000',
+      location: 'San Jose, CA', linkedin: 'linkedin.com/in/hadi',
+      customInstructions: 'Keep it concise', tone: 4,
+      gapSeverities: ['major'], extensiveSearch: false, refreshDiscipline: false,
+    });
+    // email and model are intentionally excluded from the profile prefs blob
+    expect(calledPrefs).not.toHaveProperty('email');
+    expect(calledPrefs).not.toHaveProperty('model');
+  });
+
+  test('guest (no userId): POST /confirm-contact does NOT call saveProfilePreferences', async () => {
+    // No login — guest session has no userId
+    const res = await request(app).post('/confirm-contact').send(CONTACT_BODY);
+    expect(res.status).toBe(200);
+    await new Promise(resolve => setImmediate(resolve));
+    expect(saveProfilePreferences).not.toHaveBeenCalled();
   });
 });
 

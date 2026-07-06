@@ -6,6 +6,7 @@ const {
   createUser, findUserByEmail, findUserById, hashPassword,
   listSavedCvs, deleteSavedCv, listConversationHistory, listCoachMemory,
   setUserPreference, getUserPreference, getLatestSavedCv,
+  getProfilePreferences,
 } = require('../services/auth');
 const { sendError } = require('../core/respondError');
 const { logEvent } = require('../core/logger');
@@ -135,7 +136,9 @@ router.delete('/auth/saved-cvs/:id', async (req, res) => {
 });
 
 // ── GET /auth/prefill — return saved preferences for pre-filling the form ────────
-// Returns preferredModel (string), lastJobText (string|null), latestCv ({id,label,created_at}|null).
+// Returns preferredModel (string), lastJobText (string|null), latestCv ({id,label,created_at}|null),
+// profilePreferences (object|null — the full Profile & Preferences form snapshot, or null for
+// first-time users who have never confirmed a session).
 // 401 for guests — only meaningful for authenticated users.
 router.get('/auth/prefill', async (req, res) => {
   try {
@@ -145,16 +148,18 @@ router.get('/auth/prefill', async (req, res) => {
     const user = await findUserById(appSession.userId);
     if (!user) { appSession.userId = null; return sendError(res, '/auth/prefill', 'ERR-AUTH-007'); }
 
-    const [preferredModel, lastJobText, latestCv] = await Promise.all([
+    const [preferredModel, lastJobText, latestCv, profilePreferences] = await Promise.all([
       getUserPreference(appSession.userId, 'preferred_model'),
       getUserPreference(appSession.userId, 'last_job_text'),
       getLatestSavedCv(appSession.userId),
+      getProfilePreferences(appSession.userId),
     ]);
 
     res.json({
       preferredModel: preferredModel || 'claude-sonnet-5',
       lastJobText: lastJobText || null,
       latestCv: latestCv || null,
+      profilePreferences: profilePreferences || null,
     });
   } catch (err) {
     sendError(res, '/auth/prefill', 'ERR-AUTH-004', err);

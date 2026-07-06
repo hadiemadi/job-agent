@@ -7,6 +7,7 @@ const { generateWordCV, generateWordCVAlt } = require('../src/wordExport');
 const { generateWordFromTemplate } = require('../src/wordTemplateExport');
 const { upload, templateUpload } = require('../services/uploads');
 const { getSession, setSession, registerOutputFile, purgeSessionData, als } = require('../services/session');
+const { saveProfilePreferences } = require('../services/auth');
 const { getGaps } = require('../services/gapStore');
 const { tailorCvWithReview } = require('../services/workflows');
 const { createJob, updateJob, getJob } = require('../services/jobQueue');
@@ -114,6 +115,24 @@ router.post('/confirm-contact', async (req, res) => {
     model: model || null, // null → use the app's default MODEL constant (core/claude.js)
   };
   if (appSession.cvData) Object.assign(appSession.cvData, appSession.confirmedContact);
+
+  // Persist for returning users: DB data wins over re-extraction on next login.
+  // Fire-and-forget — a DB write failure must not break the confirm step for guests or users
+  // without a DB connection. Intentionally excludes email (lives on users table) and model
+  // (stored separately via POST /auth/preferences from the model picker).
+  if (appSession.userId) {
+    const profilePrefs = {
+      name: name || '', title: title || '', phone: phone || '',
+      location: location || '', linkedin: linkedin || '',
+      customInstructions: customInstructions || '',
+      tone: tone || 4,
+      gapSeverities: validSeverities.length ? validSeverities : ['major'],
+      extensiveSearch: !!extensiveSearch,
+      refreshDiscipline: !!refreshDiscipline,
+    };
+    saveProfilePreferences(appSession.userId, profilePrefs).catch(() => {});
+  }
+
   res.json({ ok: true });
 });
 

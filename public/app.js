@@ -338,6 +338,7 @@ const _COST_PIPELINE_STEPS = 4;
 const _COST_BUFFER = 1.2;
 
 let _selectedModel = 'claude-sonnet-5';
+let _prefillProfile = null; // profile preferences fetched from DB on login; null for guests/first-time users
 
 function calcCostEstimate(modelId, jobTextLength) {
   const m = MODEL_OPTIONS.find(o => o.id === modelId);
@@ -402,6 +403,28 @@ async function selectModel(modelId) {
   } catch (e) { /* best-effort — model is still set in _selectedModel for this session */ }
 }
 
+// Applies saved Profile & Preferences data to the contact form fields.
+// DB data always wins over CV extraction — called both when the form is shown (overrides
+// extracted values) and on mid-session login (updates a visible form immediately).
+function applyProfilePrefill(profile) {
+  if (!profile) return;
+  if (profile.name       !== undefined) el('ci-name').value        = profile.name;
+  if (profile.title      !== undefined) el('ci-title').value       = profile.title;
+  if (profile.phone      !== undefined) el('ci-phone').value       = profile.phone;
+  if (profile.location   !== undefined) el('ci-location').value    = profile.location;
+  if (profile.linkedin   !== undefined) el('ci-linkedin').value    = profile.linkedin;
+  if (profile.customInstructions !== undefined) el('ci-instructions').value = profile.customInstructions;
+  if (profile.tone       !== undefined) el('ci-tone').value        = profile.tone;
+  if (Array.isArray(profile.gapSeverities)) {
+    const gs = profile.gapSeverities;
+    if (el('ci-sev-major'))  el('ci-sev-major').checked  = gs.includes('major');
+    if (el('ci-sev-mild'))   el('ci-sev-mild').checked   = gs.includes('mild');
+    if (el('ci-sev-minor'))  el('ci-sev-minor').checked  = gs.includes('minor');
+  }
+  if (profile.extensiveSearch   !== undefined && el('ci-extensive-search'))  el('ci-extensive-search').checked   = !!profile.extensiveSearch;
+  if (profile.refreshDiscipline !== undefined && el('ci-refresh-discipline')) el('ci-refresh-discipline').checked = !!profile.refreshDiscipline;
+}
+
 // Loads the user's saved preferences and pre-fills the form for returning users.
 // Called by showAuthUser() so it runs after every login (including page-load auth check).
 async function loadPrefillData() {
@@ -414,6 +437,13 @@ async function loadPrefillData() {
       el('jobText').value = data.lastJobText;
     }
     initModelPicker(data.preferredModel || 'claude-sonnet-5');
+    // Cache profile preferences for use when the contact form is shown after CV upload.
+    // If the form is already visible (mid-session login), apply immediately.
+    _prefillProfile = data.profilePreferences || null;
+    const card = el('contactCard');
+    if (_prefillProfile && card && !card.classList.contains('hidden')) {
+      applyProfilePrefill(_prefillProfile);
+    }
   } catch (e) { /* best-effort — non-fatal */ }
 }
 
@@ -1189,6 +1219,9 @@ function startPolling(jobId, isResume, kind) {
             el('ci-phone').value    = cvData.phone    || '';
             el('ci-location').value = cvData.location || '';
             el('ci-linkedin').value = cvData.linkedin || '';
+            // DB data always wins: override extracted values with saved preferences if available.
+            // Returning users see their own confirmed data; only first-time users see raw extraction.
+            if (_prefillProfile) applyProfilePrefill(_prefillProfile);
             show('contactCard');
           }, 400);
           return;

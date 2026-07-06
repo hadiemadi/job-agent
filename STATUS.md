@@ -5,11 +5,47 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 314/314 green · **origin/main HEAD:** `751c59a`
+**Tests:** 323/323 green · **origin/main HEAD:** `751c59a`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Phase 2.5 — Profile & Preferences persistent storage** —
+
+  First-time users go through the normal CV upload → contact form flow; on form submit,
+  their Profile & Preferences are saved to the `user_preferences` table (key `'profile_preferences'`,
+  stored as a JSON blob). Returning users: `GET /auth/prefill` now includes `profilePreferences`
+  alongside `preferredModel`/`lastJobText`; the frontend caches it in `_prefillProfile` and
+  calls `applyProfilePrefill()` to pre-fill all form fields — DB data always wins over CV
+  re-extraction (no unnecessary API calls on second login). Safety-net upsert: at the end of
+  every HR review job, the current session's profile prefs are written back to the DB, so the
+  DB stays current even for mid-session logins or DB hiccups during the confirm-contact write.
+  Concurrent-edit warning logged if session and DB disagree at that point.
+
+  **Files changed:**
+  - `services/auth.js`: `saveProfilePreferences(userId, prefs)` + `getProfilePreferences(userId)`
+    — thin wrappers over existing `setUserPreference`/`getUserPreference`
+  - `routes/auth.routes.js`: `GET /auth/prefill` includes `profilePreferences` in response
+  - `routes/cv.routes.js`: `POST /confirm-contact` fire-and-forgets `saveProfilePreferences`
+    for logged-in users (email and model excluded — those live elsewhere)
+  - `routes/hr.routes.js`: safety-upsert after every HR review job; `buildProfilePrefs(session)`
+    helper ensures consistent shape
+  - `public/app.js`: `_prefillProfile` cache var, `applyProfilePrefill(profile)` (applies all
+    fields: name/title/phone/location/linkedin/instructions/tone/gapSeverities/extensiveSearch/
+    refreshDiscipline), `loadPrefillData()` updated to cache and apply, CV upload done handler
+    updated to apply prefill after CV extraction (DB wins)
+
+  **Tests added** (+9):
+  - `routes/auth.routes.test.js`: `GET /auth/prefill` returns `null` profilePreferences for
+    new user; returns saved profilePreferences for returning user; logged-in
+    `POST /confirm-contact` calls `saveProfilePreferences` with correct shape (incl. no email/
+    model fields); guest does NOT call `saveProfilePreferences`
+  - `public/app.test.js`: `applyProfilePrefill` fills all text fields; sets tone slider;
+    checks only saved gapSeverities; sets extensiveSearch; `loadPrefillData` caches and
+    applies profile; leaves fields empty for null profilePreferences (new user)
+
+  Tests: 323/323 (+9 new).
 
 - **Bug fixes: ERR-HR-003 + temperature deprecated** —
 

@@ -153,6 +153,19 @@ async function getLatestSavedCv(userId) {
   return rows[0] || null;
 }
 
+// ── Profile & Preferences persistence ─────────────────────────────────────────
+// Stores the full Profile & Preferences form submission as a single JSON blob
+// under key 'profile_preferences' in user_preferences, so returning users skip
+// CV re-extraction on login and see their own confirmed data in the form.
+
+async function saveProfilePreferences(userId, prefs) {
+  return setUserPreference(userId, 'profile_preferences', prefs);
+}
+
+async function getProfilePreferences(userId) {
+  return getUserPreference(userId, 'profile_preferences');
+}
+
 module.exports = {
   createUser, findUserByEmail, findUserByGoogleId, findUserById,
   hashPassword, verifyPassword,
@@ -160,4 +173,5 @@ module.exports = {
   saveCv, listSavedCvs, deleteSavedCv,
   listConversationHistory, listCoachMemory,
   getLatestSavedCv,
+  saveProfilePreferences, getProfilePreferences,
 };
