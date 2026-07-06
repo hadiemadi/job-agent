@@ -5,12 +5,25 @@
 
 **Last updated:** 2026-07-06
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 185/185 green · **origin/main HEAD:** `b94141c` (local: 2 commits ahead, not pushed)
+**Tests:** 195/195 green · **origin/main HEAD:** `b94141c` (local: 3 commits ahead, not pushed)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
 
+- **Double-poll-loop fix + stage-tagged error codes** (local, not yet pushed) —
+  Fixed ERR-RATE-002 triggered on every HR-review → Tailor-CV transition: an in-flight
+  `hr_review` poll fetch was resurrecting `_pollTimer` after `startPolling('cv_tailor')`
+  had already run, creating two parallel loops that doubled the request rate.
+  Fix: `stopPolling()` (new helper) is called synchronously at the start of `applyChanges()`
+  and `go()`, before any `await`, so no future `.then()` callback can re-arm the old loop.
+  `startPolling()` also calls `stopPolling()` as belt-and-suspenders.
+  Also fixed: `tooManyRequests()` was missing `kind: 'rate'`, causing rate errors to hit the
+  red technical dialog instead of the calm overlay. Now fixed.
+  Stage-tagged error codes (`ERR-RATE-002-UPLOAD`, `-PARSE`, `-HR`, `-REWRITE`, `-POLL`) added
+  via `stageTag(path)` in `services/ratelimit.js` — failures are now traceable to the exact
+  pipeline step. `showRatePopup` falls back to base-code copy for stage-tagged codes.
+  Tests: 195/195 (+10: 7 `stageTag` unit tests, 3 new `app.test.js` cases).
 - **"Reading CV" + "Parsing job" resume on tab reopen** (local, not yet pushed) — Both
   stage-0 (CV upload/parse) and stage-1 (job description parse) are now async via the
   job-queue pattern. `POST /upload-cv` and `POST /fetch-job` each create a `jobs` row with
@@ -82,4 +95,4 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 ---
 
 ## ▶️ Suggested next action
-Push the 2 new commits. Then free choice: About-modal wiring, #32/#33 polish, or Mode B.
+Push the 3 new commits. Then free choice: About-modal wiring, #32/#33 polish, or Mode B.

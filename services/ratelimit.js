@@ -25,9 +25,24 @@ function keyBySession(req) {
   return (req.cookies && req.cookies.sid) || ipKeyGenerator(req.ip);
 }
 
+// Maps the route path to a stage suffix so ERR-RATE-002 errors are traceable to
+// the exact pipeline step (UPLOAD, PARSE, HR, REWRITE, POLL) instead of one generic
+// code. Unrecognised paths get no suffix; the base code ERR-RATE-002 is used.
+function stageTag(path) {
+  if (path === '/upload-cv')                         return '-UPLOAD';
+  if (path === '/fetch-job')                         return '-PARSE';
+  if (path === '/review-cv')                         return '-HR';
+  if (path === '/rewrite')                           return '-REWRITE';
+  if (/^\/job\/[^/]+\/status$/.test(path))           return '-POLL';
+  return '';
+}
+
 function tooManyRequests(req, res) {
-  res.status(429).json({ error: ERROR_CODES['ERR-RATE-002'].message, error_code: 'ERR-RATE-002' });
-  logEvent('rate_limit_hit', { route: req.path });
+  const errorCode = 'ERR-RATE-002' + stageTag(req.path);
+  // kind:'rate' is required so public/app.js routes this to the calm showRatePopup
+  // overlay instead of the red showTechnicalErrorDialog — omitting it was a bug.
+  res.status(429).json({ error: ERROR_CODES['ERR-RATE-002'].message, error_code: errorCode, kind: 'rate' });
+  logEvent('rate_limit_hit', { route: req.path, code: errorCode });
   logError('ERR-RATE-002', req.path, {});
 }
 
@@ -57,4 +72,4 @@ const aiLimiter = rateLimit({
   skip,
 });
 
-module.exports = { globalLimiter, aiLimiter };
+module.exports = { globalLimiter, aiLimiter, stageTag };

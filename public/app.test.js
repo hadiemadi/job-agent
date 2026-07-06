@@ -16,6 +16,49 @@ function loadAppInDom() {
   (0, eval)(code); // indirect eval — runs in global scope, not this module's local scope
 }
 
+describe('stopPolling — stacked-loop prevention', () => {
+  beforeEach(() => {
+    document.cookie = 'onboarded=1';
+    window.TRIAL_MODE = false;
+    loadAppInDom();
+  });
+
+  test('stopPolling is a no-op (no clearTimeout) when _pollTimer is null', () => {
+    // _pollTimer starts as null — stopPolling must NOT call clearTimeout
+    const clearSpy = jest.spyOn(window, 'clearTimeout');
+    window.stopPolling();
+    expect(clearSpy).not.toHaveBeenCalled();
+    clearSpy.mockRestore();
+  });
+
+  test('startPolling cancels a prior scheduled timer when one is pending', async () => {
+    // Track every clearTimeout(id) call so we can verify the prior timer was cancelled.
+    const clearedIds = [];
+    const origClearTimeout = window.clearTimeout;
+    window.clearTimeout = (id) => { clearedIds.push(id); origClearTimeout.call(window, id); };
+
+    // Mock fetch to return 'running' so the first poll schedules a retry timer.
+    window.fetch = jest.fn(() => Promise.resolve({
+      json: () => Promise.resolve({ status: 'running', current_step: '' }),
+    }));
+
+    window.startPolling('job-1', false, 'hr_review');
+
+    // setImmediate fires only after the current microtask queue is fully drained —
+    // this guarantees the fetch().then(r.json()).then(data→_pollTimer=…) chain has
+    // completed and _pollTimer holds a real (non-null) timer id before we proceed.
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Starting a second loop must call stopPolling() which cancels the first timer.
+    window.startPolling('job-2', false, 'cv_tailor');
+
+    const nonNullCancels = clearedIds.filter(id => id != null);
+    expect(nonNullCancels.length).toBeGreaterThan(0);
+
+    window.clearTimeout = origClearTimeout;
+  });
+});
+
 describe('showValidationNudge / showErrorPopup — trial-mode code caption', () => {
   beforeEach(() => {
     document.cookie = 'onboarded=1'; // skip the first-time intro panel noise for these tests
@@ -64,6 +107,24 @@ describe('showValidationNudge / showErrorPopup — trial-mode code caption', () 
     // Must NOT render the technical error dialog
     expect(document.getElementById('errPopupOverlay')).toBeNull();
     expect(overlay.innerHTML).not.toContain('send them to support');
+  });
+
+  test('stage-tagged rate code (ERR-RATE-002-HR) shows same calm popup as base code but displays the full tagged code', () => {
+    window.TRIAL_MODE = true;
+    loadAppInDom();
+    window.showErrorPopup(
+      { error_code: 'ERR-RATE-002-HR', error: 'Too many requests — slow down and try again shortly.', kind: 'rate' },
+      '/review-cv'
+    );
+    const overlay = document.getElementById('ratePopupOverlay');
+    expect(overlay.style.display).not.toBe('none');
+    // Falls back to base-code copy (ERR-RATE-002) → 'One moment', not 'Slow down'
+    expect(document.getElementById('rateTitle').textContent).toBe('One moment');
+    expect(document.getElementById('rateCloseBtn').textContent).toBe('Try again');
+    // Full stage-tagged code shown in caption (not the base code)
+    const codeEl = document.getElementById('rateCode');
+    expect(codeEl.style.display).not.toBe('none');
+    expect(codeEl.textContent).toBe('ERR-RATE-002-HR');
   });
 
   test('daily cap popup (ERR-RATE-001) shows "Daily limit reached" title and "Close" button (no Try again)', () => {

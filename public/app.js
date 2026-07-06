@@ -219,7 +219,10 @@ const RATE_COPY = {
 // Burst: "Try again" just closes the overlay so the user can click again immediately.
 // Daily cap: "Close" only — retrying right away will not help.
 function showRatePopup(data) {
-  const copy = RATE_COPY[data.error_code] || { title: 'Slow down', body: data.error, isDaily: false };
+  // Stage-tagged codes (e.g. ERR-RATE-002-HR) share the same copy as their base
+  // code but show the full tag in the caption so the user can report which stage failed.
+  const baseCode = (data.error_code || '').match(/^ERR-RATE-\d{3}/)?.[0] || data.error_code;
+  const copy = RATE_COPY[data.error_code] || RATE_COPY[baseCode] || { title: 'Slow down', body: data.error, isDaily: false };
 
   let overlay = el('ratePopupOverlay');
   if (!overlay) {
@@ -310,6 +313,9 @@ async function go() {
   const jobText = el('jobText').value.trim();
   if (!file) { setGoStatus('Please upload your CV first.', 'err'); show('goStatus'); return; }
   if (!jobText) { setGoStatus('Please paste the job description.', 'err'); show('goStatus'); return; }
+
+  // Kill any leftover poll loop from a previous run before starting fresh.
+  stopPolling();
 
   // Lock in the chosen file + job description as a clean read-only display — they need to
   // stay legible behind the contact-info and progress pop-ups that follow, instead of being
@@ -708,18 +714,29 @@ function clearPendingJob() {
   localStorage.removeItem(_pendingJobKey);
 }
 
+// Cancels any scheduled poll timer. Must be called synchronously before any
+// async operation (e.g. POST /rewrite) that starts a new poll session, because
+// an in-flight poll fetch can complete AFTER startPolling() and set _pollTimer
+// again, creating a ghost loop alongside the new one (the stacked-loop bug that
+// causes ERR-RATE-002 at the HR-review → Tailor-CV handoff).
+function stopPolling() {
+  if (_pollTimer !== null) { clearTimeout(_pollTimer); _pollTimer = null; }
+}
+
 // Polls /job/:id/status until done/failed, then branches on kind:
 //   'reading_cv'  → shows contact card pre-filled (step 0 done)
 //   'parsing_job' → cascades to /review-cv (step 1 done → step 2 starts)
 //   'hr_review'   → calls showChanges() (steps 0-2)
-//   'cv_tailor'   ��� calls showComparison() (steps 0-3, default)
+//   'cv_tailor'   → calls showComparison() (steps 0-3, default)
 // `isResume` is true when picking up a job after a page reload — the resume caller
 // (resumePendingJob) sets up the UI before calling startPolling, not here.
 function startPolling(jobId, isResume, kind) {
   kind = kind || 'cv_tailor';
-  // Cancel any existing poll loop before starting a new one — prevents stacked loops
-  // that would rapid-fire requests and trip the rate-limit guard (ERR-RATE-002).
-  if (_pollTimer !== null) { clearTimeout(_pollTimer); _pollTimer = null; }
+  // Belt-and-suspenders guard: cancel any SCHEDULED next-poll timer. stopPolling()
+  // should already have been called at the top of every transition function
+  // (go, applyChanges, continueToJobAndHR) to prevent ghost loops from in-flight
+  // fetches, but this catches anything missed at a transition boundary.
+  stopPolling();
   // Each polling session gets its own backoff state — starts at 2 s after the first
   // immediate call, doubles on every non-terminal response, caps at 10 s.
   let backoffMs = POLL_BACKOFF_START_MS;
@@ -860,6 +877,11 @@ function startPolling(jobId, isResume, kind) {
 }
 
 async function applyChanges() {
+  // Stop any running poll loop (e.g. hr_review) BEFORE the async POST to /rewrite.
+  // An in-flight poll fetch can set _pollTimer after startPolling('cv_tailor') runs,
+  // which would create a ghost loop alongside the cv_tailor loop and double the
+  // request rate into the rate-limit guard (ERR-RATE-002).
+  stopPolling();
   el('applyBtn').disabled = true;
   hide('changesCard');
   show('progressCard');
