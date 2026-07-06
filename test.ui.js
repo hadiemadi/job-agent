@@ -468,7 +468,20 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     expect(researchCvConventions.mock.calls.length).toBe(callsBefore); // cached — not re-researched
   });
 
-  test('POST /rewrite returns 200 with filePath only — comparison is built lazily, not here', async () => {
+  // Helper: polls /job/:id/status until the job settles (done or failed). Background jobs
+  // use all-mocked dependencies that resolve immediately, so the first poll almost always
+  // returns a terminal state — retries guard against the rare case where microtasks haven't
+  // flushed yet by the time the HTTP round-trip completes.
+  async function waitForJob(jobId) {
+    for (let i = 0; i < 20; i++) {
+      const r = await agent.get('/job/' + jobId + '/status');
+      if (r.body.status === 'done' || r.body.status === 'failed') return r.body;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    throw new Error('job ' + jobId + ' did not settle in time');
+  }
+
+  test('POST /rewrite returns 200 with jobId — pipeline runs in background, result available via /job/:id/status', async () => {
     const res = await agent.post('/rewrite').send({
       job: MOCK_JOB,
       cvPath: 'cv.pdf',
@@ -476,8 +489,11 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
       confirmedChanges: [],
     });
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('filePath');
+    expect(res.body).toHaveProperty('jobId');
     expect(res.body).not.toHaveProperty('comparisonPath');
+    const job = await waitForJob(res.body.jobId);
+    expect(job.status).toBe('done');
+    expect(job.result).toHaveProperty('filePath');
   });
 
   test('POST /rewrite runs the independent review loop: a FIX_REQUIRED verdict triggers one targeted revision, then ships clean', async () => {
@@ -490,12 +506,12 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
       .mockResolvedValueOnce({ checks: [], verdict: 'FIX_REQUIRED', required_edits: ['Remove the company name "Apple" from the summary'] })
       .mockResolvedValueOnce({ checks: [], verdict: 'SHIP', required_edits: [] });
 
-    const res = await agent.post('/rewrite').send({
+    const postRes = await agent.post('/rewrite').send({
       job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [],
     });
-
-    expect(res.status).toBe(200);
-    expect(res.body.reviewIssues).toEqual([]);
+    expect(postRes.status).toBe(200);
+    const job = await waitForJob(postRes.body.jobId);
+    expect(job.result.reviewIssues).toEqual([]);
     expect(rewriteCVWithChanges).toHaveBeenCalledTimes(2);
     expect(reviewTailoredCV).toHaveBeenCalledTimes(2);
     // the second writer call is the targeted revision — it carries the required edit forward,
@@ -507,21 +523,23 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   test('POST /rewrite surfaces remaining review issues after exhausting the 2-pass revision limit', async () => {
     reviewTailoredCV.mockResolvedValue({ checks: [], verdict: 'FIX_REQUIRED', required_edits: ['Remove the company name "Apple" from the summary'] });
 
-    const res = await agent.post('/rewrite').send({
+    const postRes = await agent.post('/rewrite').send({
       job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [],
     });
-
-    expect(res.status).toBe(200);
-    expect(res.body.reviewIssues).toEqual(['Remove the company name "Apple" from the summary']);
+    expect(postRes.status).toBe(200);
+    const job = await waitForJob(postRes.body.jobId);
+    expect(job.result.reviewIssues).toEqual(['Remove the company name "Apple" from the summary']);
     // 1 initial write + 2 revision passes = 3; 3 reviews, one per write
     expect(rewriteCVWithChanges).toHaveBeenCalledTimes(3);
     expect(reviewTailoredCV).toHaveBeenCalledTimes(3);
   });
 
   test('POST /build-comparison returns 200 with comparisonPath after a CV has been tailored', async () => {
-    await agent.post('/rewrite').send({
+    const postRes = await agent.post('/rewrite').send({
       job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [],
     });
+    // Polling status applies session state (lastTailoredCvData etc.) so /build-comparison works.
+    await waitForJob(postRes.body.jobId);
     const res = await agent.post('/build-comparison').send({ job: MOCK_JOB });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('comparisonPath');
@@ -955,7 +973,14 @@ describe('GET /output/:file — session-scoped access only', () => {
   // fs-extra) at the exact session-scoped path the real registerOutputFile() returned, so
   // GET /output/:file has something genuine to find.
   async function tailorAndBuildComparisonFor(ownerAgent) {
-    await ownerAgent.post('/rewrite').send({ job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [] });
+    const postRes = await ownerAgent.post('/rewrite').send({ job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [] });
+    // Poll until done so session state (lastTailoredCvData) is applied before /build-comparison.
+    const { jobId } = postRes.body;
+    for (let i = 0; i < 20; i++) {
+      const s = await ownerAgent.get('/job/' + jobId + '/status');
+      if (s.body.status === 'done' || s.body.status === 'failed') break;
+      await new Promise(r => setTimeout(r, 10));
+    }
     const res = await ownerAgent.post('/build-comparison').send({ job: MOCK_JOB });
     const comparisonPath = res.body.comparisonPath; // e.g. "output/<sid>_<hex>.html"
     const absolute = realPath.resolve(comparisonPath);

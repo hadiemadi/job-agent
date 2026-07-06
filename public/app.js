@@ -700,6 +700,86 @@ async function askHR(i, btn) {
   }
 }
 
+// ── Background job polling (tab-close resilience) ────────────────────────────
+// A stable per-browser key stored in localStorage lets us resume polling after a reload.
+// We intentionally do NOT use sessionStorage (gone on tab close) or the server's `sid`
+// cookie (httpOnly, unreadable from JS).
+const _clientId = (function () {
+  const k = 'jsk_cid';
+  let id = localStorage.getItem(k);
+  if (!id) { id = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(k, id); }
+  return id;
+})();
+const _pendingJobKey = 'jsk_job_' + _clientId;
+const POLL_INTERVAL_MS = 3000;
+const JOB_MAX_AGE_MS   = 60 * 60 * 1000; // 1 hour — discard stale pending-job entries
+
+let _pollTimer = null;
+
+function savePendingJob(jobId) {
+  localStorage.setItem(_pendingJobKey, JSON.stringify({ jobId, ts: Date.now() }));
+}
+
+function clearPendingJob() {
+  localStorage.removeItem(_pendingJobKey);
+}
+
+// Polls /job/:id/status until done/failed, then routes to showComparison or error.
+// `isResume` is true when picking up a job after a page reload.
+function startPolling(jobId, isResume) {
+  if (isResume) {
+    // The progress steps may not be built yet — reconstruct the UI so the user sees
+    // something while waiting.
+    show('progressCard');
+    buildSteps(['Reading CV', 'Parsing job', 'HR Review', 'Tailor CV']);
+    setStep(0, 'ok', ''); setStep(1, 'ok', ''); setStep(2, 'ok', '');
+    setStep(3, 'run');
+  }
+
+  function poll() {
+    fetch('/job/' + jobId + '/status')
+      .then(r => r.json())
+      .then(data => {
+        if (data.error && data.status !== 'done' && data.status !== 'failed') {
+          // Unexpected error on the status route itself — show it and stop polling.
+          clearPendingJob();
+          setStep(3, 'err', data.error);
+          if (!isResume) { el('applyBtn').disabled = false; show('changesCard'); }
+          showErrorPopup(data, '/job/status');
+          return;
+        }
+        if (data.status === 'running' || data.status === 'pending') {
+          _pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+          return;
+        }
+        // done or failed
+        clearPendingJob();
+        _pollTimer = null;
+        const result = data.result || {};
+        if (data.status === 'failed' || result.error) {
+          const errData = { error: result.error || 'Tailoring failed.', error_code: result.code || 'ERR-CV-004', kind: 'error' };
+          setStep(3, 'err', errData.error);
+          if (!isResume) { el('applyBtn').disabled = false; show('changesCard'); }
+          showErrorPopup(errData, '/rewrite');
+          return;
+        }
+        if (!result.filePath) {
+          setStep(3, 'err', 'No file path in result — try again.');
+          if (!isResume) { el('applyBtn').disabled = false; show('changesCard'); }
+          return;
+        }
+        setStep(3, 'ok', 'CV tailored');
+        setTimeout(() => { hide('progressCard'); showComparison(_currentJob, result); }, 500);
+      })
+      .catch(err => {
+        // Network error — keep polling (user may be offline briefly).
+        _pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+      });
+  }
+
+  poll();
+}
+
 async function applyChanges() {
   el('applyBtn').disabled = true;
   hide('changesCard');
@@ -717,20 +797,31 @@ async function applyChanges() {
     });
     const data = await res.json();
     if (data.error) { setStep(3, errorStepState(data.kind), data.error); el('applyBtn').disabled=false; show('changesCard'); showErrorPopup(data, '/rewrite'); return; }
-    if (!data.filePath) {
+    if (!data.jobId) {
       setStep(3,'err', 'Server returned an unexpected response — check the server terminal for errors.');
       el('applyBtn').disabled=false; show('changesCard'); return;
     }
-    setStep(3, 'ok', 'CV tailored');
-    await new Promise(r => setTimeout(r, 500));
-    hide('progressCard');
-    showComparison(_currentJob, data);
+    savePendingJob(data.jobId);
+    startPolling(data.jobId, false);
   } catch (err) {
     setStep(3,'err', err.message);
     el('applyBtn').disabled = false;
     show('changesCard');
   }
 }
+
+// On load: resume any pending job that was in-flight when the tab was closed.
+(function resumePendingJob() {
+  try {
+    const raw = localStorage.getItem(_pendingJobKey);
+    if (!raw) return;
+    const { jobId, ts } = JSON.parse(raw);
+    if (!jobId || Date.now() - ts > JOB_MAX_AGE_MS) { clearPendingJob(); return; }
+    startPolling(jobId, true);
+  } catch (e) {
+    clearPendingJob();
+  }
+})();
 
 function showComparison(job, data) {
   el('compTitle').textContent = job.job_title || 'Tailored CV';

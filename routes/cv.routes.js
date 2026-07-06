@@ -6,9 +6,10 @@ const { readCV, parseCVStructure, adjustLanguageLevel, classify, generateCompari
 const { generateWordCV, generateWordCVAlt } = require('../src/wordExport');
 const { generateWordFromTemplate } = require('../src/wordTemplateExport');
 const { upload, templateUpload } = require('../services/uploads');
-const { getSession, setSession, registerOutputFile, purgeSessionData } = require('../services/session');
+const { getSession, setSession, registerOutputFile, purgeSessionData, als } = require('../services/session');
 const { getGaps } = require('../services/gapStore');
 const { tailorCvWithReview } = require('../services/workflows');
+const { createJob, updateJob, getJob } = require('../services/jobQueue');
 const { sendError } = require('../core/respondError');
 const { logEvent } = require('../core/logger');
 
@@ -101,44 +102,101 @@ router.post('/rewrite', async (req, res) => {
   try {
     const appSession = getSession();
     const { job } = req.body;
-    // The uploaded file is deleted right after /upload-cv extracts its text (see above) —
-    // appSession.cvText is the one source of truth from here on, not a re-read from disk.
     const cvText = appSession.cvText;
     const recommendedSections = (appSession.hrReview || {}).recommended_sections;
     const originalName = (appSession.cvData || {}).name;
     const autoChanges = (appSession.hrReview || {}).auto_changes || [];
-    // Gap decision/discuss state is now server-side (services/gapStore.js, via the
-    // /gap-decision and /coach/discuss routes) — derived here instead of trusting a
-    // client-submitted confirmedChanges/gapDiscussions list. userDecision (card v2, #25) is
-    // the candidate's own Add-to-CV/Leave-out call, independent of HR's lean — anything not
-    // explicitly 'added' (undecided or left-out) resolves to skipped: the candidate gave no
-    // real signal either way for anything else, so nothing unconfirmed is ever added to the CV.
     const { confirmedChanges, gapDiscussions } = buildGapInputs(getGaps());
-    const { filePath, cvData, modified_sections, thread, hrDisplayHistory, review } = await tailorCvWithReview({
+
+    // Snapshot all pipeline inputs from session NOW (before response ends the request scope).
+    const jobParams = {
       cvText, job, autoChanges, confirmedChanges,
-      recommendedSections, originalName, confirmedContact: appSession.confirmedContact,
-      thread: appSession.hrThread, preferences: appSession.clientPreferences,
-      hrDisplayHistory: appSession.hrDisplayHistory, originalCvData: appSession.cvData,
+      recommendedSections, originalName,
+      confirmedContact: appSession.confirmedContact,
+      thread: appSession.hrThread,
+      preferences: appSession.clientPreferences,
+      hrDisplayHistory: appSession.hrDisplayHistory,
+      originalCvData: appSession.cvData,
       gapDiscussions,
+    };
+
+    const jobId = await createJob();
+    // Capture the session ID so the background task can re-establish the ALS context —
+    // registerOutputFile() inside the pipeline uses als.getStore() to name the output file,
+    // and that context is gone once the response is sent. als.run(sid, fn) re-pins it.
+    const sid = als.getStore();
+
+    res.json({ jobId });
+
+    // Background pipeline — runs after response; re-establishes session context so file
+    // registration and session writes land on the correct per-browser session.
+    als.run(sid, async () => {
+      try {
+        await updateJob(jobId, { status: 'running', current_step: 'Writing CV' });
+        const { filePath, cvData, modified_sections, thread, hrDisplayHistory, review } = await tailorCvWithReview(jobParams);
+        const reviewIssues = review && review.verdict === 'FIX_REQUIRED' ? review.required_edits : [];
+        // Store session-updatable fields in the job result — the GET /job/:id/status route
+        // applies them to the session when the client polls and gets status === 'done', so
+        // downstream routes (/regenerate-cv, /export-word) see the correct state.
+        await updateJob(jobId, {
+          status: 'done',
+          current_step: '',
+          result: {
+            filePath, reviewIssues,
+            hrThread: thread,
+            hrDisplayHistory,
+            lastGenHrCount: hrDisplayHistory.length,
+            lastTailoredCvData: cvData,
+            lastModifiedSections: modified_sections,
+            lastTailoredJob: job,
+          },
+        });
+        logEvent('cv_tailored', { route: '/rewrite', outcome: 'ok' });
+      } catch (err) {
+        await updateJob(jobId, {
+          status: 'failed',
+          current_step: '',
+          result: { error: err.message, code: (err.code) || 'ERR-CV-004' },
+        }).catch(() => {});
+      }
     });
-    appSession.hrThread = thread;
-    appSession.hrDisplayHistory = hrDisplayHistory;
-    // #29/#31: marks "fully incorporated up to here" — a later /regenerate-cv only pulls
-    // sidebar HR statements newer than this count, so it never re-states this conversation.
-    appSession.lastGenHrCount = hrDisplayHistory.length;
-    // Comparison page is NOT built here — it's a side artifact most clients never open, and
-    // building it eagerly only slows down the main path (getting the tailored CV). Stash what
-    // /build-comparison needs and build it lazily, only if the client actually asks for it.
-    appSession.lastTailoredCvData     = cvData;
-    appSession.lastModifiedSections   = modified_sections;
-    appSession.lastTailoredJob        = job;
-    // The independent pre-release review (services/workflows.js) gets up to 2 revision passes.
-    // If it still isn't SHIP after that, surface the remaining issues rather than hide them.
-    const reviewIssues = review && review.verdict === 'FIX_REQUIRED' ? review.required_edits : [];
-    logEvent('cv_tailored', { route: '/rewrite', outcome: 'ok' });
-    res.json({ filePath, reviewIssues });
   } catch (err) {
     sendError(res, '/rewrite', 'ERR-CV-004', err);
+  }
+});
+
+// Polling endpoint — returns status, current_step, and (when done) the result for display.
+// On status === 'done': applies stored session data back onto the current session so later
+// routes (/regenerate-cv, /export-word, /build-comparison) work correctly after a reload.
+router.get('/job/:id/status', async (req, res) => {
+  try {
+    const job = await getJob(req.params.id);
+    if (!job) return res.status(404).json({ error: 'Job not found', error_code: 'ERR-CV-004', kind: 'error' });
+
+    if (job.status === 'done') {
+      const r = job.result || {};
+      if (!r.error) {
+        // Restore session state from the job result — safe to do on every poll because
+        // assignment is idempotent and the values don't change once the job is done.
+        const appSession = getSession();
+        if (r.hrThread)             appSession.hrThread           = r.hrThread;
+        if (r.hrDisplayHistory)     appSession.hrDisplayHistory   = r.hrDisplayHistory;
+        if (r.lastGenHrCount != null) appSession.lastGenHrCount   = r.lastGenHrCount;
+        if (r.lastTailoredCvData)   appSession.lastTailoredCvData = r.lastTailoredCvData;
+        if (r.lastModifiedSections) appSession.lastModifiedSections = r.lastModifiedSections;
+        if (r.lastTailoredJob)      appSession.lastTailoredJob    = r.lastTailoredJob;
+      }
+    }
+
+    res.json({
+      status: job.status,
+      current_step: job.current_step || '',
+      result: (job.status === 'done' || job.status === 'failed')
+        ? { filePath: job.result && job.result.filePath, reviewIssues: job.result && job.result.reviewIssues, error: job.result && job.result.error, code: job.result && job.result.code }
+        : null,
+    });
+  } catch (err) {
+    sendError(res, '/job/:id/status', 'ERR-CV-004', err);
   }
 });
 

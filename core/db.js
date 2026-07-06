@@ -28,6 +28,21 @@ const ERRORS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS errors (
   sanitized_context_json JSONB
 )`;
 
+// Async job table — persists CV-tailoring pipeline state so a tab-close/idle doesn't lose
+// work. user_id is nullable (Phase 2 login placeholder). result holds the full pipeline
+// output (filePath, session data to restore) so the status-poll route can apply it to the
+// correct session when the client comes back. id is a Node-generated UUID (TEXT, not the
+// Postgres uuid type, so no extension needed).
+const JOBS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS jobs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  current_step TEXT NOT NULL DEFAULT '',
+  result JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)`;
+
 function buildPool(useSsl) {
   const config = { connectionString: process.env.DATABASE_URL };
   if (useSsl) config.ssl = { rejectUnauthorized: false };
@@ -42,6 +57,7 @@ function buildPool(useSsl) {
 async function ensureTables(p) {
   await p.query(EVENTS_TABLE_SQL);
   await p.query(ERRORS_TABLE_SQL);
+  await p.query(JOBS_TABLE_SQL);
 }
 
 // Returns the shared pool, creating + bootstrapping it on first call. Returns null (and warns
