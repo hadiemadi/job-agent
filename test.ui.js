@@ -362,7 +362,10 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     analyzeGaps.mockResolvedValue(MOCK_GAPS);
     selectTopGaps.mockImplementation(gaps => gaps);
     await agent.post('/upload-cv').attach('cv', 'cv.pdf');
-    await agent.post('/review-cv').send({ job: MOCK_JOB });
+    // /review-cv is now async — returns { jobId }; wait for the background task to settle
+    // so the session has gaps/hrReview/hrThread before the first test runs.
+    const reviewRes = await agent.post('/review-cv').send({ job: MOCK_JOB });
+    await waitForJob(reviewRes.body.jobId);
   });
 
   // Gaps are persisted server-side with a generated id (services/gapStore.js), and several
@@ -373,34 +376,40 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   // /review-cv.
   async function currentGapId() {
     const res = await agent.post('/review-cv').send({ job: MOCK_JOB });
-    return res.body.confirm_changes[0].id;
+    const job = await waitForJob(res.body.jobId);
+    return job.result.hrReview.confirm_changes[0].id;
   }
 
-  test('POST /review-cv returns 200 with full review structure', async () => {
+  test('POST /review-cv returns 200 with jobId; poll returns full review structure when done', async () => {
     const res = await agent.post('/review-cv').send({ job: MOCK_JOB });
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('overall_match');
-    expect(res.body).toHaveProperty('strengths');
-    expect(res.body).toHaveProperty('auto_changes');
-    expect(res.body).toHaveProperty('confirm_changes');
-    expect(Array.isArray(res.body.auto_changes)).toBe(true);
-    expect(Array.isArray(res.body.confirm_changes)).toBe(true);
-    // Each gap gets a stable, server-assigned id (services/gapStore.js) — the contract
-    // /coach/discuss, /hr/refine, and /gap-decision all key off now.
-    expect(res.body.confirm_changes[0]).toHaveProperty('id');
-    expect(typeof res.body.confirm_changes[0].id).toBe('string');
+    expect(res.body).toHaveProperty('jobId');
+    const job = await waitForJob(res.body.jobId);
+    expect(job.status).toBe('done');
+    expect(job.result).toHaveProperty('hrReview');
+    const review = job.result.hrReview;
+    expect(review).toHaveProperty('overall_match');
+    expect(review).toHaveProperty('strengths');
+    expect(review).toHaveProperty('auto_changes');
+    expect(review).toHaveProperty('confirm_changes');
+    expect(Array.isArray(review.auto_changes)).toBe(true);
+    expect(Array.isArray(review.confirm_changes)).toBe(true);
+    // Each gap gets a stable, server-assigned id (services/gapStore.js).
+    expect(review.confirm_changes[0]).toHaveProperty('id');
+    expect(typeof review.confirm_changes[0].id).toBe('string');
   });
 
-  // An unhandled rejection deep inside the agent call (reviewCV here) must still reach the
-  // client as a structured, cataloged error — not a bare 500 with a raw stack-trace message.
-  test('POST /review-cv returns ERR-HR-003 when the HR review agent call fails', async () => {
+  // An unhandled rejection deep inside reviewCV must surface as a failed job with the correct
+  // error code — not swallowed silently or returned as a raw 500 from the route.
+  test('POST /review-cv → job fails with ERR-HR-003 when the HR review agent call fails', async () => {
     reviewCV.mockRejectedValueOnce(new Error('Anthropic API unreachable'));
     const res = await agent.post('/review-cv').send({ job: MOCK_JOB });
-    expect(res.status).toBe(500);
-    expect(res.body).toHaveProperty('error_code', 'ERR-HR-003');
-    expect(res.body).toHaveProperty('error');
-    // A real failure stays the full technical dialog — kind must stay 'error', not 'validation'.
-    expect(res.body).toHaveProperty('kind', 'error');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('jobId');
+    const job = await waitForJob(res.body.jobId);
+    expect(job.status).toBe('failed');
+    expect(job.result).toHaveProperty('error');
+    expect(job.result).toHaveProperty('code', 'ERR-HR-003');
   });
 
   test('POST /confirm-contact stores clientPreferences and /review-cv passes them through', async () => {
@@ -409,7 +418,8 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     });
     expect(contactRes.status).toBe(200);
 
-    await agent.post('/review-cv').send({ job: MOCK_JOB });
+    const reviewRes = await agent.post('/review-cv').send({ job: MOCK_JOB });
+    await waitForJob(reviewRes.body.jobId);
     const lastCall = reviewCV.mock.calls[reviewCV.mock.calls.length - 1];
     expect(lastCall[3]).toEqual({
       tone: 2, customInstructions: 'Never mention my current employer by name', languageLevel: 2,
@@ -423,7 +433,8 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     reviewCV.mockResolvedValue({ review: MOCK_REVIEW, field: { field: 'RF/Hardware Engineering', seniority: 'senior' }, thread: [] });
 
     await agent.post('/confirm-contact').send({ name: 'Hadi Emadi', customInstructions: 'Hands-on GaN PA tuning experience' });
-    await agent.post('/review-cv').send({ job: MOCK_JOB });
+    const r1 = await agent.post('/review-cv').send({ job: MOCK_JOB });
+    await waitForJob(r1.body.jobId);
 
     expect(pinDisciplineSkill).toHaveBeenCalledWith(
       { field: 'RF/Hardware Engineering', seniority: 'senior' },
@@ -432,7 +443,8 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
 
     // A second /review-cv in the same contact-confirmation session must not re-pin.
     const callsBefore = pinDisciplineSkill.mock.calls.length;
-    await agent.post('/review-cv').send({ job: MOCK_JOB });
+    const r2 = await agent.post('/review-cv').send({ job: MOCK_JOB });
+    await waitForJob(r2.body.jobId);
     expect(pinDisciplineSkill.mock.calls.length).toBe(callsBefore);
   });
 
@@ -441,7 +453,8 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     reviewCV.mockResolvedValue({ review: MOCK_REVIEW, field: { field: 'RF/Hardware Engineering', seniority: 'senior' }, thread: [] });
 
     await agent.post('/confirm-contact').send({ name: 'Hadi Emadi', customInstructions: 'Prefer a one-page CV.' });
-    await agent.post('/review-cv').send({ job: MOCK_JOB });
+    const r = await agent.post('/review-cv').send({ job: MOCK_JOB });
+    await waitForJob(r.body.jobId);
 
     expect(pinDisciplineSkill).not.toHaveBeenCalled();
   });
@@ -449,7 +462,8 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
   test('POST /confirm-contact with gapSeverities filters which severities selectTopGaps sees', async () => {
     selectTopGaps.mockClear();
     await agent.post('/confirm-contact').send({ name: 'Hadi Emadi', gapSeverities: ['major'] });
-    await agent.post('/review-cv').send({ job: MOCK_JOB });
+    const r = await agent.post('/review-cv').send({ job: MOCK_JOB });
+    await waitForJob(r.body.jobId);
     const lastCall = selectTopGaps.mock.calls[selectTopGaps.mock.calls.length - 1];
     expect(lastCall[1]).toEqual(['major']);
   });
@@ -458,13 +472,15 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     researchCvConventions.mockResolvedValue('In Sweden, hobbies are commonly listed; photos are common.');
     await agent.post('/confirm-contact').send({ name: 'Hadi Emadi', extensiveSearch: true });
 
-    await agent.post('/review-cv').send({ job: MOCK_JOB });
+    const r1 = await agent.post('/review-cv').send({ job: MOCK_JOB });
+    await waitForJob(r1.body.jobId);
     expect(researchCvConventions).toHaveBeenCalledWith(MOCK_JOB, expect.any(String));
     let lastCall = reviewCV.mock.calls[reviewCV.mock.calls.length - 1];
     expect(lastCall[3].conventionsResearch).toBe('In Sweden, hobbies are commonly listed; photos are common.');
 
     const callsBefore = researchCvConventions.mock.calls.length;
-    await agent.post('/review-cv').send({ job: MOCK_JOB });
+    const r2 = await agent.post('/review-cv').send({ job: MOCK_JOB });
+    await waitForJob(r2.body.jobId);
     expect(researchCvConventions.mock.calls.length).toBe(callsBefore); // cached — not re-researched
   });
 

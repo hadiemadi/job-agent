@@ -6,16 +6,16 @@ const { getPool } = require('../core/db');
 // process restart — enough for dev, but not for tab-close recovery (which needs the DB).
 const _memJobs = new Map();
 
-async function createJob() {
+async function createJob(kind = 'cv_tailor') {
   const id = crypto.randomUUID();
   const pool = getPool();
   if (pool) {
     await pool.query(
-      `INSERT INTO jobs (id, status, current_step) VALUES ($1, 'pending', '')`,
-      [id]
+      `INSERT INTO jobs (id, status, current_step, kind) VALUES ($1, 'pending', '', $2)`,
+      [id, kind]
     );
   } else {
-    _memJobs.set(id, { id, status: 'pending', current_step: '', result: null });
+    _memJobs.set(id, { id, status: 'pending', current_step: '', kind, result: null });
   }
   return id;
 }
@@ -41,7 +41,7 @@ async function updateJob(id, updates) {
 async function getJob(id) {
   const pool = getPool();
   if (pool) {
-    const r = await pool.query('SELECT id, status, current_step, result FROM jobs WHERE id = $1', [id]);
+    const r = await pool.query('SELECT id, status, current_step, kind, result FROM jobs WHERE id = $1', [id]);
     return r.rows[0] || null;
   }
   return _memJobs.get(id) || null;

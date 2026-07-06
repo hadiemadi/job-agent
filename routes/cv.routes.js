@@ -167,7 +167,10 @@ router.post('/rewrite', async (req, res) => {
 
 // Polling endpoint — returns status, current_step, and (when done) the result for display.
 // On status === 'done': applies stored session data back onto the current session so later
-// routes (/regenerate-cv, /export-word, /build-comparison) work correctly after a reload.
+// routes work correctly after a reload. Branches on job.kind:
+//   cv_tailor — restores hrThread/hrDisplayHistory/lastTailoredCvData etc.
+//   hr_review  — restores hrReview/hrThread/currentJob/gaps etc. so /rewrite and gap
+//                routes (/hr/refine, /gap-decision) work without another HR review call.
 router.get('/job/:id/status', async (req, res) => {
   try {
     const job = await getJob(req.params.id);
@@ -176,25 +179,36 @@ router.get('/job/:id/status', async (req, res) => {
     if (job.status === 'done') {
       const r = job.result || {};
       if (!r.error) {
-        // Restore session state from the job result — safe to do on every poll because
-        // assignment is idempotent and the values don't change once the job is done.
         const appSession = getSession();
-        if (r.hrThread)             appSession.hrThread           = r.hrThread;
-        if (r.hrDisplayHistory)     appSession.hrDisplayHistory   = r.hrDisplayHistory;
-        if (r.lastGenHrCount != null) appSession.lastGenHrCount   = r.lastGenHrCount;
-        if (r.lastTailoredCvData)   appSession.lastTailoredCvData = r.lastTailoredCvData;
-        if (r.lastModifiedSections) appSession.lastModifiedSections = r.lastModifiedSections;
-        if (r.lastTailoredJob)      appSession.lastTailoredJob    = r.lastTailoredJob;
+        if (job.kind === 'hr_review') {
+          if (r.hrThread)             appSession.hrThread         = r.hrThread;
+          if (r.currentJob)           appSession.currentJob       = r.currentJob;
+          if (r.hrReview)             appSession.hrReview         = r.hrReview;
+          if (r.field != null)        appSession.field            = r.field;
+          if (r.lastGenHrCount != null) appSession.lastGenHrCount = r.lastGenHrCount;
+          // Restore gap objects directly (ids were assigned in the background task) — do NOT
+          // call setGaps here as that would create new ids and break gap-id references.
+          if (r.gapRecords)           appSession.gaps             = r.gapRecords;
+        } else {
+          if (r.hrThread)             appSession.hrThread           = r.hrThread;
+          if (r.hrDisplayHistory)     appSession.hrDisplayHistory   = r.hrDisplayHistory;
+          if (r.lastGenHrCount != null) appSession.lastGenHrCount   = r.lastGenHrCount;
+          if (r.lastTailoredCvData)   appSession.lastTailoredCvData = r.lastTailoredCvData;
+          if (r.lastModifiedSections) appSession.lastModifiedSections = r.lastModifiedSections;
+          if (r.lastTailoredJob)      appSession.lastTailoredJob    = r.lastTailoredJob;
+        }
       }
     }
 
-    res.json({
-      status: job.status,
-      current_step: job.current_step || '',
-      result: (job.status === 'done' || job.status === 'failed')
-        ? { filePath: job.result && job.result.filePath, reviewIssues: job.result && job.result.reviewIssues, error: job.result && job.result.error, code: job.result && job.result.code }
-        : null,
-    });
+    const r = job.result || {};
+    const terminal = job.status === 'done' || job.status === 'failed';
+    const resultPayload = terminal ? (
+      job.kind === 'hr_review'
+        ? { hrReview: r.hrReview, currentJob: r.currentJob, error: r.error, code: r.code }
+        : { filePath: r.filePath, reviewIssues: r.reviewIssues, error: r.error, code: r.code }
+    ) : null;
+
+    res.json({ status: job.status, current_step: job.current_step || '', result: resultPayload });
   } catch (err) {
     sendError(res, '/job/:id/status', 'ERR-CV-004', err);
   }

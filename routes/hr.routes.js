@@ -4,8 +4,9 @@ const {
   generateCoverLetter, generateInterviewQuestions, refineWithHR, chatWithHRExpert, applyConcernChange,
 } = require('../agent');
 const { generateCoverLetterWord } = require('../src/wordExport');
-const { getSession } = require('../services/session');
+const { getSession, als } = require('../services/session');
 const { setGaps, getGap, proposeStatement, setUserDecision, buildSharedGapContext } = require('../services/gapStore');
+const { createJob, updateJob } = require('../services/jobQueue');
 const { sendError } = require('../core/respondError');
 const { logEvent } = require('../core/logger');
 
@@ -17,60 +18,92 @@ router.post('/review-cv', async (req, res) => {
     if (!appSession.cvText) return sendError(res, '/review-cv', 'ERR-HR-001');
     const { job } = req.body;
     if (!job) return sendError(res, '/review-cv', 'ERR-HR-002');
-    // Opt-in live research into this job's country/industry-specific CV conventions — runs
-    // once per job, then cached on clientPreferences so every later HR-thread call (rewrite,
-    // refine, sidebar chat, Word placement) reuses it without re-searching.
-    if (appSession.clientPreferences?.extensiveSearch && !appSession.clientPreferences.conventionsResearch) {
+
+    // Snapshot immutable inputs before response ends the request scope.
+    const cvText = appSession.cvText;
+    // #29/#31: lastGenHrCount tracks sidebar entries as of the last full generation — capture
+    // the current length now so a later /rewrite knows which sidebar exchanges are new.
+    const initialLastGenHrCount = (appSession.hrDisplayHistory || []).length;
+
+    const jobId = await createJob('hr_review');
+    // Capture the session id before res.json() so the background task can re-pin it via
+    // als.run(sid, fn) — same pattern as /rewrite.
+    const sid = als.getStore();
+    res.json({ jobId });
+
+    als.run(sid, async () => {
       try {
-        const conventionsResearch = await researchCvConventions(job, appSession.cvText);
-        appSession.clientPreferences = { ...appSession.clientPreferences, conventionsResearch };
-      } catch (e) { /* research is best-effort — fall back to the model's own knowledge */ }
-    }
-    // HR review (auto_changes + section decisions) and the Coach's gap analysis run in
-    // parallel — gap-finding is the Coach's job (analyzeGaps casts wide, up to 20 candidates,
-    // severity-scored); selectTopGaps then picks at least 5 worth actually asking the
-    // candidate about, instead of HR trying to do both jobs in one pass.
-    const [{ review, field, thread }, gaps] = await Promise.all([
-      reviewCV(appSession.cvText, job, [], appSession.clientPreferences),
-      analyzeGaps(appSession.cvText, job),
-    ]);
-    // Once the candidate's field is known, apply any discipline-bucket comment from the
-    // contact page — pinned in as a trusted fact for this and future reviews. Applied once
-    // per contact confirmation (routedInstructionApplied), not on every repeated review.
-    const { routedInstruction, routedInstructionApplied } = appSession.clientPreferences;
-    if (field?.field && routedInstruction?.bucket === 'discipline' && routedInstruction.text && !routedInstructionApplied) {
-      pinDisciplineSkill(field, routedInstruction.text);
-      appSession.clientPreferences = { ...appSession.clientPreferences, routedInstructionApplied: true };
-    }
-    // Gaps are persisted server-side (services/gapStore.js) with a stable id each.
-    const selected = selectTopGaps(gaps, appSession.clientPreferences.gapSeverities);
-    const gapRecords = setGaps(selected);
-    const fullReview = {
-      ...review,
-      confirm_changes: gapRecords.map(g => ({
-        id: g.id, description: g.description, rationale: g.rationale, severity: g.severity,
-        status: g.status, proposedStatement: g.proposedStatement,
-        userDecision: g.userDecision, hrConclusion: g.hrConclusion,
-        targetSection: g.hrConclusion ? g.hrConclusion.targetSection : null,
-        hrStatement: g.hrConclusion ? g.hrConclusion.statement : null,
-      })),
-    };
-    appSession.currentJob = job;
-    appSession.hrReview = fullReview;
-    appSession.hrThread = thread;
-    // #29/#31 hardening: a NEW job review is a fresh start for this job, exactly like hrThread
-    // above — but hrDisplayHistory (the Tailored-CV sidebar transcript) is intentionally never
-    // wiped here, since it can span jobs. Without this, lastGenHrCount could still point at an
-    // old, lower count from a PRIOR job/generation, making a later /regenerate-cv mistake that
-    // prior job's leftover sidebar chat for "new" conversation about THIS job. Resetting it to
-    // the current length means only conversation from this point forward ever counts as new.
-    appSession.lastGenHrCount = (appSession.hrDisplayHistory || []).length;
-    // Persisted so /coach/discuss can ground its reasoning in this candidate's discipline
-    // rubric (services/curator.js's knowledge store) instead of just the gap slogan — see
-    // agents/coach.js's chatWithCoach.
-    appSession.field = field || null;
-    logEvent('hr_review_run', { route: '/review-cv', outcome: 'ok' });
-    res.json(fullReview);
+        await updateJob(jobId, { status: 'running', current_step: 'HR Review' });
+
+        // Opt-in live research — mutates appSession.clientPreferences in place so the
+        // subsequent reviewCV call picks it up via the live session reference.
+        if (appSession.clientPreferences?.extensiveSearch && !appSession.clientPreferences.conventionsResearch) {
+          try {
+            const conventionsResearch = await researchCvConventions(job, cvText);
+            appSession.clientPreferences = { ...appSession.clientPreferences, conventionsResearch };
+          } catch (e) { /* best-effort — fall back to the model's own knowledge */ }
+        }
+
+        // HR review and gap analysis run in parallel (same logic as the old sync route).
+        const [{ review, field, thread }, gaps] = await Promise.all([
+          reviewCV(cvText, job, [], appSession.clientPreferences),
+          analyzeGaps(cvText, job),
+        ]);
+
+        // Apply discipline-bucket comment from the contact page once the field is known.
+        const { routedInstruction, routedInstructionApplied } = appSession.clientPreferences || {};
+        if (field?.field && routedInstruction?.bucket === 'discipline' && routedInstruction.text && !routedInstructionApplied) {
+          pinDisciplineSkill(field, routedInstruction.text);
+          appSession.clientPreferences = { ...appSession.clientPreferences, routedInstructionApplied: true };
+        }
+
+        const selected = selectTopGaps(gaps, (appSession.clientPreferences || {}).gapSeverities);
+        // setGaps writes to appSession.gaps (via getSession() in the als context) and returns
+        // the created gap objects with their stable server-assigned ids.
+        const gapRecords = setGaps(selected);
+        const fullReview = {
+          ...review,
+          confirm_changes: gapRecords.map(g => ({
+            id: g.id, description: g.description, rationale: g.rationale, severity: g.severity,
+            status: g.status, proposedStatement: g.proposedStatement,
+            userDecision: g.userDecision, hrConclusion: g.hrConclusion,
+            targetSection: g.hrConclusion ? g.hrConclusion.targetSection : null,
+            hrStatement: g.hrConclusion ? g.hrConclusion.statement : null,
+          })),
+        };
+
+        appSession.currentJob = job;
+        appSession.hrReview = fullReview;
+        appSession.hrThread = thread;
+        appSession.lastGenHrCount = initialLastGenHrCount;
+        appSession.field = field || null;
+
+        // Store everything needed to restore state after a tab-close/reload — the
+        // GET /job/:id/status handler applies these to the session on each poll so
+        // downstream routes (/rewrite, /hr/refine, /gap-decision) still work correctly.
+        // gapRecords carries the gap objects with their already-assigned ids so the
+        // status handler can restore them directly without calling setGaps (which would
+        // create new ids and break any gap-id references the frontend already holds).
+        await updateJob(jobId, {
+          status: 'done', current_step: '',
+          result: {
+            hrReview: fullReview,
+            hrThread: thread,
+            currentJob: job,
+            field: field || null,
+            lastGenHrCount: initialLastGenHrCount,
+            gapRecords: appSession.gaps,
+          },
+        });
+
+        logEvent('hr_review_run', { route: '/review-cv', outcome: 'ok' });
+      } catch (err) {
+        await updateJob(jobId, {
+          status: 'failed', current_step: '',
+          result: { error: err.message, code: (err.code) || 'ERR-HR-003' },
+        }).catch(() => {});
+      }
+    });
   } catch (err) {
     sendError(res, '/review-cv', 'ERR-HR-003', err);
   }

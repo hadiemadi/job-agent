@@ -1,4 +1,5 @@
 let _cvPath = null;
+let _cvFileName = null; // set in go() for use in savePendingJob during continueToJobAndHR
 let _currentJob = null;
 let _hrReview = null;
 let _selectedDir = null;
@@ -313,6 +314,7 @@ async function go() {
   // stay legible behind the contact-info and progress pop-ups that follow, instead of being
   // buried in a tiny file input and a cramped textarea.
   hide('cvPickerGroup');
+  _cvFileName = file.name;
   el('fileChosenDisplay').innerHTML = '<span class="fc-icon">📄</span><span class="fc-name">' + escapeHtml(file.name) + '</span>';
   show('fileChosenDisplay');
   hide('jobTextGroup');
@@ -405,7 +407,7 @@ async function continueToJobAndHR() {
 
   show('progressCard');
 
-  // Step 1: Parse pasted job description
+  // Step 1: Parse pasted job description (fast, stays synchronous)
   setStep(1, 'run');
   try {
     const res = await fetch('/fetch-job', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobText }) });
@@ -415,20 +417,24 @@ async function continueToJobAndHR() {
     setStep(1, 'ok', (data.job.job_title || 'Job') + (data.job.employer_name ? ' at ' + data.job.employer_name : ''));
   } catch (err) { setStep(1,'err', err.message); el('goBtn').disabled=false; show('goBtn'); return; }
 
-  // Step 2: HR Review
+  // Step 2: HR Review — now async via job queue so a tab close/reload can resume.
+  // POST returns { jobId } immediately; the actual review runs on the server and the
+  // frontend polls until done, then calls showChanges() to render the results.
   setStep(2, 'run');
   try {
     const res = await fetch('/review-cv', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ job: _currentJob }) });
     const data = await res.json();
     if (data.error) { setStep(2, errorStepState(data.kind), data.error); el('goBtn').disabled=false; show('goBtn'); showErrorPopup(data, '/review-cv'); return; }
-    _hrReview = data;
-    setStep(2, 'ok', (data.overall_match || 'Moderate') + ' match');
-    await new Promise(r => setTimeout(r, 600));
-    hide('progressCard');
-    showChanges(data);
-  } catch (err) { setStep(2,'err', err.message); el('goBtn').disabled=false; show('goBtn'); return; }
-
-  el('goBtn').disabled = false;
+    if (!data.jobId) { setStep(2, 'err', 'Unexpected server response — try again.'); el('goBtn').disabled=false; show('goBtn'); return; }
+    // Persist the job so a reload within 1 hour can resume from the same point (step 2 running).
+    savePendingJob(data.jobId, {
+      kind: 'hr_review',
+      cvFileName: _cvFileName || '',
+      jobText,
+      currentJob: _currentJob,
+    });
+    startPolling(data.jobId, false, 'hr_review');
+  } catch (err) { setStep(2,'err', err.message); el('goBtn').disabled=false; show('goBtn'); }
 }
 
 // ── Changes review ────────────────────────────────────────────────────────────
@@ -716,35 +722,40 @@ const JOB_MAX_AGE_MS   = 60 * 60 * 1000; // 1 hour — discard stale pending-job
 
 let _pollTimer = null;
 
-function savePendingJob(jobId) {
-  localStorage.setItem(_pendingJobKey, JSON.stringify({ jobId, ts: Date.now() }));
+// extra carries kind-specific context needed on reload: { kind, cvFileName, jobText, currentJob }
+function savePendingJob(jobId, extra) {
+  localStorage.setItem(_pendingJobKey, JSON.stringify({ jobId, ts: Date.now(), ...extra }));
 }
 
 function clearPendingJob() {
   localStorage.removeItem(_pendingJobKey);
 }
 
-// Polls /job/:id/status until done/failed, then routes to showComparison or error.
-// `isResume` is true when picking up a job after a page reload.
-function startPolling(jobId, isResume) {
-  if (isResume) {
-    // The progress steps may not be built yet — reconstruct the UI so the user sees
-    // something while waiting.
+// Polls /job/:id/status until done/failed, then branches on kind:
+//   'hr_review'  → calls showChanges() with the review data (steps 0-2)
+//   'cv_tailor'  → calls showComparison() (steps 0-3, default)
+// `isResume` is true when picking up a job after a page reload — the resume caller
+// (resumePendingJob) sets up the UI before calling startPolling, not here.
+function startPolling(jobId, isResume, kind) {
+  kind = kind || 'cv_tailor';
+
+  if (isResume && kind === 'cv_tailor') {
     show('progressCard');
     buildSteps(['Reading CV', 'Parsing job', 'HR Review', 'Tailor CV']);
     setStep(0, 'ok', ''); setStep(1, 'ok', ''); setStep(2, 'ok', '');
     setStep(3, 'run');
   }
+  // hr_review resume: UI already built by resumePendingJob() before this is called.
 
   function poll() {
     fetch('/job/' + jobId + '/status')
       .then(r => r.json())
       .then(data => {
         if (data.error && data.status !== 'done' && data.status !== 'failed') {
-          // Unexpected error on the status route itself — show it and stop polling.
           clearPendingJob();
-          setStep(3, 'err', data.error);
-          if (!isResume) { el('applyBtn').disabled = false; show('changesCard'); }
+          const step = kind === 'hr_review' ? 2 : 3;
+          setStep(step, 'err', data.error);
+          if (!isResume && kind === 'cv_tailor') { el('applyBtn').disabled = false; show('changesCard'); }
           showErrorPopup(data, '/job/status');
           return;
         }
@@ -756,6 +767,28 @@ function startPolling(jobId, isResume) {
         clearPendingJob();
         _pollTimer = null;
         const result = data.result || {};
+
+        if (kind === 'hr_review') {
+          if (data.status === 'failed' || result.error) {
+            const errData = { error: result.error || 'HR review failed.', error_code: result.code || 'ERR-HR-003', kind: 'error' };
+            setStep(2, 'err', errData.error);
+            if (!isResume) { el('goBtn').disabled = false; show('goBtn'); }
+            showErrorPopup(errData, '/review-cv');
+            return;
+          }
+          if (!result.hrReview) {
+            setStep(2, 'err', 'No review data returned — try again.');
+            if (!isResume) { el('goBtn').disabled = false; show('goBtn'); }
+            return;
+          }
+          _hrReview = result.hrReview;
+          if (result.currentJob) _currentJob = result.currentJob;
+          setStep(2, 'ok', (result.hrReview.overall_match || 'Moderate') + ' match');
+          setTimeout(() => { hide('progressCard'); showChanges(result.hrReview); }, 600);
+          return;
+        }
+
+        // cv_tailor
         if (data.status === 'failed' || result.error) {
           const errData = { error: result.error || 'Tailoring failed.', error_code: result.code || 'ERR-CV-004', kind: 'error' };
           setStep(3, 'err', errData.error);
@@ -771,8 +804,7 @@ function startPolling(jobId, isResume) {
         setStep(3, 'ok', 'CV tailored');
         setTimeout(() => { hide('progressCard'); showComparison(_currentJob, result); }, 500);
       })
-      .catch(err => {
-        // Network error — keep polling (user may be offline briefly).
+      .catch(() => {
         _pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
       });
   }
@@ -801,8 +833,8 @@ async function applyChanges() {
       setStep(3,'err', 'Server returned an unexpected response — check the server terminal for errors.');
       el('applyBtn').disabled=false; show('changesCard'); return;
     }
-    savePendingJob(data.jobId);
-    startPolling(data.jobId, false);
+    savePendingJob(data.jobId, { kind: 'cv_tailor' });
+    startPolling(data.jobId, false, 'cv_tailor');
   } catch (err) {
     setStep(3,'err', err.message);
     el('applyBtn').disabled = false;
@@ -811,13 +843,36 @@ async function applyChanges() {
 }
 
 // On load: resume any pending job that was in-flight when the tab was closed.
+// For hr_review jobs, restores the CV filename display, job description display, and
+// the progress steps at "HR Review running" before starting to poll.
 (function resumePendingJob() {
   try {
     const raw = localStorage.getItem(_pendingJobKey);
     if (!raw) return;
-    const { jobId, ts } = JSON.parse(raw);
+    const { jobId, ts, kind, cvFileName, jobText, currentJob } = JSON.parse(raw);
     if (!jobId || Date.now() - ts > JOB_MAX_AGE_MS) { clearPendingJob(); return; }
-    startPolling(jobId, true);
+
+    if (kind === 'hr_review') {
+      // Restore the read-only file + job description display that go() originally set up.
+      hide('cvPickerGroup');
+      el('fileChosenDisplay').innerHTML = '<span class="fc-icon">📄</span><span class="fc-name">' + escapeHtml(cvFileName || 'CV') + '</span>';
+      show('fileChosenDisplay');
+      if (jobText) {
+        hide('jobTextGroup');
+        el('jobDescDisplay').innerHTML = renderJobDescriptionHtml(jobText);
+        show('jobDescDisplay');
+      }
+      hide('goBtn');
+      if (currentJob) _currentJob = currentJob;
+      // Rebuild the 4-step bar at "HR Review running" so the user sees where they are.
+      show('progressCard');
+      buildSteps(['Reading CV', 'Parsing job', 'HR Review', 'Tailor CV']);
+      setStep(0, 'ok', ''); setStep(1, 'ok', '');
+      setStep(2, 'run');
+      startPolling(jobId, true, 'hr_review');
+    } else {
+      startPolling(jobId, true, 'cv_tailor');
+    }
   } catch (e) {
     clearPendingJob();
   }

@@ -63,6 +63,18 @@ test('multiple independent jobs do not bleed into each other', async () => {
   expect(j2.result.filePath).toBe('output/b.html');
 });
 
+test('createJob defaults kind to cv_tailor', async () => {
+  const id = await createJob();
+  const job = await getJob(id);
+  expect(job.kind).toBe('cv_tailor');
+});
+
+test('createJob stores a custom kind (hr_review)', async () => {
+  const id = await createJob('hr_review');
+  const job = await getJob(id);
+  expect(job.kind).toBe('hr_review');
+});
+
 describe('status polling contract (/job/:id/status)', () => {
   // These verify the data shape that the GET route and the frontend expect.
   test('pending job has null result', async () => {

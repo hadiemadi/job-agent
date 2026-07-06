@@ -38,6 +38,7 @@ const JOBS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS jobs (
   user_id TEXT,
   status TEXT NOT NULL DEFAULT 'pending',
   current_step TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL DEFAULT 'cv_tailor',
   result JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -58,6 +59,8 @@ async function ensureTables(p) {
   await p.query(EVENTS_TABLE_SQL);
   await p.query(ERRORS_TABLE_SQL);
   await p.query(JOBS_TABLE_SQL);
+  // Idempotent column add for existing live DBs that pre-date this commit.
+  await p.query(`ALTER TABLE IF EXISTS jobs ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'cv_tailor'`);
 }
 
 // Returns the shared pool, creating + bootstrapping it on first call. Returns null (and warns

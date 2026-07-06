@@ -5,12 +5,21 @@
 
 **Last updated:** 2026-07-06
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 175/175 green · **origin/main HEAD:** `fe9f6b8` (local: 2 commits ahead, not pushed)
+**Tests:** 177/177 green · **origin/main HEAD:** `fe9f6b8` (local: 3 commits ahead, not pushed)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
 
+- **HR review resume on tab reopen** (local, not yet pushed) — `/review-cv` is now wrapped
+  in the same job-queue pattern as `/rewrite`. Starting an HR review creates a `jobs` row
+  with `kind='hr_review'`; the pipeline runs in background; `GET /job/:id/status` returns
+  `hrReview`/`currentJob`/`gapRecords` when done and re-applies them to the session.
+  Frontend: `savePendingJob` saves `{ kind, cvFileName, jobText, currentJob }`; `resumePendingJob`
+  detects `kind='hr_review'` and re-renders the CV filename display, job description, and
+  the step-2 progress bar before resuming polling; `showChanges` is called on poll success.
+  DB: `jobs.kind` column added (+ idempotent `ALTER TABLE … ADD COLUMN IF NOT EXISTS` for
+  the live Render DB). Tests: 177/177.
 - **background job queue** (local, not yet pushed) — CV-tailoring pipeline now runs in the
   background. `POST /rewrite` creates a `jobs` row and returns `{ jobId }` immediately; the
   pipeline writes progress into the row as it runs. `GET /job/:id/status` returns status +
