@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
+    "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "docx": "^9.7.1",
     "docxtemplater": "^3.69.0",
@@ -39,6 +40,9 @@
     "jsonrepair": "^3.14.0",
     "multer": "^2.1.1",
     "node-fetch": "^3.3.2",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "passport-local": "^1.0.0",
     "pdf2json": "^4.0.3",
     "pg": "^8.22.0",
     "pizzip": "^3.2.0",

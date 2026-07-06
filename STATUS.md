@@ -5,11 +5,60 @@
 
 **Last updated:** 2026-07-06
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 222/222 green · **origin/main HEAD:** `8032bd7`
+**Tests:** 247/247 green · **origin/main HEAD:** `23c9e00`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Phase 2 Part 1 — Backend auth (Google OAuth + email/password) + user schema** —
+  Optional user accounts added on top of the existing anonymous/guest flow, which is
+  fully preserved: users who don't log in continue working exactly as before.
+
+  **DB schema** (5 new tables):
+  - `users` — id, email (unique), google_id (unique), password_hash (bcryptjs, never exposed), created_at
+  - `saved_cvs` — per-user CV store (cv_text, file_ref, label); FK → users
+  - `user_preferences` — key/value (JSONB), unique(user_id, key); FK → users
+  - `conversation_history` — hybrid digest+raw (digest_summary + raw_log JSONB), per-gap
+    relevance fields (gap_topic, relevance_score) designed for #43 Coach long-term memory to
+    slot in; FK → users
+  - `coach_memory` — Coach's per-user long-term learning store, separate from
+    conversation_history so HR long-term memory (#43b) can be added independently; FK → users
+  - `jobs.user_id` — already existed as nullable TEXT; links to users.id for logged-in users
+
+  **Backend auth** (`routes/auth.routes.js`, `core/passport.js`, `services/auth.js`):
+  - POST /auth/register — email/password, bcrypt cost 10, duplicate-email 409, short-password 400
+  - POST /auth/login — passport-local strategy, validates, sets userId in session
+  - GET /auth/google — passport-google-oauth20 redirect
+  - GET /auth/google/callback — completes OAuth, links/creates user, sets userId, redirects to /
+  - POST /auth/logout — clears userId from session (anonymous session and any in-progress
+    work remains; only the login association is removed)
+  - GET /auth/me — returns {user: {id, email}} or {user: null} for guests
+  - Mid-session login: when a user authenticates mid-flow (after uploading CV, during HR review),
+    the existing anonymous session is kept and the userId is added to it — no work is lost
+  - password_hash never included in any API response
+
+  **Tech**: `bcryptjs` (pure-JS, no native deps), `passport`, `passport-local`,
+  `passport-google-oauth20`. Passport used stateless (`session: false`) — our own
+  session store (services/session.js + ALS) handles persistence.
+
+  **No frontend login UI yet** — that's Part 2.
+  Tests: 247/247 (+25: register/login/logout/me/OAuth/hashing/guest-isolation/session-linking).
+
+  **⚠️ Render env vars needed before Google OAuth works** (set via Render dashboard):
+  | Var | What to set |
+  |---|---|
+  | `GOOGLE_CLIENT_ID` | OAuth 2.0 Client ID from console.cloud.google.com |
+  | `GOOGLE_CLIENT_SECRET` | OAuth 2.0 Client Secret |
+  | `GOOGLE_CALLBACK_URL` | `https://jobseeker-rpzr.onrender.com/auth/google/callback` |
+  | `SESSION_SECRET` | Long random string — generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+
+  Steps to create Google OAuth credentials:
+  1. Go to console.cloud.google.com → APIs & Services → Credentials
+  2. Create Project (if needed) → Enable "Google+ API"
+  3. Create Credentials → OAuth 2.0 Client ID → Web application
+  4. Add `https://jobseeker-rpzr.onrender.com/auth/google/callback` as Authorized redirect URI
+  5. Copy Client ID and Secret → paste into Render env vars above
 
 - **ERR-CV-004 session-expiry fix** —
   Root cause: after idle/laptop sleep, `appSession.cvText` could expire, leaving null in the
@@ -138,6 +187,9 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 ---
 
 ## ▶️ Suggested next action
-Deploy and monitor a full pipeline run. If ERR-CV-012 appears in Render logs after a session
-resumes, the fix is working — the old behavior was a 500 crash (ERR-CV-004).
-Also confirm no ERR-RATE-002-POLL-* fires during normal HR review.
+**Phase 2 Part 2 — Frontend login UI.** Add a login/register modal or page (email/password
+form + Google Sign-In button), wire to the new /auth/* routes, show user name/logout in
+the header once logged in.
+
+Before that: set the 4 Render env vars listed above under the auth section so Google OAuth
+is ready when the UI lands.

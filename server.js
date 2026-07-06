@@ -7,10 +7,12 @@ const cookieParser = require('cookie-parser');
 const { sessionMiddleware, requestScope, isOwnedOutputFile, getOutputDownloadName } = require('./services/session');
 const { globalLimiter, aiLimiter, rateLimitLogger } = require('./services/ratelimit');
 const { getSpendToday } = require('./core/claude');
+const passport = require('./core/passport');
 const cvRoutes = require('./routes/cv.routes');
 const jobsRoutes = require('./routes/jobs.routes');
 const hrRoutes = require('./routes/hr.routes');
 const coachRoutes = require('./routes/coach.routes');
+const authRoutes = require('./routes/auth.routes');
 const { sendError } = require('./core/respondError');
 const { logError } = require('./core/logger');
 const { TRIAL_MODE } = require('./core/config');
@@ -50,6 +52,10 @@ app.get('/config.js', (req, res) => {
 
 app.use(cookieParser());
 app.use(sessionMiddleware);
+// Passport: initialize only (no session serialization — we use our own session store in
+// services/session.js). Must come after cookieParser/sessionMiddleware so req.cookies/
+// session are set before any passport.authenticate() call in the auth routes.
+app.use(passport.initialize());
 // Broad, app-wide cap — keyed by the same "sid" cookie as the session itself (see
 // services/ratelimit.js), so it has to run after cookieParser/sessionMiddleware.
 app.use(globalLimiter);
@@ -103,6 +109,9 @@ app.get('/output/:file', (req, res) => {
   }
   res.sendFile(resolved);
 });
+
+// Auth routes — no aiLimiter (they don't call Anthropic). Mounted before the AI routes.
+app.use(authRoutes);
 
 // Stricter cap for the AI- and job-search-heavy routers, mounted ONCE ahead of all four —
 // mounting it separately in front of each router would re-run (and re-count) it on every

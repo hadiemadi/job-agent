@@ -80,6 +80,14 @@ const ERROR_CODES = {
   'ERR-JOB-006': { area: 'JOB', status: 400, kind: 'validation', message: 'Please provide a job URL or paste the job description text.' },
   'ERR-JOB-007': { area: 'JOB', status: 500, kind: 'error', message: 'Reading that job posting failed. Please try again.' },
 
+  // ERR-AUTH-### — user accounts, registration, login (routes/auth.routes.js)
+  'ERR-AUTH-001': { area: 'AUTH', status: 400, kind: 'validation', message: 'Email and password are required.' },
+  'ERR-AUTH-002': { area: 'AUTH', status: 409, kind: 'validation', message: 'An account with that email already exists.' },
+  'ERR-AUTH-003': { area: 'AUTH', status: 400, kind: 'validation', message: 'Password must be at least 8 characters.' },
+  'ERR-AUTH-004': { area: 'AUTH', status: 500, kind: 'error',      message: 'Authentication failed. Please try again.' },
+  'ERR-AUTH-005': { area: 'AUTH', status: 401, kind: 'validation', message: 'Invalid email or password.' },
+  'ERR-AUTH-006': { area: 'AUTH', status: 503, kind: 'error',      message: 'User accounts are not available right now — database is unreachable.' },
+
   // ERR-SYS-### — uncaught / process-level errors that escape a route's own try/catch
   'ERR-SYS-001': { area: 'SYS', status: 500, kind: 'error', message: 'Something unexpected went wrong. Please try again.' },
   'ERR-SYS-002': { area: 'SYS', status: 500, kind: 'error', message: 'An internal error occurred and was logged for review.' },

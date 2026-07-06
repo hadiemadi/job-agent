@@ -29,10 +29,10 @@ const ERRORS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS errors (
 )`;
 
 // Async job table — persists CV-tailoring pipeline state so a tab-close/idle doesn't lose
-// work. user_id is nullable (Phase 2 login placeholder). result holds the full pipeline
-// output (filePath, session data to restore) so the status-poll route can apply it to the
-// correct session when the client comes back. id is a Node-generated UUID (TEXT, not the
-// Postgres uuid type, so no extension needed).
+// work. user_id is nullable (links to users.id for logged-in users; null for guests).
+// result holds the full pipeline output (filePath, session data to restore) so the
+// status-poll route can apply it to the correct session when the client comes back.
+// id is a Node-generated UUID (TEXT, not the Postgres uuid type, so no extension needed).
 const JOBS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS jobs (
   id TEXT PRIMARY KEY,
   user_id TEXT,
@@ -42,6 +42,65 @@ const JOBS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS jobs (
   result JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)`;
+
+// ── Auth / user-account tables ─────────────────────────────────────────────────
+
+const USERS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE,
+  google_id TEXT UNIQUE,
+  password_hash TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)`;
+
+const SAVED_CVS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS saved_cvs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  cv_text TEXT,
+  file_ref TEXT,
+  label TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)`;
+
+const USER_PREFERENCES_TABLE_SQL = `CREATE TABLE IF NOT EXISTS user_preferences (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  value JSONB,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, key)
+)`;
+
+// Hybrid digest+raw conversation store designed so #43 (Coach long-term memory) can slot
+// in without a migration. gap_topic and relevance_score support per-gap and cross-session
+// relevance queries.
+const CONVERSATION_HISTORY_TABLE_SQL = `CREATE TABLE IF NOT EXISTS conversation_history (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  agent TEXT NOT NULL,
+  session_id_hash TEXT,
+  digest_summary TEXT,
+  raw_log JSONB,
+  relevance_score FLOAT NOT NULL DEFAULT 1.0,
+  gap_topic TEXT,
+  last_referenced_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)`;
+
+// Coach's per-user long-term learning store — separate from conversation_history because
+// it evolves over many sessions (the "you mentioned earlier…" callback pattern for #43).
+// HR long-term memory (#43b) is explicitly NOT stored here — use a separate table when
+// that feature is built so the tables stay cleanly separated.
+const COACH_MEMORY_TABLE_SQL = `CREATE TABLE IF NOT EXISTS coach_memory (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  gap_topic TEXT NOT NULL,
+  digest_summary TEXT NOT NULL DEFAULT '',
+  raw_log JSONB,
+  relevance_score FLOAT NOT NULL DEFAULT 1.0,
+  last_referenced_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 )`;
 
 function buildPool(useSsl) {
@@ -61,6 +120,12 @@ async function ensureTables(p) {
   await p.query(JOBS_TABLE_SQL);
   // Idempotent column add for existing live DBs that pre-date this commit.
   await p.query(`ALTER TABLE IF EXISTS jobs ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'cv_tailor'`);
+  // Auth / user-account tables — users must exist before tables that FK into it.
+  await p.query(USERS_TABLE_SQL);
+  await p.query(SAVED_CVS_TABLE_SQL);
+  await p.query(USER_PREFERENCES_TABLE_SQL);
+  await p.query(CONVERSATION_HISTORY_TABLE_SQL);
+  await p.query(COACH_MEMORY_TABLE_SQL);
 }
 
 // Returns the shared pool, creating + bootstrapping it on first call. Returns null (and warns

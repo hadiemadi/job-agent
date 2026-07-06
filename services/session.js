@@ -42,6 +42,9 @@ function createSession() {
     // are genuinely NEW since then, so it only pulls fresh HR input instead of re-stating
     // conversation already baked into the CV.
     lastGenHrCount: 0,
+    // Authenticated user — null for anonymous/guest sessions. Set by /auth/login,
+    // /auth/register, and /auth/google/callback; cleared by /auth/logout.
+    userId: null,
     lastSeen: Date.now(),
   };
 }

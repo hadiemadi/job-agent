@@ -1,0 +1,343 @@
+'use strict';
+
+// Mock services/auth — all functions hit the DB which is not available in tests.
+jest.mock('../services/auth', () => ({
+  createUser:         jest.fn(),
+  findUserByEmail:    jest.fn(),
+  findUserByGoogleId: jest.fn(),
+  findUserById:       jest.fn(),
+  hashPassword:       jest.fn(),
+  verifyPassword:     jest.fn(),
+  setUserPreference:  jest.fn(),
+  getUserPreference:  jest.fn(),
+  saveCv:             jest.fn(),
+  listSavedCvs:       jest.fn(),
+}));
+
+// Mock core/passport — strategies would try to connect to Google / DB in the real impl.
+// Initial factory: handles both the redirect (2-arg) and callback (3-arg) forms.
+// For the 2-arg OAuth-redirect form (used at route-definition time for GET /auth/google),
+// we simulate a redirect so the route doesn't fall through to a 404.
+jest.mock('../core/passport', () => ({
+  initialize: jest.fn(() => (req, res, next) => next()),
+  authenticate: jest.fn((strategy, optsOrCb, callback) => {
+    return (req, res, next) => {
+      const cb = typeof optsOrCb === 'function' ? optsOrCb : callback;
+      if (cb) {
+        cb(null, null, { message: 'not authenticated' });
+      } else {
+        res.redirect('https://accounts.google.com/mock-oauth-redirect');
+      }
+    };
+  }),
+}));
+
+const request = require('supertest');
+const app     = require('../server');
+const {
+  createUser, findUserByEmail, findUserById, hashPassword, verifyPassword,
+} = require('../services/auth');
+const passport = require('../core/passport');
+
+// ── Fixtures ─────────────────────────────────────────────────────────────────
+
+const MOCK_USER = { id: 'usr-001', email: 'hadi@example.com', google_id: null, password_hash: '$2b$10$hashed', created_at: new Date() };
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  // Safe defaults — individual tests override as needed.
+  findUserByEmail.mockResolvedValue(null);
+  findUserById.mockResolvedValue(null);
+  hashPassword.mockResolvedValue('$2b$10$hashed');
+  createUser.mockResolvedValue(MOCK_USER);
+  verifyPassword.mockResolvedValue(false);
+  // Default: authenticate calls callback with null (not authenticated).
+  // When called with 2 args (no callback) — the OAuth redirect form — simulate a redirect
+  // so the route doesn't fall through to a 404.
+  passport.authenticate.mockImplementation((strategy, optsOrCb, callback) => {
+    return (req, res, next) => {
+      const cb = typeof optsOrCb === 'function' ? optsOrCb : callback;
+      if (cb) {
+        cb(null, null, { message: 'not authenticated' });
+      } else {
+        res.redirect('https://accounts.google.com/mock-oauth-redirect');
+      }
+    };
+  });
+});
+
+// ── POST /auth/register ────────────────────────────────────────────────────────
+
+describe('POST /auth/register', () => {
+  test('creates account and returns 201 + user object on valid registration', async () => {
+    const res = await request(app).post('/auth/register').send({ email: 'hadi@example.com', password: 'secret123' });
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('ok', true);
+    expect(res.body.user).toMatchObject({ id: 'usr-001', email: 'hadi@example.com' });
+    expect(createUser).toHaveBeenCalledTimes(1);
+    expect(hashPassword).toHaveBeenCalledWith('secret123');
+  });
+
+  test('returns 400 ERR-AUTH-001 when email is missing', async () => {
+    const res = await request(app).post('/auth/register').send({ password: 'secret123' });
+    expect(res.status).toBe(400);
+    expect(res.body.error_code).toBe('ERR-AUTH-001');
+    expect(res.body.kind).toBe('validation');
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
+  test('returns 400 ERR-AUTH-001 when password is missing', async () => {
+    const res = await request(app).post('/auth/register').send({ email: 'hadi@example.com' });
+    expect(res.status).toBe(400);
+    expect(res.body.error_code).toBe('ERR-AUTH-001');
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
+  test('returns 400 ERR-AUTH-003 when password is shorter than 8 characters', async () => {
+    const res = await request(app).post('/auth/register').send({ email: 'hadi@example.com', password: 'short' });
+    expect(res.status).toBe(400);
+    expect(res.body.error_code).toBe('ERR-AUTH-003');
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
+  test('returns 409 ERR-AUTH-002 when email is already registered', async () => {
+    findUserByEmail.mockResolvedValue(MOCK_USER);
+    const res = await request(app).post('/auth/register').send({ email: 'hadi@example.com', password: 'secret123' });
+    expect(res.status).toBe(409);
+    expect(res.body.error_code).toBe('ERR-AUTH-002');
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
+  test('password_hash is never included in the response body', async () => {
+    const res = await request(app).post('/auth/register').send({ email: 'hadi@example.com', password: 'secret123' });
+    const body = JSON.stringify(res.body);
+    expect(body).not.toContain('password_hash');
+    expect(body).not.toContain('$2b$10$');
+  });
+
+  test('associates the new account with the current anonymous session (userId set)', async () => {
+    const agent = request.agent(app);
+    await agent.post('/auth/register').send({ email: 'hadi@example.com', password: 'secret123' });
+    findUserById.mockResolvedValue(MOCK_USER);
+    const meRes = await agent.get('/auth/me');
+    expect(meRes.body.user).toMatchObject({ id: 'usr-001' });
+  });
+});
+
+// ── POST /auth/login ───────────────────────────────────────────────────────────
+
+describe('POST /auth/login', () => {
+  test('returns 200 + user on valid credentials (passport calls callback with user)', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => {
+      return (req, res, next) => cb(null, MOCK_USER, null);
+    });
+    const res = await request(app).post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('ok', true);
+    expect(res.body.user).toMatchObject({ id: 'usr-001', email: 'hadi@example.com' });
+  });
+
+  test('returns 401 ERR-AUTH-005 when passport returns no user (wrong password)', async () => {
+    // Default mock already returns null user — no override needed.
+    const res = await request(app).post('/auth/login').send({ email: 'hadi@example.com', password: 'wrong' });
+    expect(res.status).toBe(401);
+    expect(res.body.error_code).toBe('ERR-AUTH-005');
+  });
+
+  test('password is not echoed back in the login response', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => {
+      return (req, res, next) => cb(null, MOCK_USER, null);
+    });
+    const res = await request(app).post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+    const body = JSON.stringify(res.body);
+    expect(body).not.toContain('password_hash');
+    expect(body).not.toContain('secret123');
+  });
+
+  test('sets userId in session so /auth/me returns the user after login', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => {
+      return (req, res, next) => cb(null, MOCK_USER, null);
+    });
+    findUserById.mockResolvedValue(MOCK_USER);
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+    const meRes = await agent.get('/auth/me');
+    expect(meRes.body.user).toMatchObject({ id: 'usr-001' });
+  });
+});
+
+// ── Google OAuth ───────────────────────────────────────────────────────────────
+
+describe('Google OAuth', () => {
+  test('GET /auth/google returns a redirect (route is mounted — real OAuth needs Google env vars)', async () => {
+    // The 2-arg form of passport.authenticate is the OAuth redirect form.
+    // The mock simulates the redirect Google would issue.
+    const res = await request(app).get('/auth/google');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain('google');
+  });
+
+  test('GET /auth/google/callback with mocked Google user → sets userId and redirects to /', async () => {
+    const googleUser = { id: 'usr-google-001', email: 'hadi@gmail.com', google_id: 'g-123', created_at: new Date() };
+    passport.authenticate.mockImplementation((strategy, opts, cb) => {
+      return (req, res, next) => {
+        if (strategy === 'google' && typeof cb === 'function') {
+          cb(null, googleUser, null);
+        } else {
+          next();
+        }
+      };
+    });
+    findUserById.mockResolvedValue(googleUser);
+
+    const agent = request.agent(app);
+    const res = await agent.get('/auth/google/callback');
+    // The route sets userId and redirects to /
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/');
+
+    // Verify session has userId set
+    const meRes = await agent.get('/auth/me');
+    expect(meRes.body.user).toMatchObject({ id: 'usr-google-001' });
+  });
+
+  test('GET /auth/google/callback with failed OAuth → redirects to /?auth_error=1', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => {
+      return (req, res, next) => {
+        if (strategy === 'google' && typeof cb === 'function') cb(new Error('OAuth failed'), null, null);
+        else next();
+      };
+    });
+    const res = await request(app).get('/auth/google/callback');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain('auth_error=1');
+  });
+});
+
+// ── POST /auth/logout ──────────────────────────────────────────────────────────
+
+describe('POST /auth/logout', () => {
+  test('clears userId from session — /auth/me returns null after logout', async () => {
+    // Log in first
+    passport.authenticate.mockImplementation((strategy, opts, cb) => {
+      return (req, res, next) => cb(null, MOCK_USER, null);
+    });
+    findUserById.mockResolvedValue(MOCK_USER);
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    // Verify logged in
+    const beforeLogout = await agent.get('/auth/me');
+    expect(beforeLogout.body.user).not.toBeNull();
+
+    // Logout
+    const logoutRes = await agent.post('/auth/logout');
+    expect(logoutRes.status).toBe(200);
+    expect(logoutRes.body).toHaveProperty('ok', true);
+
+    // Verify cleared
+    const afterLogout = await agent.get('/auth/me');
+    expect(afterLogout.body.user).toBeNull();
+  });
+});
+
+// ── GET /auth/me ───────────────────────────────────────────────────────────────
+
+describe('GET /auth/me', () => {
+  test('returns { user: null } for a fresh anonymous/guest session', async () => {
+    const res = await request(app).get('/auth/me');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ user: null });
+  });
+
+  test('returns { user: null } when userId is set but the DB record has been deleted (stale session)', async () => {
+    // Log in to set userId in session
+    passport.authenticate.mockImplementation((strategy, opts, cb) => {
+      return (req, res, next) => cb(null, MOCK_USER, null);
+    });
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    // Simulate account deletion — findUserById now returns null
+    findUserById.mockResolvedValue(null);
+
+    const res = await agent.get('/auth/me');
+    expect(res.body.user).toBeNull();
+  });
+});
+
+// ── Guest flow unaffected ──────────────────────────────────────────────────────
+
+describe('Guest / anonymous flow unaffected by auth routes', () => {
+  test('/healthz still works (no regression from passport middleware)', async () => {
+    const res = await request(app).get('/healthz');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('ok', true);
+  });
+
+  test('anonymous session functions independently — auth routes never touch it', async () => {
+    // A guest agent should not have a userId set just by making non-auth requests.
+    const guestAgent = request.agent(app);
+    await guestAgent.get('/healthz');
+    const meRes = await guestAgent.get('/auth/me');
+    expect(meRes.body.user).toBeNull();
+  });
+
+  test('mid-session login carries the existing anonymous session forward — userId is linked, not replaced', async () => {
+    // Simulate a guest who has been working (they have a session with a sid cookie already).
+    passport.authenticate.mockImplementation((strategy, opts, cb) => {
+      return (req, res, next) => cb(null, MOCK_USER, null);
+    });
+    findUserById.mockResolvedValue(MOCK_USER);
+    const agent = request.agent(app);
+
+    // Make a request to establish a session (healthz gives us a sid cookie).
+    await agent.get('/healthz');
+
+    // Now log in mid-session — should attach userId to the SAME session (same sid cookie).
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const meRes = await agent.get('/auth/me');
+    expect(meRes.body.user).toMatchObject({ id: 'usr-001' });
+  });
+});
+
+// ── Password hashing (services/auth.js unit) ──────────────────────────────────
+// These tests exercise the real bcryptjs logic directly — not the mocked version.
+
+describe('Password hashing (real bcryptjs)', () => {
+  // Re-require the real module by clearing the mock for this describe block.
+  // jest.mock is module-level, so we test the underlying function via direct import.
+  const realAuth = jest.requireActual('../services/auth');
+
+  test('hashPassword returns a bcrypt hash string starting with $2b$', async () => {
+    const hash = await realAuth.hashPassword('mypassword');
+    expect(hash).toMatch(/^\$2b\$10\$/);
+  });
+
+  test('verifyPassword returns true for the correct password', async () => {
+    const hash = await realAuth.hashPassword('mypassword');
+    const valid = await realAuth.verifyPassword('mypassword', hash);
+    expect(valid).toBe(true);
+  });
+
+  test('verifyPassword returns false for the wrong password', async () => {
+    const hash = await realAuth.hashPassword('mypassword');
+    const wrong = await realAuth.verifyPassword('wrongpassword', hash);
+    expect(wrong).toBe(false);
+  });
+
+  test('verifyPassword returns false when hash is null (no password set — Google-only account)', async () => {
+    const result = await realAuth.verifyPassword('any', null);
+    expect(result).toBe(false);
+  });
+
+  test('hashPassword with cost factor 10 produces a different hash each time (salt)', async () => {
+    const h1 = await realAuth.hashPassword('samepassword');
+    const h2 = await realAuth.hashPassword('samepassword');
+    expect(h1).not.toBe(h2); // different salt each call
+    // Both should still verify
+    expect(await realAuth.verifyPassword('samepassword', h1)).toBe(true);
+    expect(await realAuth.verifyPassword('samepassword', h2)).toBe(true);
+  });
+});
