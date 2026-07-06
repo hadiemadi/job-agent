@@ -35,6 +35,7 @@ function createSession() {
     clientPreferences: {
       tone: 4, customInstructions: '', languageLevel: 2, extensiveSearch: false, conventionsResearch: '',
       gapSeverities: ['major'], refreshDiscipline: false, routedInstruction: null, routedInstructionApplied: false,
+      model: null, // null → use the app default MODEL (core/claude.js). Set from user preference via /confirm-contact.
     },
     aiSpendUsd: 0,
     // #29/#31: how many hrDisplayHistory entries existed as of the last FULL CV generation

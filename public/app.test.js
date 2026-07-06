@@ -297,7 +297,7 @@ describe('My Data modal', () => {
     expect(modal.style.display).toBe('none');
   });
 
-  test('header user area contains a My Data button after login', async () => {
+  test('header user area shows email and Sign out button after login (not a My data link)', async () => {
     window.fetch = jest.fn(() => Promise.resolve({
       ok: true,
       json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
@@ -305,7 +305,8 @@ describe('My Data modal', () => {
     loadAppInDom();
     await new Promise(resolve => setTimeout(resolve, 0));
     const userArea = document.getElementById('headerUserArea');
-    expect(userArea.innerHTML).toContain('My data');
+    expect(userArea.innerHTML).toContain('hadi@example.com');
+    expect(userArea.innerHTML).toContain('Sign out');
   });
 
   test('openMyData() shows the modal and fetches /auth/my-data', async () => {
@@ -528,5 +529,272 @@ describe('Auth modal — login/register UI', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(document.getElementById('authModal').style.display).toBe('none');
     expect(document.getElementById('headerUserArea').innerHTML).toContain('hadi@example.com');
+  });
+});
+
+// ── Login/sign-out toggle + workspace panel ──────────────────────────────────
+
+describe('Login/sign-out toggle + workspace panel', () => {
+  beforeEach(() => {
+    document.cookie = 'onboarded=1';
+    window.TRIAL_MODE = false;
+  });
+
+  test('guest path: header shows "Log in" button (not Sign out or email)', async () => {
+    // outer beforeEach has fetch returning { user: null }
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const userArea = document.getElementById('headerUserArea');
+    expect(userArea.innerHTML).toContain('Log in');
+    expect(userArea.innerHTML).not.toContain('Sign out');
+  });
+
+  test('logged-in path: header shows email + Sign out, not "Log in"', async () => {
+    window.fetch = jest.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
+    }));
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const userArea = document.getElementById('headerUserArea');
+    expect(userArea.innerHTML).toContain('Sign out');
+    expect(userArea.innerHTML).toContain('hadi@example.com');
+    expect(userArea.innerHTML).not.toContain('Log in');
+  });
+
+  test('after logout(), header reverts to Log in button', async () => {
+    window.fetch = jest.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
+    }));
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    window.fetch = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }));
+    await window.logout();
+    const userArea = document.getElementById('headerUserArea');
+    expect(userArea.innerHTML).toContain('Log in');
+    expect(userArea.innerHTML).not.toContain('Sign out');
+    expect(userArea.innerHTML).not.toContain('hadi@example.com');
+  });
+
+  test('#loggedInPanel is hidden for guests', async () => {
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(document.getElementById('loggedInPanel').style.display).toBe('none');
+  });
+
+  test('#loggedInPanel is shown after login', async () => {
+    window.fetch = jest.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
+    }));
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(document.getElementById('loggedInPanel').style.display).not.toBe('none');
+  });
+
+  test('#loggedInPanel is hidden again after logout', async () => {
+    window.fetch = jest.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
+    }));
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(document.getElementById('loggedInPanel').style.display).not.toBe('none');
+
+    window.fetch = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }));
+    await window.logout();
+    expect(document.getElementById('loggedInPanel').style.display).toBe('none');
+  });
+
+  test('workspace panel contains the 3 section buttons', async () => {
+    window.fetch = jest.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
+    }));
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const panel = document.getElementById('loggedInPanel');
+    expect(panel.innerHTML).toContain('Previous CV');
+    expect(panel.innerHTML).toContain('Coach conversations');
+    expect(panel.innerHTML).toContain('Discipline');
+  });
+});
+
+// ── Pre-fill — loadPrefillData ────────────────────────────────────────────────
+
+describe('Pre-fill — loadPrefillData', () => {
+  beforeEach(() => {
+    document.cookie = 'onboarded=1';
+    window.TRIAL_MODE = false;
+  });
+
+  test('pre-fills job textarea when lastJobText is present and textarea is empty', async () => {
+    window.fetch = jest.fn(url => {
+      if (url === '/auth/me') return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
+      });
+      if (url === '/auth/prefill') return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ preferredModel: 'claude-sonnet-5', lastJobText: 'Senior TPM at Qualcomm', latestCv: null }),
+      });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(document.getElementById('jobText').value).toBe('Senior TPM at Qualcomm');
+  });
+
+  test('does NOT overwrite textarea when it already has user-typed text', async () => {
+    window.fetch = jest.fn(url => {
+      if (url === '/auth/me') return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
+      });
+      if (url === '/auth/prefill') return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ preferredModel: 'claude-sonnet-5', lastJobText: 'Saved job text', latestCv: null }),
+      });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+    loadAppInDom();
+    // Simulate user having typed something before auth resolves
+    document.getElementById('jobText').value = 'Already typed job text';
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(document.getElementById('jobText').value).toBe('Already typed job text');
+  });
+
+  test('leaves textarea empty when lastJobText is null', async () => {
+    window.fetch = jest.fn(url => {
+      if (url === '/auth/me') return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
+      });
+      if (url === '/auth/prefill') return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ preferredModel: 'claude-sonnet-5', lastJobText: null, latestCv: null }),
+      });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(document.getElementById('jobText').value).toBe('');
+  });
+});
+
+// ── Cost estimator — calcCostEstimate ────────────────────────────────────────
+
+describe('Cost estimator — calcCostEstimate', () => {
+  beforeEach(() => {
+    document.cookie = 'onboarded=1';
+    window.TRIAL_MODE = false;
+    loadAppInDom();
+  });
+
+  test('returns a positive number for haiku with no job text', () => {
+    // 1500 + 0 + 300 = 1800 per step; 4 steps = 7200 input; 600*4 = 2400 output
+    // rawCost = (7200/1e6)*1 + (2400/1e6)*5 = 0.0072 + 0.012 = 0.0192; *1.2 = 0.02304
+    const cost = window.calcCostEstimate('claude-haiku-4-5', 0);
+    expect(typeof cost).toBe('number');
+    expect(cost).toBeCloseTo(0.02304, 4);
+  });
+
+  test('opus costs more than haiku for the same job text length', () => {
+    const haiku = window.calcCostEstimate('claude-haiku-4-5', 1000);
+    const opus  = window.calcCostEstimate('claude-opus-4-8',  1000);
+    expect(opus).toBeGreaterThan(haiku);
+  });
+
+  test('returns null for an unknown model id', () => {
+    expect(window.calcCostEstimate('claude-unknown-99', 0)).toBeNull();
+  });
+
+  test('longer job text produces a higher cost estimate', () => {
+    const short = window.calcCostEstimate('claude-sonnet-5', 0);
+    const long  = window.calcCostEstimate('claude-sonnet-5', 5000);
+    expect(long).toBeGreaterThan(short);
+  });
+
+  test('fable is the most expensive option (inputPer1M=$10, outputPer1M=$50)', () => {
+    const fable  = window.calcCostEstimate('claude-fable-5',   0);
+    const haiku  = window.calcCostEstimate('claude-haiku-4-5', 0);
+    expect(fable).toBeGreaterThan(haiku);
+  });
+});
+
+// ── Model picker — initModelPicker ────────────────────────────────────────────
+
+describe('Model picker — initModelPicker', () => {
+  beforeEach(() => {
+    document.cookie = 'onboarded=1';
+    window.TRIAL_MODE = false;
+    window.fetch = jest.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
+    }));
+    loadAppInDom();
+  });
+
+  test('renders 4 model option cards in #modelOptions', async () => {
+    window.fetch = jest.fn(url => {
+      if (url === '/auth/me') return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
+      });
+      if (url === '/auth/prefill') return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ preferredModel: 'claude-sonnet-5', lastJobText: null, latestCv: null }),
+      });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const opts = document.querySelectorAll('.model-option');
+    expect(opts.length).toBe(4);
+  });
+
+  test('the specified preferred model has the "selected" class', async () => {
+    window.initModelPicker('claude-opus-4-8');
+    const selected = document.querySelector('.model-option.selected');
+    expect(selected).not.toBeNull();
+    expect(selected.id).toBe('model-opt-claude-opus-4-8');
+  });
+
+  test('defaults to claude-sonnet-5 when null is passed', async () => {
+    window.initModelPicker(null);
+    const selected = document.querySelector('.model-option.selected');
+    expect(selected).not.toBeNull();
+    expect(selected.id).toBe('model-opt-claude-sonnet-5');
+  });
+
+  test('selectModel() changes the selected class to the new model', async () => {
+    window.initModelPicker('claude-sonnet-5');
+    window.fetch = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }));
+    await window.selectModel('claude-haiku-4-5');
+    const selected = document.querySelector('.model-option.selected');
+    expect(selected).not.toBeNull();
+    expect(selected.id).toBe('model-opt-claude-haiku-4-5');
+  });
+
+  test('selectModel() posts to /auth/preferences with the model id', async () => {
+    window.initModelPicker('claude-sonnet-5');
+    const postFetch = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }));
+    window.fetch = postFetch;
+    await window.selectModel('claude-fable-5');
+    expect(postFetch).toHaveBeenCalledWith('/auth/preferences', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ key: 'preferred_model', value: 'claude-fable-5' }),
+    }));
+  });
+
+  test('cost cells are populated with Estimated cost text', async () => {
+    window.initModelPicker('claude-sonnet-5');
+    const costCells = document.querySelectorAll('.model-opt-cost');
+    expect(costCells.length).toBe(4);
+    costCells.forEach(cell => {
+      expect(cell.textContent).toContain('Estimated cost');
+    });
   });
 });

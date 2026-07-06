@@ -109,21 +109,41 @@ async function submitAuth() {
 // and on page load when the session is already authenticated.
 function showAuthUser(user) {
   const userArea = el('headerUserArea');
-  if (!userArea) return;
-  userArea.innerHTML =
-    '<span class="header-user-email">' + escapeHtml(user.email) + '</span>' +
-    '<button class="link-btn header-mydata-btn" onclick="openMyData()">My data</button>' +
-    '<button class="link-btn header-logout-btn" onclick="logout()">Sign out</button>';
+  if (userArea) {
+    userArea.innerHTML =
+      '<span class="header-user-email">' + escapeHtml(user.email) + '</span>' +
+      '<button class="link-btn header-logout-btn" onclick="logout()">Sign out</button>';
+  }
+  // Show the logged-in workspace panel with account info
+  const panel = el('loggedInPanel');
+  if (panel) {
+    const accountInfo = el('workspaceAccountInfo');
+    if (accountInfo) {
+      accountInfo.innerHTML =
+        '<span class="ws-account-email">' + escapeHtml(user.email) + '</span>';
+    }
+    panel.style.display = '';
+  }
   updateConsentText(true);
+  loadPrefillData();
 }
 
 async function logout() {
   try { await fetch('/auth/logout', { method: 'POST' }); } catch (e) { /* best-effort */ }
   const userArea = el('headerUserArea');
-  if (userArea) userArea.innerHTML = '';
+  if (userArea) {
+    userArea.innerHTML =
+      '<button class="link-btn header-login-btn" onclick="openAuthModal()">Log in</button>';
+  }
+  // Hide the workspace panel — it's only for authenticated users.
+  const panel = el('loggedInPanel');
+  if (panel) panel.style.display = 'none';
   updateConsentText(false);
-  // Remove the dismissed flag so the modal reappears — user may want to log in as someone else.
   sessionStorage.removeItem(AUTH_MODAL_DISMISSED_KEY);
+  show('authModal');
+}
+
+function openAuthModal() {
   show('authModal');
 }
 
@@ -157,6 +177,12 @@ function updateConsentText(isLoggedIn) {
       return; // already authenticated — no modal needed
     }
   } catch (e) { /* offline or error — treat as guest */ }
+  // Guest: show the "Log in" toggle button in the header so there's always a way back.
+  const userArea = el('headerUserArea');
+  if (userArea) {
+    userArea.innerHTML =
+      '<button class="link-btn header-login-btn" onclick="openAuthModal()">Log in</button>';
+  }
   updateConsentText(false);
   if (!sessionStorage.getItem(AUTH_MODAL_DISMISSED_KEY)) {
     show('authModal');
@@ -165,7 +191,14 @@ function updateConsentText(isLoggedIn) {
 
 // ── My Data modal ──────────────────────────────────────────────────────────────
 
-async function openMyData() {
+// section is optional: undefined → all sections, 'cv' | 'coach' | 'discipline' → filtered view.
+async function openMyData(section) {
+  const SECTION_TITLES = { cv: 'Previous CV & Job Info', coach: 'Coach Conversations', discipline: 'Discipline & HR Notes' };
+  const modal = el('myDataModal');
+  if (modal) {
+    const titleEl = modal.querySelector('h2');
+    if (titleEl) titleEl.textContent = section ? (SECTION_TITLES[section] || 'My Data') : 'My Data';
+  }
   show('myDataModal');
   const content = el('myDataContent');
   content.innerHTML = '<div class="my-data-loading">Loading…</div>';
@@ -176,82 +209,100 @@ async function openMyData() {
       return;
     }
     const data = await res.json();
-    renderMyData(data);
+    renderMyData(data, section);
   } catch (e) {
     content.innerHTML = '<p class="my-data-empty">Could not load your data. Please try again.</p>';
   }
+}
+
+// Opens the My Data modal filtered to the given section — called by workspace panel buttons.
+function openSection(section) {
+  openMyData(section);
 }
 
 function closeMyData() {
   hide('myDataModal');
 }
 
-function renderMyData(data) {
+// section optional: undefined → all sections, 'cv' | 'coach' | 'discipline' → filtered view.
+function renderMyData(data, section) {
   const content = el('myDataContent');
   const fmt = (iso) => {
     try { return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
     catch (e) { return iso || '—'; }
   };
 
-  // Account section
-  let html = '<div class="my-data-section">';
-  html += '<div class="my-data-section-title">Account</div>';
-  html += '<div class="my-data-row"><span class="my-data-key">Email</span><span>' + escapeHtml(data.account.email || '—') + '</span></div>';
-  html += '<div class="my-data-row"><span class="my-data-key">Member since</span><span>' + fmt(data.account.created_at) + '</span></div>';
-  html += '</div>';
+  let html = '';
 
-  // Saved CVs section
-  html += '<div class="my-data-section">';
-  html += '<div class="my-data-section-title">Saved CVs <span class="my-data-count">(' + (data.savedCvs.length) + ')</span></div>';
-  if (data.savedCvs.length === 0) {
-    html += '<p class="my-data-empty">None yet.</p>';
-  } else {
-    data.savedCvs.forEach(cv => {
-      html += '<div class="my-data-cv-row" id="cv-row-' + escapeHtml(cv.id) + '">';
-      html += '<span class="my-data-cv-label">' + escapeHtml(cv.label || 'Untitled CV') + '</span>';
-      html += '<span class="my-data-cv-date">' + fmt(cv.created_at) + '</span>';
-      html += '<button class="link-btn my-data-delete-btn" onclick="deleteMyCV(\'' + escapeHtml(cv.id) + '\')">Delete</button>';
-      html += '</div>';
-    });
+  // Account — only in full view (no section), it's identity not history
+  if (!section) {
+    html += '<div class="my-data-section">';
+    html += '<div class="my-data-section-title">Account</div>';
+    html += '<div class="my-data-row"><span class="my-data-key">Email</span><span>' + escapeHtml(data.account.email || '—') + '</span></div>';
+    html += '<div class="my-data-row"><span class="my-data-key">Member since</span><span>' + fmt(data.account.created_at) + '</span></div>';
+    html += '</div>';
   }
-  html += '</div>';
 
-  // Career Coach history
-  html += '<div class="my-data-section">';
-  html += '<div class="my-data-section-title">Career Coach History <span class="my-data-count">(' + (data.coachMemory.length) + ')</span></div>';
-  if (data.coachMemory.length === 0) {
-    html += '<p class="my-data-empty">None yet.</p>';
-  } else {
-    data.coachMemory.forEach(entry => {
-      html += '<div class="my-data-history-row">';
-      html += '<span class="my-data-topic">' + escapeHtml(entry.gap_topic || '—') + '</span>';
-      if (entry.digest_summary) html += '<span class="my-data-digest">' + escapeHtml(entry.digest_summary) + '</span>';
-      html += '</div>';
-    });
+  // Saved CVs — full view or 'cv' section
+  if (!section || section === 'cv') {
+    html += '<div class="my-data-section">';
+    html += '<div class="my-data-section-title">Saved CVs <span class="my-data-count">(' + (data.savedCvs.length) + ')</span></div>';
+    if (data.savedCvs.length === 0) {
+      html += '<p class="my-data-empty">None yet.</p>';
+    } else {
+      data.savedCvs.forEach(cv => {
+        html += '<div class="my-data-cv-row" id="cv-row-' + escapeHtml(cv.id) + '">';
+        html += '<span class="my-data-cv-label">' + escapeHtml(cv.label || 'Untitled CV') + '</span>';
+        html += '<span class="my-data-cv-date">' + fmt(cv.created_at) + '</span>';
+        html += '<button class="link-btn my-data-delete-btn" onclick="deleteMyCV(\'' + escapeHtml(cv.id) + '\')">Delete</button>';
+        html += '</div>';
+      });
+    }
+    html += '</div>';
   }
-  html += '</div>';
 
-  // HR conversations
-  const hrHistory = (data.conversationHistory || []).filter(e => e.agent === 'hr' || !e.agent);
-  html += '<div class="my-data-section">';
-  html += '<div class="my-data-section-title">HR Conversations <span class="my-data-count">(' + hrHistory.length + ')</span></div>';
-  if (hrHistory.length === 0) {
-    html += '<p class="my-data-empty">None yet.</p>';
-  } else {
-    hrHistory.forEach(entry => {
-      html += '<div class="my-data-history-row">';
-      if (entry.gap_topic) html += '<span class="my-data-topic">' + escapeHtml(entry.gap_topic) + '</span>';
-      if (entry.digest_summary) html += '<span class="my-data-digest">' + escapeHtml(entry.digest_summary) + '</span>';
-      html += '</div>';
-    });
+  // Career Coach history — full view or 'coach' section
+  if (!section || section === 'coach') {
+    html += '<div class="my-data-section">';
+    html += '<div class="my-data-section-title">Career Coach History <span class="my-data-count">(' + (data.coachMemory.length) + ')</span></div>';
+    if (data.coachMemory.length === 0) {
+      html += '<p class="my-data-empty">None yet.</p>';
+    } else {
+      data.coachMemory.forEach(entry => {
+        html += '<div class="my-data-history-row">';
+        html += '<span class="my-data-topic">' + escapeHtml(entry.gap_topic || '—') + '</span>';
+        if (entry.digest_summary) html += '<span class="my-data-digest">' + escapeHtml(entry.digest_summary) + '</span>';
+        html += '</div>';
+      });
+    }
+    html += '</div>';
   }
-  html += '</div>';
 
-  // Discipline data
-  html += '<div class="my-data-section">';
-  html += '<div class="my-data-section-title">Skills &amp; Discipline Data</div>';
-  html += '<p class="my-data-empty">None yet.</p>';
-  html += '</div>';
+  // HR conversations — full view, 'coach' section, or 'discipline' section
+  if (!section || section === 'coach' || section === 'discipline') {
+    const hrHistory = (data.conversationHistory || []).filter(e => e.agent === 'hr' || !e.agent);
+    html += '<div class="my-data-section">';
+    html += '<div class="my-data-section-title">HR Conversations <span class="my-data-count">(' + hrHistory.length + ')</span></div>';
+    if (hrHistory.length === 0) {
+      html += '<p class="my-data-empty">None yet.</p>';
+    } else {
+      hrHistory.forEach(entry => {
+        html += '<div class="my-data-history-row">';
+        if (entry.gap_topic) html += '<span class="my-data-topic">' + escapeHtml(entry.gap_topic) + '</span>';
+        if (entry.digest_summary) html += '<span class="my-data-digest">' + escapeHtml(entry.digest_summary) + '</span>';
+        html += '</div>';
+      });
+    }
+    html += '</div>';
+  }
+
+  // Discipline data — full view or 'discipline' section
+  if (!section || section === 'discipline') {
+    html += '<div class="my-data-section">';
+    html += '<div class="my-data-section-title">Skills &amp; Discipline Data</div>';
+    html += '<p class="my-data-empty">None yet.</p>';
+    html += '</div>';
+  }
 
   content.innerHTML = html;
 }
@@ -268,7 +319,111 @@ async function deleteMyCV(cvId) {
   }
 }
 
-// Prevents the ERR-HR-001/ERR-CV-001 nudge from firing in the first place (build.txt) — the
+// ── Model picker + cost estimator (logged-in users only) ──────────────────────
+
+const MODEL_OPTIONS = [
+  { id: 'claude-fable-5',   label: 'Fable 5',   desc: 'Highest accuracy, best for complex tailoring decisions', inputPer1M: 10, outputPer1M: 50  },
+  { id: 'claude-opus-4-8',  label: 'Opus 4.8',  desc: 'Strong reasoning, faster than Fable',                   inputPer1M: 5,  outputPer1M: 25  },
+  { id: 'claude-sonnet-5',  label: 'Sonnet 5',  desc: 'Best balance of speed, quality, and cost',              inputPer1M: 2,  outputPer1M: 10  },
+  { id: 'claude-haiku-4-5', label: 'Haiku 4.5', desc: 'Fastest, most economical',                              inputPer1M: 1,  outputPer1M: 5   },
+];
+
+// Fixed pipeline assumptions for cost estimate: 4 pipeline steps (read CV, parse job,
+// HR review, tailor), average CV ≈ 1500 tokens, 300 overhead tokens per step, output ≈ 600
+// tokens per step. All estimates include a 20% buffer for retries, system prompts, etc.
+const _COST_CV_TOKENS = 1500;
+const _COST_OVERHEAD_TOKENS = 300;
+const _COST_OUTPUT_TOKENS = 600;
+const _COST_PIPELINE_STEPS = 4;
+const _COST_BUFFER = 1.2;
+
+let _selectedModel = 'claude-sonnet-5';
+
+function calcCostEstimate(modelId, jobTextLength) {
+  const m = MODEL_OPTIONS.find(o => o.id === modelId);
+  if (!m) return null;
+  const jobTokens = Math.ceil((jobTextLength || 0) / 4);
+  const inputPerStep = _COST_CV_TOKENS + jobTokens + _COST_OVERHEAD_TOKENS;
+  const totalInput  = inputPerStep * _COST_PIPELINE_STEPS;
+  const totalOutput = _COST_OUTPUT_TOKENS * _COST_PIPELINE_STEPS;
+  const rawCost = (totalInput / 1e6) * m.inputPer1M + (totalOutput / 1e6) * m.outputPer1M;
+  return rawCost * _COST_BUFFER;
+}
+
+function formatCostEstimate(cost) {
+  if (cost === null || cost === undefined) return '';
+  if (cost < 0.005) return '< $0.01';
+  return '$' + cost.toFixed(2);
+}
+
+function initModelPicker(preferredModel) {
+  _selectedModel = preferredModel || 'claude-sonnet-5';
+  const container = el('modelOptions');
+  if (!container) return;
+  container.innerHTML = MODEL_OPTIONS.map(m => {
+    const safeId = m.id.replace(/[^a-zA-Z0-9]/g, '-');
+    const isDefault = m.id === 'claude-sonnet-5';
+    return '<div class="model-option' + (m.id === _selectedModel ? ' selected' : '') + '"' +
+      ' id="model-opt-' + safeId + '"' +
+      ' onclick="selectModel(\'' + m.id + '\')">' +
+      '<div class="model-opt-header">' +
+        '<span class="model-opt-label">' + escapeHtml(m.label) + (isDefault ? ' <span class="model-opt-default">(default)</span>' : '') + '</span>' +
+        '<span class="model-opt-cost" id="cost-' + safeId + '"></span>' +
+      '</div>' +
+      '<span class="model-opt-desc">' + escapeHtml(m.desc) + '</span>' +
+      '</div>';
+  }).join('');
+  updateCostEstimate();
+}
+
+function updateCostEstimate() {
+  const jobText = el('jobText') ? el('jobText').value : '';
+  MODEL_OPTIONS.forEach(m => {
+    const safeId = m.id.replace(/[^a-zA-Z0-9]/g, '-');
+    const costEl = el('cost-' + safeId);
+    if (!costEl) return;
+    const cost = calcCostEstimate(m.id, jobText.length);
+    costEl.textContent = 'Estimated cost: ~' + formatCostEstimate(cost);
+  });
+}
+
+async function selectModel(modelId) {
+  _selectedModel = modelId;
+  document.querySelectorAll('.model-option').forEach(o => o.classList.remove('selected'));
+  const safeId = modelId.replace(/[^a-zA-Z0-9]/g, '-');
+  const optEl = el('model-opt-' + safeId);
+  if (optEl) optEl.classList.add('selected');
+  try {
+    await fetch('/auth/preferences', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'preferred_model', value: modelId }),
+    });
+  } catch (e) { /* best-effort — model is still set in _selectedModel for this session */ }
+}
+
+// Loads the user's saved preferences and pre-fills the form for returning users.
+// Called by showAuthUser() so it runs after every login (including page-load auth check).
+async function loadPrefillData() {
+  try {
+    const res = await fetch('/auth/prefill');
+    if (!res.ok) return;
+    const data = await res.json();
+    // Pre-fill job text only when the textarea is still empty (don't overwrite something typed)
+    if (data.lastJobText && el('jobText') && !el('jobText').value.trim()) {
+      el('jobText').value = data.lastJobText;
+    }
+    initModelPicker(data.preferredModel || 'claude-sonnet-5');
+  } catch (e) { /* best-effort — non-fatal */ }
+}
+
+// Re-calculate cost whenever the user edits the job text (logged-in panel shown).
+(function wireJobTextCostUpdate() {
+  const jt = el('jobText');
+  if (jt) jt.addEventListener('input', updateCostEstimate);
+})();
+
+// ── Prevents the ERR-HR-001/ERR-CV-001 nudge from firing in the first place (build.txt) — the
 // button starts disabled (see index.html) and only enables once a CV file is actually chosen,
 // with a tooltip explaining why while disabled. The validation popup stays as a rare fallback
 // (e.g. session/cookie loss between steps) rather than the normal path.
@@ -615,6 +770,7 @@ async function confirmContact() {
     extensiveSearch: el('ci-extensive-search').checked,
     refreshDiscipline: el('ci-refresh-discipline').checked,
     gapSeverities: gapSeverities.length ? gapSeverities : ['major'],
+    model: _selectedModel,
   };
   hide('contactStatus');
   try {

@@ -1,6 +1,6 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { extractJSON } = require('./json');
-const { addSessionSpend } = require('../services/session');
+const { addSessionSpend, getSession } = require('../services/session');
 const { taggedError } = require('./errorCodes');
 const { logEvent } = require('./logger');
 
@@ -78,8 +78,17 @@ const rawMessagesCreate = client.messages.create.bind(client.messages);
 
 async function meteredCreate(params) {
   checkBudget();
-  const response = await rawMessagesCreate(params);
-  recordUsage(response.usage, params.model);
+  // Per-session model override: if clientPreferences.model is set (model picker), use it.
+  // Wrapped in try/catch so missing ALS context (startup, tests without session) is silent.
+  let effectiveParams = params;
+  try {
+    const sess = getSession();
+    if (sess && sess.clientPreferences && sess.clientPreferences.model) {
+      effectiveParams = { ...params, model: sess.clientPreferences.model };
+    }
+  } catch (e) { /* no session context — use params.model */ }
+  const response = await rawMessagesCreate(effectiveParams);
+  recordUsage(response.usage, effectiveParams.model);
   return response;
 }
 

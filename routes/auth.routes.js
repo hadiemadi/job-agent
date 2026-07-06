@@ -5,6 +5,7 @@ const { getSession, purgeSessionData } = require('../services/session');
 const {
   createUser, findUserByEmail, findUserById, hashPassword,
   listSavedCvs, deleteSavedCv, listConversationHistory, listCoachMemory,
+  setUserPreference, getUserPreference, getLatestSavedCv,
 } = require('../services/auth');
 const { sendError } = require('../core/respondError');
 const { logEvent } = require('../core/logger');
@@ -130,6 +131,50 @@ router.delete('/auth/saved-cvs/:id', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     sendError(res, '/auth/saved-cvs/:id', 'ERR-AUTH-004', err);
+  }
+});
+
+// ── GET /auth/prefill — return saved preferences for pre-filling the form ────────
+// Returns preferredModel (string), lastJobText (string|null), latestCv ({id,label,created_at}|null).
+// 401 for guests — only meaningful for authenticated users.
+router.get('/auth/prefill', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.userId) return sendError(res, '/auth/prefill', 'ERR-AUTH-007');
+
+    const user = await findUserById(appSession.userId);
+    if (!user) { appSession.userId = null; return sendError(res, '/auth/prefill', 'ERR-AUTH-007'); }
+
+    const [preferredModel, lastJobText, latestCv] = await Promise.all([
+      getUserPreference(appSession.userId, 'preferred_model'),
+      getUserPreference(appSession.userId, 'last_job_text'),
+      getLatestSavedCv(appSession.userId),
+    ]);
+
+    res.json({
+      preferredModel: preferredModel || 'claude-sonnet-5',
+      lastJobText: lastJobText || null,
+      latestCv: latestCv || null,
+    });
+  } catch (err) {
+    sendError(res, '/auth/prefill', 'ERR-AUTH-004', err);
+  }
+});
+
+// ── POST /auth/preferences — save a single user preference key/value ─────────────
+// Used by the model picker and other per-user settings. Persists to user_preferences table.
+router.post('/auth/preferences', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.userId) return sendError(res, '/auth/preferences', 'ERR-AUTH-007');
+
+    const { key, value } = req.body || {};
+    if (!key) return sendError(res, '/auth/preferences', 'ERR-AUTH-001');
+
+    await setUserPreference(appSession.userId, key, value);
+    res.json({ ok: true });
+  } catch (err) {
+    sendError(res, '/auth/preferences', 'ERR-AUTH-004', err);
   }
 });
 

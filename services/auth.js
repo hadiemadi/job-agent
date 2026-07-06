@@ -143,10 +143,21 @@ async function listCoachMemory(userId) {
   return rows;
 }
 
+async function getLatestSavedCv(userId) {
+  const pool = getPool();
+  if (!pool) return null;
+  const { rows } = await pool.query(
+    'SELECT id, label, created_at FROM saved_cvs WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+    [userId]
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   createUser, findUserByEmail, findUserByGoogleId, findUserById,
   hashPassword, verifyPassword,
   setUserPreference, getUserPreference,
   saveCv, listSavedCvs, deleteSavedCv,
   listConversationHistory, listCoachMemory,
+  getLatestSavedCv,
 };

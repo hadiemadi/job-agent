@@ -15,6 +15,7 @@ jest.mock('../services/auth', () => ({
   deleteSavedCv:           jest.fn(),
   listConversationHistory: jest.fn(),
   listCoachMemory:         jest.fn(),
+  getLatestSavedCv:        jest.fn(),
 }));
 
 // Mock core/passport — strategies would try to connect to Google / DB in the real impl.
@@ -40,6 +41,7 @@ const app     = require('../server');
 const {
   createUser, findUserByEmail, findUserById, hashPassword, verifyPassword,
   listSavedCvs, deleteSavedCv, listConversationHistory, listCoachMemory,
+  setUserPreference, getUserPreference, getLatestSavedCv,
 } = require('../services/auth');
 const passport = require('../core/passport');
 
@@ -59,6 +61,9 @@ beforeEach(() => {
   deleteSavedCv.mockResolvedValue(true);
   listConversationHistory.mockResolvedValue([]);
   listCoachMemory.mockResolvedValue([]);
+  setUserPreference.mockResolvedValue(undefined);
+  getUserPreference.mockResolvedValue(null);
+  getLatestSavedCv.mockResolvedValue(null);
   // Default: authenticate calls callback with null (not authenticated).
   // When called with 2 args (no callback) — the OAuth redirect form — simulate a redirect
   // so the route doesn't fall through to a 404.
@@ -440,6 +445,125 @@ describe('Guest / anonymous flow unaffected by auth routes', () => {
 
     const meRes = await agent.get('/auth/me');
     expect(meRes.body.user).toMatchObject({ id: 'usr-001' });
+  });
+});
+
+// ── GET /auth/prefill ──────────────────────────────────────────────────────────
+
+describe('GET /auth/prefill', () => {
+  test('returns 401 ERR-AUTH-007 for a guest (unauthenticated) session', async () => {
+    const res = await request(app).get('/auth/prefill');
+    expect(res.status).toBe(401);
+    expect(res.body.error_code).toBe('ERR-AUTH-007');
+  });
+
+  test('returns defaults when user has no saved preferences', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    findUserById.mockResolvedValue(MOCK_USER);
+    // getUserPreference returns null → defaults kick in
+    getUserPreference.mockResolvedValue(null);
+    getLatestSavedCv.mockResolvedValue(null);
+
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.get('/auth/prefill');
+    expect(res.status).toBe(200);
+    expect(res.body.preferredModel).toBe('claude-sonnet-5');
+    expect(res.body.lastJobText).toBeNull();
+    expect(res.body.latestCv).toBeNull();
+  });
+
+  test('returns saved preferredModel when the user has set one', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    findUserById.mockResolvedValue(MOCK_USER);
+    getUserPreference.mockImplementation((userId, key) =>
+      Promise.resolve(key === 'preferred_model' ? 'claude-opus-4-8' : null)
+    );
+    getLatestSavedCv.mockResolvedValue(null);
+
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.get('/auth/prefill');
+    expect(res.status).toBe(200);
+    expect(res.body.preferredModel).toBe('claude-opus-4-8');
+  });
+
+  test('returns lastJobText when saved', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    findUserById.mockResolvedValue(MOCK_USER);
+    getUserPreference.mockImplementation((userId, key) =>
+      Promise.resolve(key === 'last_job_text' ? 'Senior TPM at Qualcomm — 5 years RF experience required' : null)
+    );
+    getLatestSavedCv.mockResolvedValue(null);
+
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.get('/auth/prefill');
+    expect(res.status).toBe(200);
+    expect(res.body.lastJobText).toBe('Senior TPM at Qualcomm — 5 years RF experience required');
+  });
+
+  test('returns latestCv when the user has a saved CV', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    findUserById.mockResolvedValue(MOCK_USER);
+    getUserPreference.mockResolvedValue(null);
+    getLatestSavedCv.mockResolvedValue({ id: 'cv-001', label: 'RF TPM CV', created_at: new Date() });
+
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.get('/auth/prefill');
+    expect(res.status).toBe(200);
+    expect(res.body.latestCv).toMatchObject({ id: 'cv-001', label: 'RF TPM CV' });
+  });
+});
+
+// ── POST /auth/preferences ─────────────────────────────────────────────────────
+
+describe('POST /auth/preferences', () => {
+  test('returns 401 ERR-AUTH-007 for a guest', async () => {
+    const res = await request(app).post('/auth/preferences').send({ key: 'preferred_model', value: 'claude-opus-4-8' });
+    expect(res.status).toBe(401);
+    expect(res.body.error_code).toBe('ERR-AUTH-007');
+    expect(setUserPreference).not.toHaveBeenCalled();
+  });
+
+  test('returns 400 ERR-AUTH-001 when key is missing', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.post('/auth/preferences').send({ value: 'claude-opus-4-8' });
+    expect(res.status).toBe(400);
+    expect(res.body.error_code).toBe('ERR-AUTH-001');
+    expect(setUserPreference).not.toHaveBeenCalled();
+  });
+
+  test('returns 200 ok:true and calls setUserPreference for a logged-in user', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.post('/auth/preferences').send({ key: 'preferred_model', value: 'claude-opus-4-8' });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('ok', true);
+    expect(setUserPreference).toHaveBeenCalledWith('usr-001', 'preferred_model', 'claude-opus-4-8');
+  });
+
+  test('persists the preference — /auth/prefill returns the updated value', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    findUserById.mockResolvedValue(MOCK_USER);
+    getUserPreference.mockResolvedValue('claude-haiku-4-5');
+    getLatestSavedCv.mockResolvedValue(null);
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    await agent.post('/auth/preferences').send({ key: 'preferred_model', value: 'claude-haiku-4-5' });
+    const prefillRes = await agent.get('/auth/prefill');
+    expect(prefillRes.body.preferredModel).toBe('claude-haiku-4-5');
   });
 });
 

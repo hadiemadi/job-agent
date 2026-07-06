@@ -7,6 +7,7 @@ const { getSession, setSession, als } = require('../services/session');
 const { createJob, updateJob } = require('../services/jobQueue');
 const { sendError } = require('../core/respondError');
 const { logEvent } = require('../core/logger');
+const { setUserPreference } = require('../services/auth');
 
 const router = express.Router();
 
@@ -55,6 +56,12 @@ router.post('/fetch-job', async (req, res) => {
   try {
     const { url, jobText } = req.body;
     if (!jobText && !url) return sendError(res, '/fetch-job', 'ERR-JOB-006');
+
+    // Persist last job text for logged-in users so the form can be pre-filled on next visit.
+    const appSessionForPref = getSession();
+    if (appSessionForPref.userId && jobText) {
+      setUserPreference(appSessionForPref.userId, 'last_job_text', jobText).catch(() => {});
+    }
 
     const jobId = await createJob('parsing_job');
     const sid = als.getStore();

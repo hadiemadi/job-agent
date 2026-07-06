@@ -5,11 +5,50 @@
 
 **Last updated:** 2026-07-06
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 281/281 green · **origin/main HEAD:** `6146f1f`
+**Tests:** 311/311 green · **origin/main HEAD:** `3e92ee2`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Phase 2 Part 4 — Logged-in homepage redesign** —
+
+  **Login/Sign-out toggle**: A "Log in" button now always appears in the header for guests, so
+  dismissing the auth modal no longer leaves users with no way back. Once authenticated, the
+  header shows the user's email + "Sign out" (the "My data" link was removed from the header
+  and replaced by the workspace panel below).
+
+  **Logged-in workspace panel** (`#loggedInPanel`): Shown only when authenticated. Contains:
+  - Account email (small, non-interactive — not a button)
+  - 3 section buttons: "Previous CV & job info", "Coach conversations", "Discipline & HR notes"
+    — each opens the My Data modal filtered to that section
+  - AI model picker + cost estimator (see below)
+  Guest flow (blank header, no panel) is completely unchanged.
+
+  **Pre-filled job textarea**: On login/page-load-auth, `GET /auth/prefill` is called; if the
+  user has a saved `last_job_text` preference and the textarea is still empty, it's pre-filled
+  automatically. Job text is saved to `user_preferences` whenever `POST /fetch-job` is called.
+  CV pre-fill is **deferred** — `saveCv()` is not wired into the upload flow yet, so returning
+  users have no saved CV text to restore. Track as a backlog item.
+
+  **Model picker** (logged-in only): 4 cards — Fable 5 ($10/$50), Opus 4.8 ($5/$25),
+  Sonnet 5 ($2/$10, default), Haiku 4.5 ($1/$5). Each shows a live cost estimate for the
+  current session (based on CV ≈ 1500 tokens + job text length + 300 overhead × 4 pipeline
+  steps, 20% buffer). Selecting a model saves it to `user_preferences` (key: `preferred_model`)
+  and overrides the app's global `MODEL` constant for every Claude call in that session via
+  `meteredCreate`'s per-request session inspection.
+
+  **New backend routes**: `GET /auth/prefill` (model + lastJobText + latestCv, 401 for guests),
+  `POST /auth/preferences` (saves any key/value preference, 401 for guests, 400 if key missing).
+
+  **Session model wiring**: `clientPreferences.model` (new field, null = use global default)
+  set from `req.body.model` in `POST /confirm-contact`. `meteredCreate` in `core/claude.js`
+  reads `sess.clientPreferences.model` via `getSession()` and overrides `params.model` for
+  that request if non-null. Try/catch ensures no-session contexts (tests, CLI) fail silently.
+
+  Tests: 311/311 (+30 new: 9 backend prefill/preferences route tests, 7 login/toggle/panel UI
+  tests, 4 prefill UI tests, 6 cost estimator math tests, 6 model picker UI tests; +1 updated:
+  test.ui.js clientPreferences snapshot loosened to `toMatchObject` to accept new `model` field).
 
 - **Phase 2 Part 3 — Logout data clearing, consent text variants, My Data view** —
 
@@ -229,7 +268,7 @@
   (`rf-hardware-engineering-technical-program-management.json`). Confirm whether the loop
   fires per search and writes/updates discipline files, or is built-but-dormant.
 
-**Parked (external deps):** **#19** PayPal (Business acct + GDPR) · **#13b** model picker.
+**Parked (external deps):** **#19** PayPal (Business acct + GDPR).
 
 **Mode B — market/scrape mode (big unlock; gates several):** **#3** cache CV on country
 change · **#4a** market-level mismatch · **#5** LinkedIn import (puppeteer) · **#6**
@@ -249,5 +288,9 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 Steps and generate-command are in the Part 1 section above.
 
 **After that:** smoke-test the live site — login modal, Google OAuth flow, email/password
-register + login, dismiss-as-guest, mid-session login, My Data view (including saving a CV
-and verifying it shows/deletes correctly).
+register + login, dismiss-as-guest, mid-session login, My Data modal (filtered sections),
+workspace panel, model picker, job text pre-fill on second login.
+
+**CV pre-fill (deferred):** `saveCv()` is not called during the upload flow, so returning
+users' CV is never stored in `saved_cvs`. Wire `saveCv()` into `POST /upload-cv`'s done
+handler to unlock CV pre-fill via `latestCv` from `GET /auth/prefill`.
