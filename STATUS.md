@@ -20,12 +20,11 @@
 - **`jobs` table** — new Postgres table in `core/db.js`'s `ensureTables`: id TEXT PK,
   user_id TEXT (nullable, Phase-2 login placeholder), status, current_step, result JSONB,
   created_at/updated_at TIMESTAMPTZ.
-- **DB verified** (live, 2026-07-06) — `/__dbcheck` returned `EVENTS_ROWS: 41`; Postgres
-  logging path is confirmed working. Route removal committed separately (see below).
+- **DB verified + `/__dbcheck` removed** (2026-07-06) — live hit returned `EVENTS_ROWS: 41`;
+  Postgres logging confirmed. Temp route removed from `server.js` (reverts `99e24d0`).
 - **rate-limit UX** — `kind: 'rate'` for ERR-RATE-*. Calm overlay for burst/daily cap.
 - **`b91d829`** — Error popups split by `kind` (validation nudge vs technical dialog).
 - **`3701d5e`** — Trial mode: TRIAL_MODE flag, error codes shown as muted caption.
-- **`99e24d0`** — temp `/__dbcheck` route (removed in next commit after DB verified).
 
 ---
 

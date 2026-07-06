@@ -13,7 +13,6 @@ const coachRoutes = require('./routes/coach.routes');
 const { sendError } = require('./core/respondError');
 const { logError } = require('./core/logger');
 const { TRIAL_MODE } = require('./core/config');
-const { getPool } = require('./core/db');
 
 // Process-level safety net — these fire OUTSIDE any request's try/catch (e.g. a bug in a
 // timer/event callback). Per the task's hardening goal, a logging/DB failure (or any other
@@ -46,22 +45,6 @@ app.get('/healthz', (req, res) => res.json({ ok: true }));
 // Flipping TRIAL_MODE off in the environment is the only change required to stop sending it.
 app.get('/config.js', (req, res) => {
   res.type('application/javascript').send(`window.TRIAL_MODE = ${JSON.stringify(TRIAL_MODE)};`);
-});
-
-// TEMPORARY DIAGNOSTIC — REMOVE AFTER DB VERIFICATION. Render's free tier has no Shell access,
-// so this is the only way to confirm the Postgres logging path (core/db.js's getPool — the
-// exact pool core/logger.js uses, not a second connection) actually reaches the DB and the
-// `events` table exists. Read-only: a plain row count, nothing written, nothing logged. Always
-// 200 (never 500) so Render's generic error page can't mask the DB_ERR text.
-app.get('/__dbcheck', async (req, res) => {
-  try {
-    const pool = getPool();
-    if (!pool) return res.type('text/plain').send('DB_ERR: DATABASE_URL is not set.');
-    const result = await pool.query('SELECT count(*) FROM events');
-    res.type('text/plain').send(`EVENTS_ROWS: ${result.rows[0].count}`);
-  } catch (err) {
-    res.type('text/plain').send(`DB_ERR: ${err.message}`);
-  }
 });
 
 app.use(cookieParser());
