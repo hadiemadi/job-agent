@@ -81,6 +81,7 @@ function escapeHtml(s) {
 function showErrorPopup(data, route) {
   if (!data || !data.error_code) return;
   if (data.kind === 'validation') { showValidationNudge(data, route); return; }
+  if (data.kind === 'rate') { showRatePopup(data); return; }
   showTechnicalErrorDialog(data, route);
 }
 
@@ -203,6 +204,54 @@ function showTechnicalErrorDialog(data, route) {
   show('errPopupOverlay');
 }
 
+// Per-code copy for the rate-limit popup. Two causes: (a) burst (ERR-RATE-002 — clears in
+// seconds, "Try again" makes sense), (b) daily cap (ERR-RATE-001/003 — resets overnight,
+// "Try again" button is misleading so we show "Close" only).
+const RATE_COPY = {
+  'ERR-RATE-002': { title: 'One moment',        body: "You're going a little fast. Wait a few seconds and try again.",     isDaily: false },
+  'ERR-RATE-001': { title: 'Daily limit reached', body: "The app has hit today's usage limit. Please try again tomorrow.", isDaily: true  },
+  'ERR-RATE-003': { title: 'Daily limit reached', body: "The app has hit today's usage limit. Please try again tomorrow.", isDaily: true  },
+};
+
+// Calm overlay for a rate-limit response — no red, no route/timestamp, no support line.
+// Burst: "Try again" just closes the overlay so the user can click again immediately.
+// Daily cap: "Close" only — retrying right away will not help.
+function showRatePopup(data) {
+  const copy = RATE_COPY[data.error_code] || { title: 'Slow down', body: data.error, isDaily: false };
+
+  let overlay = el('ratePopupOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'ratePopupOverlay';
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'none';
+    overlay.innerHTML =
+      '<div class="card modal-box">' +
+        '<div class="nudge-popup-title" id="rateTitle"></div>' +
+        '<div class="nudge-popup-body" id="rateBody"></div>' +
+        '<div class="nudge-code" id="rateCode" style="display:none;"></div>' +
+        '<div class="nudge-popup-actions">' +
+          '<button class="btn btn-blue btn-sm" id="rateCloseBtn" type="button"></button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    el('rateCloseBtn').addEventListener('click', () => hide('ratePopupOverlay'));
+  }
+
+  el('rateTitle').textContent = copy.title;
+  el('rateBody').textContent = copy.body;
+  const codeEl = el('rateCode');
+  if (window.TRIAL_MODE && data.error_code) {
+    codeEl.textContent = data.error_code;
+    show('rateCode');
+  } else {
+    codeEl.textContent = '';
+    hide('rateCode');
+  }
+  el('rateCloseBtn').textContent = copy.isDaily ? 'Close' : 'Try again';
+  show('ratePopupOverlay');
+}
+
 // Turns the raw pasted job text into readable paragraphs — needs to stay legible in a
 // nicer font/larger box since it remains on screen behind the contact-info and progress
 // pop-ups that follow, long after the plain textarea would have been cramped.
@@ -229,6 +278,13 @@ function buildSteps(defs) {
       <div class="step-detail" id="sd${i}"></div>
     </div>
   `).join('');
+}
+
+// Maps an error kind to the correct step state. 'rate' and 'validation' use 'warn' (neutral,
+// muted — the step didn't crash, the user just needs to wait or do something first). Real
+// failures ('error' or unknown) keep the existing red 'err' state.
+function errorStepState(kind) {
+  return (kind === 'rate' || kind === 'validation') ? 'warn' : 'err';
 }
 
 function setStep(i, state, detail) {
@@ -282,7 +338,7 @@ async function go() {
     const upRes = await fetch('/upload-cv', { method:'POST', body: fd });
     const upData = await upRes.json();
     if (upData.error) {
-      setStep(0,'err', upData.error); el('goBtn').disabled=false; show('goBtn');
+      setStep(0, errorStepState(upData.kind), upData.error); el('goBtn').disabled=false; show('goBtn');
       show('cvPickerGroup'); hide('fileChosenDisplay'); show('jobTextGroup'); hide('jobDescDisplay');
       showErrorPopup(upData, '/upload-cv');
       return;
@@ -354,7 +410,7 @@ async function continueToJobAndHR() {
   try {
     const res = await fetch('/fetch-job', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobText }) });
     const data = await res.json();
-    if (data.error || !data.job) { setStep(1,'err', data.error || 'Could not parse job'); el('goBtn').disabled=false; show('goBtn'); showErrorPopup(data, '/fetch-job'); return; }
+    if (data.error || !data.job) { setStep(1, errorStepState(data.kind), data.error || 'Could not parse job'); el('goBtn').disabled=false; show('goBtn'); showErrorPopup(data, '/fetch-job'); return; }
     _currentJob = data.job;
     setStep(1, 'ok', (data.job.job_title || 'Job') + (data.job.employer_name ? ' at ' + data.job.employer_name : ''));
   } catch (err) { setStep(1,'err', err.message); el('goBtn').disabled=false; show('goBtn'); return; }
@@ -364,7 +420,7 @@ async function continueToJobAndHR() {
   try {
     const res = await fetch('/review-cv', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ job: _currentJob }) });
     const data = await res.json();
-    if (data.error) { setStep(2,'err', data.error); el('goBtn').disabled=false; show('goBtn'); showErrorPopup(data, '/review-cv'); return; }
+    if (data.error) { setStep(2, errorStepState(data.kind), data.error); el('goBtn').disabled=false; show('goBtn'); showErrorPopup(data, '/review-cv'); return; }
     _hrReview = data;
     setStep(2, 'ok', (data.overall_match || 'Moderate') + ' match');
     await new Promise(r => setTimeout(r, 600));
@@ -660,7 +716,7 @@ async function applyChanges() {
       body: JSON.stringify({ job: _currentJob })
     });
     const data = await res.json();
-    if (data.error) { setStep(3,'err', data.error); el('applyBtn').disabled=false; show('changesCard'); showErrorPopup(data, '/rewrite'); return; }
+    if (data.error) { setStep(3, errorStepState(data.kind), data.error); el('applyBtn').disabled=false; show('changesCard'); showErrorPopup(data, '/rewrite'); return; }
     if (!data.filePath) {
       setStep(3,'err', 'Server returned an unexpected response — check the server terminal for errors.');
       el('applyBtn').disabled=false; show('changesCard'); return;

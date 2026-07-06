@@ -46,5 +46,17 @@ test('a thrown error tagged with its own code/status (e.g. the budget-cap error)
   tagged.status = 429;
   sendError(res, '/hr/refine', 'ERR-HR-005', tagged);
   expect(res.status).toHaveBeenCalledWith(429);
-  expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error_code: 'ERR-RATE-001', kind: 'error' }));
+  expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error_code: 'ERR-RATE-001', kind: 'rate' }));
+  // rate kind: not a bug, not missing input — no logError, no logEvent
+  expect(logError).not.toHaveBeenCalled();
+  expect(logEvent).not.toHaveBeenCalled();
+});
+
+test('a rate code responds with kind: "rate" and logs via neither logEvent nor logError', () => {
+  const res = mockRes();
+  sendError(res, '/review-cv', 'ERR-RATE-002');
+  expect(res.status).toHaveBeenCalledWith(429);
+  expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error_code: 'ERR-RATE-002', kind: 'rate' }));
+  expect(logEvent).not.toHaveBeenCalled();
+  expect(logError).not.toHaveBeenCalled();
 });

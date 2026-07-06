@@ -3,9 +3,9 @@
 > Single source of truth for project state. Kept current automatically by Claude
 > Code (see CLAUDE.md). Update the date whenever it changes.
 
-**Last updated:** 2026-06-25
+**Last updated:** 2026-07-06
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 162/162 green · **origin/main HEAD:** `99e24d0`
+**Tests:** 167/167 green · **origin/main HEAD:** `99e24d0` (local: rate-limit UX committed, not yet pushed)
 
 ---
 
@@ -30,6 +30,12 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **rate-limit UX** (local, not yet pushed) — `kind: 'rate'` added to error catalog. ERR-RATE-001/002/003
+  switch from the red "Something went wrong" dialog to a calm overlay: burst (002) → "One moment / Try again",
+  daily cap (001/003) → "Daily limit reached / Close". Inline pipeline step uses neutral `warn` state
+  (yellow `!`) instead of red `err` for rate + validation failures. TRIAL_MODE: muted code caption shown
+  (same as validation nudges). `sendError` skips logError + logEvent for rate kind (DB logging deferred).
+  Tests: 167/167.
 - **`b91d829`** — Error popups split by `kind`: `validation` (missing input / wrong order →
   friendly nudge, no code/red/support line) vs `error` (real failure → full technical dialog).
   45 codes in `core/errorCodes.js` (23 validation). Single choke point in `core/respondError.js`;

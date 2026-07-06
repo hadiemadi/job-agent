@@ -47,6 +47,40 @@ describe('showValidationNudge / showErrorPopup — trial-mode code caption', () 
     expect(codeEl.textContent).toBe('');
   });
 
+  test('TRIAL_MODE on: a burst rate-limit popup (ERR-RATE-002) shows calm title, Try again button, muted code — no red/support', () => {
+    window.TRIAL_MODE = true;
+    loadAppInDom();
+    window.showErrorPopup(
+      { error_code: 'ERR-RATE-002', error: 'Too many requests — slow down and try again shortly.', kind: 'rate' },
+      '/review-cv'
+    );
+    const overlay = document.getElementById('ratePopupOverlay');
+    expect(overlay.style.display).not.toBe('none');
+    expect(document.getElementById('rateTitle').textContent).toBe('One moment');
+    expect(document.getElementById('rateCloseBtn').textContent).toBe('Try again');
+    const codeEl = document.getElementById('rateCode');
+    expect(codeEl.style.display).not.toBe('none');
+    expect(codeEl.textContent).toBe('ERR-RATE-002');
+    // Must NOT render the technical error dialog
+    expect(document.getElementById('errPopupOverlay')).toBeNull();
+    expect(overlay.innerHTML).not.toContain('send them to support');
+  });
+
+  test('daily cap popup (ERR-RATE-001) shows "Daily limit reached" title and "Close" button (no Try again)', () => {
+    window.TRIAL_MODE = false;
+    loadAppInDom();
+    window.showErrorPopup(
+      { error_code: 'ERR-RATE-001', error: "Today's AI budget has been reached — please try again tomorrow.", kind: 'rate' },
+      '/rewrite'
+    );
+    expect(document.getElementById('rateTitle').textContent).toBe('Daily limit reached');
+    expect(document.getElementById('rateCloseBtn').textContent).toBe('Close');
+    // TRIAL_MODE off: code hidden
+    const codeEl = document.getElementById('rateCode');
+    expect(codeEl.style.display).toBe('none');
+    expect(codeEl.textContent).toBe('');
+  });
+
   test('the real-error technical dialog is unchanged either way — full code/route/timestamp block', () => {
     window.TRIAL_MODE = true;
     loadAppInDom();

@@ -9,6 +9,9 @@
 //                   no job chosen, gap not drafted yet) — shown as a friendly, non-alarming
 //                   nudge instead (see public/app.js's showValidationNudge). These are
 //                   expected, recoverable, and not worth a support-style error report.
+//   - 'rate'       a real operating constraint was hit (burst limiter or daily budget) — shown
+//                   as a calm "wait and retry" overlay (burst) or "try tomorrow" note (daily
+//                   cap). Not a bug, not missing input — no red, no support line.
 // Routes attach a code to every error response (see core/respondError.js's sendError) so a
 // candidate can report "ERR-CV-004" to support instead of a screenshot of a stack trace.
 //
@@ -59,11 +62,13 @@ const ERROR_CODES = {
   'ERR-GEN-002': { area: 'GEN', status: 400, kind: 'validation', message: 'There is no job to regenerate your CV against.' },
   'ERR-GEN-003': { area: 'GEN', status: 500, kind: 'error', message: 'Regenerating your CV failed. Please try again.' },
 
-  // ERR-RATE-### — rate limiting and cost-cap guards. These are real operating constraints,
-  // not a missing input the candidate can supply — kept as 'error' kind, not 'validation'.
-  'ERR-RATE-001': { area: 'RATE', status: 429, kind: 'error', message: "Today's AI budget has been reached — please try again tomorrow." },
-  'ERR-RATE-002': { area: 'RATE', status: 429, kind: 'error', message: 'Too many requests — slow down and try again shortly.' },
-  'ERR-RATE-003': { area: 'RATE', status: 429, kind: 'error', message: 'The daily job-search limit has been reached — please try again tomorrow.' },
+  // ERR-RATE-### — rate limiting and cost-cap guards. Kind is 'rate' (not 'error', not
+  // 'validation'): a real operating constraint that clears on its own — no bug, no missing
+  // input. Cause (b) daily-cap codes (001, 003) reset overnight; cause (a) burst code (002)
+  // clears in seconds/minutes. public/app.js renders each with the calm rate-limit overlay.
+  'ERR-RATE-001': { area: 'RATE', status: 429, kind: 'rate', message: "Today's AI budget has been reached — please try again tomorrow." },
+  'ERR-RATE-002': { area: 'RATE', status: 429, kind: 'rate', message: 'Too many requests — slow down and try again shortly.' },
+  'ERR-RATE-003': { area: 'RATE', status: 429, kind: 'rate', message: 'The daily job-search limit has been reached — please try again tomorrow.' },
 
   // ERR-JOB-### — job search + job-description fetch (routes/jobs.routes.js) — added area, see note above.
   'ERR-JOB-001': { area: 'JOB', status: 500, kind: 'error', message: 'Searching for jobs failed. Please try again.' },
