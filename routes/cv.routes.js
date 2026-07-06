@@ -121,6 +121,11 @@ router.post('/rewrite', async (req, res) => {
     const appSession = getSession();
     const { job } = req.body;
     const cvText = appSession.cvText;
+    // Guard: cvText is null when the session expired during idle (laptop sleep/lock).
+    // Fail fast here with a clean validation error instead of crashing inside
+    // extractContactInfo() with "Cannot read properties of null (reading 'replace')".
+    if (!cvText) return sendError(res, '/rewrite', 'ERR-CV-012');
+    if (!job)    return sendError(res, '/rewrite', 'ERR-CV-003');
     const recommendedSections = (appSession.hrReview || {}).recommended_sections;
     const originalName = (appSession.cvData || {}).name;
     const autoChanges = (appSession.hrReview || {}).auto_changes || [];

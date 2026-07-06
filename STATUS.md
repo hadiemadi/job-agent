@@ -5,12 +5,27 @@
 
 **Last updated:** 2026-07-06
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 221/221 green · **origin/main HEAD:** `12beb89`
+**Tests:** 222/222 green · **origin/main HEAD:** `8032bd7`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
 
+- **ERR-CV-004 session-expiry fix** —
+  Root cause: after idle/laptop sleep, `appSession.cvText` could expire, leaving null in the
+  session. The `/rewrite` route passed null into `tailorCvWithReview` → `rewriteCVWithChanges`
+  → `enforceContactInfo` → `extractContactInfo(cvText)` → `cvText.replace(...)` — crashing
+  with "Cannot read properties of null (reading 'replace')".
+  **Fix:**
+  - Null guard at the top of `/rewrite` before `createJob()`: missing `cvText` → clean 400
+    with `ERR-CV-012` ("Your session may have expired. Please restart the CV tailoring
+    process.", `kind: 'validation'`); missing `job` body → `ERR-CV-003`.
+  - Defensive early return added to `extractContactInfo()` in `agents/cvWriter.js` for belt-
+    and-suspenders safety against any call path that bypasses the route-level guard.
+  - New catalog entry `ERR-CV-012` in `core/errorCodes.js`.
+  - Session-isolation and output-file tests updated to seed `cvText` via `uploadCVFor()` before
+    calling `/rewrite` (previously they relied on null passing through the mocked pipeline).
+  Tests: 222/222 (+1 null-cvText validation test in `test.ui.js`).
 - **Rate-limit fix: separate poll limiter + raised thresholds** —
   Root cause confirmed: `aiLimiter` (20 req/hr) was shared between real Claude API calls AND
   `/job/:id/status` polling. A single HR review (several minutes, polling every ~10s with backoff)
@@ -123,10 +138,6 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 ---
 
 ## ▶️ Suggested next action
-Deploy and run a full pipeline. Confirm no ERR-RATE-002-POLL-* fires during normal HR review.
-Check Render logs for:
-  `[RATE-LIMIT-RAMP]` lines showing ramp-up before the trip
-  `[RATE-LIMIT] ERR-RATE-002-POLL-HR | used=N/20` or similar showing exact count
-  `[AI-SPEND] server ready | cap=$5/day` confirming the spend cap
-Then compare `used/limit` to understand whether it's the `aiLimiter` (20/hr) or
-`globalLimiter` (100/15min) that's tripping — and decide whether to raise the threshold.
+Deploy and monitor a full pipeline run. If ERR-CV-012 appears in Render logs after a session
+resumes, the fix is working — the old behavior was a 500 crash (ERR-CV-004).
+Also confirm no ERR-RATE-002-POLL-* fires during normal HR review.

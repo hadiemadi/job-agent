@@ -136,7 +136,7 @@ const app               = require('./server');
 // uses this shared `agent` instead.
 const agent              = request.agent(app);
 
-// ── Shared polling helper ─────────────────────────────────────────────────────
+// ── Shared polling helpers ────────────────────────────────────────────────────
 // Polls /job/:id/status until the job settles (done or failed). Background jobs use
 // all-mocked dependencies that resolve immediately, so the first poll almost always
 // returns a terminal state — retries guard against the rare case where microtasks
@@ -148,6 +148,25 @@ async function waitForJob(jobId) {
     await new Promise(resolve => setTimeout(resolve, 10));
   }
   throw new Error('job ' + jobId + ' did not settle in time');
+}
+
+// Agent-specific variant — polls using a given supertest agent (for isolation tests that
+// create their own agent with a separate cookie jar, rather than the shared `agent`).
+async function waitForJobWith(a, jobId) {
+  for (let i = 0; i < 20; i++) {
+    const r = await a.get('/job/' + jobId + '/status');
+    if (r.body.status === 'done' || r.body.status === 'failed') return r.body;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error('job ' + jobId + ' did not settle in time (agent-specific)');
+}
+
+// Seeds a fresh agent's session with CV text by running the full /upload-cv → poll flow.
+// Required before calling /rewrite on any agent that hasn't uploaded a CV yet, since
+// the null-cvText guard in /rewrite returns 400 when the session is empty.
+async function uploadCVFor(a) {
+  const r = await a.post('/upload-cv').attach('cv', 'cv.pdf');
+  await waitForJobWith(a, r.body.jobId);
 }
 
 // ── Default return values — reset before every test ───────────────────────────
@@ -285,6 +304,18 @@ describe('Error handling — no CV in session', () => {
     expect(res.body).toHaveProperty('error');
     expect(res.body).toHaveProperty('error_code');
     expect(res.body.error_code).toMatch(/^ERR-[A-Z]+-\d+$/);
+  });
+
+  test('POST /rewrite → 400 validation when session has no CV text (expired/never uploaded)', async () => {
+    // Fresh agent = empty session — no cvText in scope, simulating session expiry.
+    // Previously this would crash inside extractContactInfo with
+    //   "Cannot read properties of null (reading 'replace')" (ERR-CV-004).
+    // After the fix it must return a clean 400 validation error, not a 500 crash.
+    const freshAgent = request.agent(app);
+    const res = await freshAgent.post('/rewrite').send({ job: MOCK_JOB });
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error_code', 'ERR-CV-012');
+    expect(res.body).toHaveProperty('kind', 'validation');
   });
 });
 
@@ -974,6 +1005,10 @@ describe('Per-browser session isolation', () => {
     await agentA.post('/confirm-contact').send({ name: 'AAA', customInstructions: '' });
     await agentB.post('/confirm-contact').send({ name: 'BBB', customInstructions: '' });
 
+    // Seed cvText in each session — /rewrite guards against null cvText (ERR-CV-012).
+    await uploadCVFor(agentA);
+    await uploadCVFor(agentB);
+
     await agentA.post('/rewrite').send({ job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [] });
     await agentB.post('/rewrite').send({ job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [] });
 
@@ -1007,6 +1042,8 @@ describe('GET /output/:file — session-scoped access only', () => {
   // fs-extra) at the exact session-scoped path the real registerOutputFile() returned, so
   // GET /output/:file has something genuine to find.
   async function tailorAndBuildComparisonFor(ownerAgent) {
+    // Seed cvText — /rewrite guards against null cvText (ERR-CV-012) before creating the job.
+    await uploadCVFor(ownerAgent);
     const postRes = await ownerAgent.post('/rewrite').send({ job: MOCK_JOB, cvPath: 'cv.pdf', autoChanges: [], confirmedChanges: [] });
     // Poll until done so session state (lastTailoredCvData) is applied before /build-comparison.
     const { jobId } = postRes.body;

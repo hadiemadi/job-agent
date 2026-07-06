@@ -31,6 +31,7 @@ const ERROR_CODES = {
   'ERR-CV-009': { area: 'CV', status: 501, kind: 'validation', message: "Style mimicry from your original CV isn't available yet — your CV was read as a PDF. Use 'Upload your own template' instead." },
   'ERR-CV-010': { area: 'CV', status: 500, kind: 'error', message: 'Adjusting the wording level failed. Please try again.' },
   'ERR-CV-011': { area: 'CV', status: 500, kind: 'error', message: 'Building the comparison view failed. Please try again.' },
+  'ERR-CV-012': { area: 'CV', status: 400, kind: 'validation', message: 'Your session may have expired. Please restart the CV tailoring process.' },
 
   // ERR-HR-### — HR review/refine/chat routes + agents/recruiter.js
   'ERR-HR-001': { area: 'HR', status: 400, kind: 'validation', message: 'Please upload your CV before requesting an HR review.' },

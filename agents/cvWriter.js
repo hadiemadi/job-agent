@@ -17,6 +17,7 @@ function writerSystemPrompt(...args) {
 // Extract contact info directly from raw CV text via regex — never trust the LLM
 // to transcribe sensitive identifiers verbatim (it can silently alter dots, hyphens, etc.)
 function extractContactInfo(cvText) {
+  if (!cvText) return { email: null, phone: null, linkedin: null };
   // pdf2json can split a token at underscores or other chars, inserting a spurious space
   // (e.g. "hadi_ emadi@yahoo.com" instead of "hadi_emadi@yahoo.com").
   // Collapse spaces adjacent to _ and @ before applying the email regex.
