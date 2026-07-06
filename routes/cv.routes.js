@@ -43,22 +43,39 @@ function buildGapInputs(gaps) {
 
 const router = express.Router();
 
+// /upload-cv is now async (job-queue pattern, kind='reading_cv') so the browser can
+// resume mid-upload after a tab close+reopen. The route returns { jobId } immediately;
+// the background task reads the PDF, parses the CV structure, and stores both in the
+// session. The frontend polls GET /job/:id/status until done, then shows the contact card.
 router.post('/upload-cv', upload.single('cv'), async (req, res) => {
   const cvPath = req.file.path;
   try {
-    const cvText = await readCV(cvPath);
-    const cvData = await parseCVStructure(cvText);
-    // We only need the file long enough to extract its text — keeping the parsed CV text
-    // in-session is enough for every downstream step (tailoring re-reads appSession.cvText
-    // now, not the file). The consent notice on the upload screen promises the CV is
-    // "auto-deleted after your session" — this is the first half of making that true: the
-    // source file never lingers on disk past this one request.
-    await fse.remove(cvPath);
-    setSession({ ...getSession(), cvText, cvPath: null, cvData });
-    logEvent('cv_uploaded', { route: '/upload-cv', outcome: 'ok' });
-    res.json({ cvPath, cvData });
+    const jobId = await createJob('reading_cv');
+    const sid = als.getStore();
+    res.json({ jobId });
+    als.run(sid, async () => {
+      try {
+        await updateJob(jobId, { status: 'running', current_step: 'Reading CV' });
+        const cvText = await readCV(cvPath);
+        const cvData = await parseCVStructure(cvText);
+        // Same scrub-on-read policy as before — file deleted as soon as text is extracted.
+        await fse.remove(cvPath);
+        const appSession = getSession();
+        appSession.cvText = cvText;
+        appSession.cvPath = null;
+        appSession.cvData = cvData;
+        await updateJob(jobId, { status: 'done', current_step: '', result: { cvData } });
+        logEvent('cv_uploaded', { route: '/upload-cv', outcome: 'ok' });
+      } catch (err) {
+        await fse.remove(cvPath).catch(() => {});
+        await updateJob(jobId, {
+          status: 'failed', current_step: '',
+          result: { error: err.message, code: 'ERR-CV-002' },
+        }).catch(() => {});
+      }
+    });
   } catch (err) {
-    await fse.remove(cvPath).catch(() => {}); // still scrub it even on a parse failure
+    await fse.remove(cvPath).catch(() => {});
     sendError(res, '/upload-cv', 'ERR-CV-002', err);
   }
 });
@@ -189,7 +206,14 @@ router.get('/job/:id/status', async (req, res) => {
           // Restore gap objects directly (ids were assigned in the background task) — do NOT
           // call setGaps here as that would create new ids and break gap-id references.
           if (r.gapRecords)           appSession.gaps             = r.gapRecords;
+        } else if (job.kind === 'reading_cv') {
+          // cvText and cvData are already in session (set by the background task before
+          // updateJob(done) — this branch is a belt-and-suspenders restore for any race.
+          if (r.cvData) appSession.cvData = r.cvData;
+        } else if (job.kind === 'parsing_job') {
+          if (r.job) appSession.currentJob = r.job;
         } else {
+          // cv_tailor
           if (r.hrThread)             appSession.hrThread           = r.hrThread;
           if (r.hrDisplayHistory)     appSession.hrDisplayHistory   = r.hrDisplayHistory;
           if (r.lastGenHrCount != null) appSession.lastGenHrCount   = r.lastGenHrCount;
@@ -205,6 +229,10 @@ router.get('/job/:id/status', async (req, res) => {
     const resultPayload = terminal ? (
       job.kind === 'hr_review'
         ? { hrReview: r.hrReview, currentJob: r.currentJob, error: r.error, code: r.code }
+        : job.kind === 'reading_cv'
+        ? { cvData: r.cvData, error: r.error, code: r.code }
+        : job.kind === 'parsing_job'
+        ? { job: r.job, error: r.error, code: r.code, kind: r.kind, loginWall: r.loginWall, scraperDisabled: r.scraperDisabled }
         : { filePath: r.filePath, reviewIssues: r.reviewIssues, error: r.error, code: r.code }
     ) : null;
 

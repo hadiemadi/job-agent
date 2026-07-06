@@ -5,19 +5,26 @@
 
 **Last updated:** 2026-07-06
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 183/183 green · **origin/main HEAD:** `b5fa74d` (local: 1 commit ahead, not pushed)
+**Tests:** 185/185 green · **origin/main HEAD:** `b94141c` (local: 2 commits ahead, not pushed)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
 
-- **Polling exponential backoff** (local, not yet pushed) — `startPolling()` now uses
-  exponential backoff (2 s → 4 s → 8 s → 10 s cap) instead of a fixed 3 s interval. First
-  poll is immediate; each non-terminal response (running/pending) or network error doubles the
-  delay, capped at 10 s. Backoff state is per-call so a new job always starts at 2 s. Fixes
-  ERR-RATE-002 on HR-review resume: the old 3 s fixed rate hit the rate-limit guard within
-  seconds on a busy resume; now the interval backs off naturally. 6 pure-math unit tests in
-  `public/pollBackoff.test.js`. Tests: 183/183.
+- **"Reading CV" + "Parsing job" resume on tab reopen** (local, not yet pushed) — Both
+  stage-0 (CV upload/parse) and stage-1 (job description parse) are now async via the
+  job-queue pattern. `POST /upload-cv` and `POST /fetch-job` each create a `jobs` row with
+  `kind='reading_cv'`/`'parsing_job'` and return `{ jobId }` immediately; the real work runs
+  in a background ALS-pinned task. `GET /job/:id/status` restores session state (`cvData`,
+  `currentJob`) on done. Frontend: `savePendingJob` / `resumePendingJob` handle both new
+  kinds — on tab reopen, the correct step is marked `run` and polling resumes seamlessly.
+  `startPolling()` cancels any stacked `_pollTimer` before starting a new loop.
+  `parsing_job` done handler cascades immediately into `/review-cv` + an `hr_review` poll
+  session (same as the live flow). Tests: 185/185 (+2 jobQueue kind tests, all /upload-cv
+  and /fetch-job UI tests rewritten to async poll pattern).
+- **Polling exponential backoff** — `startPolling()` now uses exponential backoff
+  (2 s → 4 s → 8 s → 10 s cap) instead of a fixed 3 s interval. Fixes ERR-RATE-002 on
+  HR-review resume. 6 pure-math unit tests in `public/pollBackoff.test.js`. Tests: 183/183.
 - **HR review resume on tab reopen** — `/review-cv` is now wrapped
   in the same job-queue pattern as `/rewrite`. Starting an HR review creates a `jobs` row
   with `kind='hr_review'`; the pipeline runs in background; `GET /job/:id/status` returns
@@ -75,4 +82,4 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 ---
 
 ## ▶️ Suggested next action
-Push the 1 new commit. Then free choice: About-modal wiring, #32/#33 polish, or Mode B.
+Push the 2 new commits. Then free choice: About-modal wiring, #32/#33 polish, or Mode B.

@@ -3,7 +3,8 @@ const fse = require('fs-extra');
 const { readCV, extractJobTitles, searchAllLocations, analyzeJobFit, parseJobFromText } = require('../agent');
 const { scrapeJobPage } = require('../src/scraper');
 const { upload } = require('../services/uploads');
-const { getSession, setSession } = require('../services/session');
+const { getSession, setSession, als } = require('../services/session');
+const { createJob, updateJob } = require('../services/jobQueue');
 const { sendError } = require('../core/respondError');
 const { logEvent } = require('../core/logger');
 
@@ -47,26 +48,52 @@ router.post('/search/analyze', async (req, res) => {
   }
 });
 
+// /fetch-job is now async (job-queue pattern, kind='parsing_job') so a tab close+reopen
+// during job-description parsing can resume seamlessly. Returns { jobId } immediately;
+// background task parses (or scrapes) the job, stores it in session, and updates the job row.
 router.post('/fetch-job', async (req, res) => {
   try {
     const { url, jobText } = req.body;
-    let rawText;
-    if (jobText) {
-      rawText = jobText;
-    } else if (url) {
+    if (!jobText && !url) return sendError(res, '/fetch-job', 'ERR-JOB-006');
+
+    const jobId = await createJob('parsing_job');
+    const sid = als.getStore();
+    // Capture mutable inputs before response ends the request scope.
+    const rawText = jobText || null;
+    const jobUrl  = url  || '';
+    res.json({ jobId });
+
+    als.run(sid, async () => {
       try {
-        rawText = await scrapeJobPage(url);
+        await updateJob(jobId, { status: 'running', current_step: 'Parsing job' });
+        let text = rawText;
+        if (!text) {
+          try {
+            text = await scrapeJobPage(jobUrl);
+          } catch (err) {
+            if (err.message === 'LOGIN_WALL') {
+              await updateJob(jobId, { status: 'failed', current_step: '', result: { error: 'That site requires logging in — please paste the job description text instead.', code: 'ERR-JOB-004', kind: 'validation', loginWall: true } }).catch(() => {});
+              return;
+            }
+            if (err.message === 'SCRAPER_DISABLED') {
+              await updateJob(jobId, { status: 'failed', current_step: '', result: { error: 'Reading job pages from a URL is turned off — please paste the job description text instead.', code: 'ERR-JOB-005', kind: 'validation', scraperDisabled: true } }).catch(() => {});
+              return;
+            }
+            throw err;
+          }
+        }
+        const job = await parseJobFromText(text, jobUrl);
+        const appSession = getSession();
+        appSession.currentJob = job;
+        await updateJob(jobId, { status: 'done', current_step: '', result: { job } });
+        logEvent('job_parsed', { route: '/fetch-job', outcome: 'ok' });
       } catch (err) {
-        if (err.message === 'LOGIN_WALL') return sendError(res, '/fetch-job', 'ERR-JOB-004', null, { loginWall: true });
-        if (err.message === 'SCRAPER_DISABLED') return sendError(res, '/fetch-job', 'ERR-JOB-005', null, { scraperDisabled: true });
-        throw err;
+        await updateJob(jobId, {
+          status: 'failed', current_step: '',
+          result: { error: err.message, code: (err.code) || 'ERR-JOB-007' },
+        }).catch(() => {});
       }
-    } else {
-      return sendError(res, '/fetch-job', 'ERR-JOB-006');
-    }
-    const job = await parseJobFromText(rawText, url || '');
-    logEvent('job_parsed', { route: '/fetch-job', outcome: 'ok' });
-    res.json({ job });
+    });
   } catch (err) {
     sendError(res, '/fetch-job', 'ERR-JOB-007', err);
   }

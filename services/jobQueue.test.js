@@ -75,6 +75,18 @@ test('createJob stores a custom kind (hr_review)', async () => {
   expect(job.kind).toBe('hr_review');
 });
 
+test('createJob stores kind reading_cv', async () => {
+  const id = await createJob('reading_cv');
+  const job = await getJob(id);
+  expect(job.kind).toBe('reading_cv');
+});
+
+test('createJob stores kind parsing_job', async () => {
+  const id = await createJob('parsing_job');
+  const job = await getJob(id);
+  expect(job.kind).toBe('parsing_job');
+});
+
 describe('status polling contract (/job/:id/status)', () => {
   // These verify the data shape that the GET route and the frontend expect.
   test('pending job has null result', async () => {

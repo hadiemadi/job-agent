@@ -136,6 +136,20 @@ const app               = require('./server');
 // uses this shared `agent` instead.
 const agent              = request.agent(app);
 
+// ── Shared polling helper ─────────────────────────────────────────────────────
+// Polls /job/:id/status until the job settles (done or failed). Background jobs use
+// all-mocked dependencies that resolve immediately, so the first poll almost always
+// returns a terminal state — retries guard against the rare case where microtasks
+// haven't flushed yet by the time the HTTP round-trip completes.
+async function waitForJob(jobId) {
+  for (let i = 0; i < 20; i++) {
+    const r = await agent.get('/job/' + jobId + '/status');
+    if (r.body.status === 'done' || r.body.status === 'failed') return r.body;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error('job ' + jobId + ' did not settle in time');
+}
+
 // ── Default return values — reset before every test ───────────────────────────
 
 beforeEach(() => {
@@ -306,46 +320,60 @@ describe('Error handling — missing required fields', () => {
 // ── 3. POST /upload-cv ────────────────────────────────────────────────────────
 
 describe('POST /upload-cv', () => {
-  test('returns 200 with cvPath and cvData when a PDF is uploaded', async () => {
+  test('returns 200 with jobId; poll returns cvData when done', async () => {
     const res = await agent.post('/upload-cv').attach('cv', 'cv.pdf');
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('cvPath');
-    expect(res.body).toHaveProperty('cvData');
-    expect(res.body.cvData.name).toBe('Hadi Emadi');
-    expect(res.body.cvData).toHaveProperty('experience');
-    expect(res.body.cvData).toHaveProperty('skills');
+    expect(res.body).toHaveProperty('jobId');
+    expect(res.body).not.toHaveProperty('cvPath');
+    const job = await waitForJob(res.body.jobId);
+    expect(job.status).toBe('done');
+    expect(job.result).toHaveProperty('cvData');
+    expect(job.result.cvData.name).toBe('Hadi Emadi');
+    expect(job.result.cvData).toHaveProperty('experience');
+    expect(job.result.cvData).toHaveProperty('skills');
   });
 });
 
 // ── 4. POST /fetch-job ────────────────────────────────────────────────────────
 
 describe('POST /fetch-job', () => {
-  test('returns 200 with job object when jobText is pasted directly', async () => {
+  test('returns 200 with jobId; poll returns job object when jobText is pasted directly', async () => {
     const res = await agent
       .post('/fetch-job')
       .send({ jobText: 'Technical Program Manager at Apple. Requirements: RF, ASIC.' });
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('job');
-    expect(res.body.job).toHaveProperty('job_title');
-    expect(res.body.job).toHaveProperty('employer_name');
-    expect(res.body.job).toHaveProperty('job_description');
+    expect(res.body).toHaveProperty('jobId');
+    expect(res.body).not.toHaveProperty('job');
+    const job = await waitForJob(res.body.jobId);
+    expect(job.status).toBe('done');
+    expect(job.result).toHaveProperty('job');
+    expect(job.result.job).toHaveProperty('job_title');
+    expect(job.result.job).toHaveProperty('employer_name');
+    expect(job.result.job).toHaveProperty('job_description');
   });
 
-  test('returns 200 when a job URL is provided (scraper mocked)', async () => {
+  test('returns 200 with jobId when a job URL is provided (scraper mocked)', async () => {
     const res = await agent
       .post('/fetch-job')
       .send({ url: 'https://linkedin.com/jobs/view/tpm-apple-123' });
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('job');
+    expect(res.body).toHaveProperty('jobId');
+    const job = await waitForJob(res.body.jobId);
+    expect(job.status).toBe('done');
+    expect(job.result).toHaveProperty('job');
   });
 
-  test('returns 422 with loginWall flag when scraper hits a LinkedIn login wall', async () => {
+  test('job fails with loginWall flag when scraper hits a LinkedIn login wall', async () => {
     scrapeJobPage.mockRejectedValue(new Error('LOGIN_WALL'));
     const res = await agent
       .post('/fetch-job')
       .send({ url: 'https://linkedin.com/jobs/view/private-123' });
-    expect(res.status).toBe(422);
-    expect(res.body).toHaveProperty('loginWall', true);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('jobId');
+    const job = await waitForJob(res.body.jobId);
+    expect(job.status).toBe('failed');
+    expect(job.result).toHaveProperty('loginWall', true);
+    expect(job.result).toHaveProperty('code', 'ERR-JOB-004');
   });
 });
 
@@ -361,7 +389,10 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     reviewCV.mockResolvedValue({ review: MOCK_REVIEW, thread: [] });
     analyzeGaps.mockResolvedValue(MOCK_GAPS);
     selectTopGaps.mockImplementation(gaps => gaps);
-    await agent.post('/upload-cv').attach('cv', 'cv.pdf');
+    // /upload-cv is now async — returns { jobId }; wait for the background task to settle
+    // so the session has cvText/cvData before the review-cv call below.
+    const uploadRes = await agent.post('/upload-cv').attach('cv', 'cv.pdf');
+    await waitForJob(uploadRes.body.jobId);
     // /review-cv is now async — returns { jobId }; wait for the background task to settle
     // so the session has gaps/hrReview/hrThread before the first test runs.
     const reviewRes = await agent.post('/review-cv').send({ job: MOCK_JOB });
@@ -483,19 +514,6 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     await waitForJob(r2.body.jobId);
     expect(researchCvConventions.mock.calls.length).toBe(callsBefore); // cached — not re-researched
   });
-
-  // Helper: polls /job/:id/status until the job settles (done or failed). Background jobs
-  // use all-mocked dependencies that resolve immediately, so the first poll almost always
-  // returns a terminal state — retries guard against the rare case where microtasks haven't
-  // flushed yet by the time the HTTP round-trip completes.
-  async function waitForJob(jobId) {
-    for (let i = 0; i < 20; i++) {
-      const r = await agent.get('/job/' + jobId + '/status');
-      if (r.body.status === 'done' || r.body.status === 'failed') return r.body;
-      await new Promise(resolve => setTimeout(resolve, 10));
-    }
-    throw new Error('job ' + jobId + ' did not settle in time');
-  }
 
   test('POST /rewrite returns 200 with jobId — pipeline runs in background, result available via /job/:id/status', async () => {
     const res = await agent.post('/rewrite').send({
