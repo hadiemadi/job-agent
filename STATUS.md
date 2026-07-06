@@ -5,13 +5,20 @@
 
 **Last updated:** 2026-07-06
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 177/177 green · **origin/main HEAD:** `fe9f6b8` (local: 3 commits ahead, not pushed)
+**Tests:** 183/183 green · **origin/main HEAD:** `b5fa74d` (local: 1 commit ahead, not pushed)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
 
-- **HR review resume on tab reopen** (local, not yet pushed) — `/review-cv` is now wrapped
+- **Polling exponential backoff** (local, not yet pushed) — `startPolling()` now uses
+  exponential backoff (2 s → 4 s → 8 s → 10 s cap) instead of a fixed 3 s interval. First
+  poll is immediate; each non-terminal response (running/pending) or network error doubles the
+  delay, capped at 10 s. Backoff state is per-call so a new job always starts at 2 s. Fixes
+  ERR-RATE-002 on HR-review resume: the old 3 s fixed rate hit the rate-limit guard within
+  seconds on a busy resume; now the interval backs off naturally. 6 pure-math unit tests in
+  `public/pollBackoff.test.js`. Tests: 183/183.
+- **HR review resume on tab reopen** — `/review-cv` is now wrapped
   in the same job-queue pattern as `/rewrite`. Starting an HR review creates a `jobs` row
   with `kind='hr_review'`; the pipeline runs in background; `GET /job/:id/status` returns
   `hrReview`/`currentJob`/`gapRecords` when done and re-applies them to the session.
@@ -20,7 +27,7 @@
   the step-2 progress bar before resuming polling; `showChanges` is called on poll success.
   DB: `jobs.kind` column added (+ idempotent `ALTER TABLE … ADD COLUMN IF NOT EXISTS` for
   the live Render DB). Tests: 177/177.
-- **background job queue** (local, not yet pushed) — CV-tailoring pipeline now runs in the
+- **background job queue** — CV-tailoring pipeline now runs in the
   background. `POST /rewrite` creates a `jobs` row and returns `{ jobId }` immediately; the
   pipeline writes progress into the row as it runs. `GET /job/:id/status` returns status +
   result and re-applies session state (hrThread etc.) when polled done. Frontend polls every
@@ -68,4 +75,4 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 ---
 
 ## ▶️ Suggested next action
-Push the 2 new commits. Then free choice: About-modal wiring, #32/#33 polish, or Mode B.
+Push the 1 new commit. Then free choice: About-modal wiring, #32/#33 polish, or Mode B.

@@ -717,8 +717,12 @@ const _clientId = (function () {
   return id;
 })();
 const _pendingJobKey = 'jsk_job_' + _clientId;
-const POLL_INTERVAL_MS = 3000;
-const JOB_MAX_AGE_MS   = 60 * 60 * 1000; // 1 hour — discard stale pending-job entries
+// Exponential backoff for the polling loop: first poll is immediate, then 2 s, 4 s, 8 s,
+// capped at 10 s. Each call to startPolling() gets a fresh backoff state so a new job
+// never inherits stale state from a previous polling session.
+const POLL_BACKOFF_START_MS = 2000;
+const POLL_BACKOFF_CAP_MS   = 10000;
+const JOB_MAX_AGE_MS        = 60 * 60 * 1000; // 1 hour — discard stale pending-job entries
 
 let _pollTimer = null;
 
@@ -738,6 +742,9 @@ function clearPendingJob() {
 // (resumePendingJob) sets up the UI before calling startPolling, not here.
 function startPolling(jobId, isResume, kind) {
   kind = kind || 'cv_tailor';
+  // Each polling session gets its own backoff state — starts at 2 s after the first
+  // immediate call, doubles on every non-terminal response, caps at 10 s.
+  let backoffMs = POLL_BACKOFF_START_MS;
 
   if (isResume && kind === 'cv_tailor') {
     show('progressCard');
@@ -760,7 +767,8 @@ function startPolling(jobId, isResume, kind) {
           return;
         }
         if (data.status === 'running' || data.status === 'pending') {
-          _pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+          _pollTimer = setTimeout(poll, backoffMs);
+          backoffMs = Math.min(backoffMs * 2, POLL_BACKOFF_CAP_MS);
           return;
         }
         // done or failed
@@ -805,7 +813,8 @@ function startPolling(jobId, isResume, kind) {
         setTimeout(() => { hide('progressCard'); showComparison(_currentJob, result); }, 500);
       })
       .catch(() => {
-        _pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+        _pollTimer = setTimeout(poll, backoffMs);
+        backoffMs = Math.min(backoffMs * 2, POLL_BACKOFF_CAP_MS);
       });
   }
 
