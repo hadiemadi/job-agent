@@ -112,9 +112,41 @@ async function listSavedCvs(userId) {
   return rows;
 }
 
+async function deleteSavedCv(cvId, userId) {
+  const pool = getPool();
+  if (!pool) return false;
+  const { rowCount } = await pool.query(
+    'DELETE FROM saved_cvs WHERE id = $1 AND user_id = $2',
+    [cvId, userId]
+  );
+  return rowCount > 0;
+}
+
+async function listConversationHistory(userId) {
+  const pool = getPool();
+  if (!pool) return [];
+  const { rows } = await pool.query(
+    `SELECT id, agent, gap_topic, digest_summary, created_at
+     FROM conversation_history WHERE user_id = $1 ORDER BY created_at DESC`,
+    [userId]
+  );
+  return rows;
+}
+
+async function listCoachMemory(userId) {
+  const pool = getPool();
+  if (!pool) return [];
+  const { rows } = await pool.query(
+    'SELECT id, gap_topic, digest_summary, created_at FROM coach_memory WHERE user_id = $1 ORDER BY created_at DESC',
+    [userId]
+  );
+  return rows;
+}
+
 module.exports = {
   createUser, findUserByEmail, findUserByGoogleId, findUserById,
   hashPassword, verifyPassword,
   setUserPreference, getUserPreference,
-  saveCv, listSavedCvs,
+  saveCv, listSavedCvs, deleteSavedCv,
+  listConversationHistory, listCoachMemory,
 };

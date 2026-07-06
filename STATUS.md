@@ -5,11 +5,40 @@
 
 **Last updated:** 2026-07-06
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 260/260 green · **origin/main HEAD:** `bd9df0c`
+**Tests:** 281/281 green · **origin/main HEAD:** `6146f1f`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Phase 2 Part 3 — Logout data clearing, consent text variants, My Data view** —
+
+  **Logout clears working session state**: `POST /auth/logout` now calls `purgeSessionData()`
+  (same mechanism as "Delete my data now"), which resets cvText, currentJob, hrReview, and
+  all other in-progress session state to a blank `createSession()`. DB records (saved_cvs,
+  coach_memory, user_preferences) are left intact — those belong to the account and persist
+  across logins by design. Only the browser session's working data is cleared so the next
+  person using the browser sees nothing from the previous user.
+
+  **Two-variant consent text**: The upload card's privacy note now shows the correct text
+  based on auth state. Guest text is unchanged ("automatically deleted after your session
+  ends"). Logged-in text explains that saved CVs persist until deleted and links to the new
+  My Data view. Text switches live on login, logout, and page-load auth check (initAuth).
+
+  **My Data view (logged-in users only)**: "My data" link appears in the header next to
+  "Sign out" once authenticated. Opens a modal listing:
+  - Account info (email, member since date)
+  - Saved CVs (label + date; Delete button per item — DELETE /auth/saved-cvs/:id, ownership-verified)
+  - Career Coach history (gap_topic + digest_summary per coach_memory entry)
+  - HR conversations (gap_topic + digest_summary from conversation_history)
+  - Skills & Discipline data ("None yet" — Phase 5 will populate this)
+
+  **New backend routes**: `GET /auth/my-data` (returns all user data, 401 for guests),
+  `DELETE /auth/saved-cvs/:id` (ownership-verified delete).
+
+  **New error codes**: ERR-AUTH-007 (not authenticated), ERR-AUTH-008 (saved CV not found).
+
+  Tests: 281/281 (+21: 9 backend route tests + 4 consent-text UI tests + 8 My Data UI tests).
 
 - **Phase 2 Part 2 — Frontend login modal** —
   Visible on every fresh session (sessionStorage flag suppresses it after dismiss within the same
@@ -220,4 +249,5 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 Steps and generate-command are in the Part 1 section above.
 
 **After that:** smoke-test the live site — login modal, Google OAuth flow, email/password
-register + login, dismiss-as-guest, mid-session login preserving in-progress work.
+register + login, dismiss-as-guest, mid-session login, My Data view (including saving a CV
+and verifying it shows/deletes correctly).

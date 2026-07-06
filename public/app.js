@@ -112,16 +112,38 @@ function showAuthUser(user) {
   if (!userArea) return;
   userArea.innerHTML =
     '<span class="header-user-email">' + escapeHtml(user.email) + '</span>' +
+    '<button class="link-btn header-mydata-btn" onclick="openMyData()">My data</button>' +
     '<button class="link-btn header-logout-btn" onclick="logout()">Sign out</button>';
+  updateConsentText(true);
 }
 
 async function logout() {
   try { await fetch('/auth/logout', { method: 'POST' }); } catch (e) { /* best-effort */ }
   const userArea = el('headerUserArea');
   if (userArea) userArea.innerHTML = '';
+  updateConsentText(false);
   // Remove the dismissed flag so the modal reappears — user may want to log in as someone else.
   sessionStorage.removeItem(AUTH_MODAL_DISMISSED_KEY);
   show('authModal');
+}
+
+// Switches the consent text in the upload card based on auth state.
+// Guest text: accurate — session data auto-deleted after session ends.
+// Logged-in text: accurate — saved CVs persist until explicitly deleted; My Data link to view/remove.
+function updateConsentText(isLoggedIn) {
+  const label = el('privacyLabel');
+  if (!label) return;
+  if (isLoggedIn) {
+    label.innerHTML =
+      '<strong>Your CV stays private.</strong> It\'s used only to tailor it to the job you paste below, ' +
+      'and is never shared. If you save a CV to your account, it\'s stored until you delete it — ' +
+      'you can view or remove your data anytime from ' +
+      '<button class="link-btn" onclick="openMyData()" style="font-size:inherit;">My Data</button>.';
+  } else {
+    label.innerHTML =
+      '<strong>Your CV stays private.</strong> It\'s used only to tailor it to the job you paste below, ' +
+      'is never shared, and is automatically deleted after your session ends.';
+  }
 }
 
 // On page load: check auth state via /auth/me, then show modal if session is anonymous.
@@ -135,10 +157,116 @@ async function logout() {
       return; // already authenticated — no modal needed
     }
   } catch (e) { /* offline or error — treat as guest */ }
+  updateConsentText(false);
   if (!sessionStorage.getItem(AUTH_MODAL_DISMISSED_KEY)) {
     show('authModal');
   }
 })();
+
+// ── My Data modal ──────────────────────────────────────────────────────────────
+
+async function openMyData() {
+  show('myDataModal');
+  const content = el('myDataContent');
+  content.innerHTML = '<div class="my-data-loading">Loading…</div>';
+  try {
+    const res = await fetch('/auth/my-data');
+    if (!res.ok) {
+      content.innerHTML = '<p class="my-data-empty">Could not load your data. Please try again.</p>';
+      return;
+    }
+    const data = await res.json();
+    renderMyData(data);
+  } catch (e) {
+    content.innerHTML = '<p class="my-data-empty">Could not load your data. Please try again.</p>';
+  }
+}
+
+function closeMyData() {
+  hide('myDataModal');
+}
+
+function renderMyData(data) {
+  const content = el('myDataContent');
+  const fmt = (iso) => {
+    try { return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
+    catch (e) { return iso || '—'; }
+  };
+
+  // Account section
+  let html = '<div class="my-data-section">';
+  html += '<div class="my-data-section-title">Account</div>';
+  html += '<div class="my-data-row"><span class="my-data-key">Email</span><span>' + escapeHtml(data.account.email || '—') + '</span></div>';
+  html += '<div class="my-data-row"><span class="my-data-key">Member since</span><span>' + fmt(data.account.created_at) + '</span></div>';
+  html += '</div>';
+
+  // Saved CVs section
+  html += '<div class="my-data-section">';
+  html += '<div class="my-data-section-title">Saved CVs <span class="my-data-count">(' + (data.savedCvs.length) + ')</span></div>';
+  if (data.savedCvs.length === 0) {
+    html += '<p class="my-data-empty">None yet.</p>';
+  } else {
+    data.savedCvs.forEach(cv => {
+      html += '<div class="my-data-cv-row" id="cv-row-' + escapeHtml(cv.id) + '">';
+      html += '<span class="my-data-cv-label">' + escapeHtml(cv.label || 'Untitled CV') + '</span>';
+      html += '<span class="my-data-cv-date">' + fmt(cv.created_at) + '</span>';
+      html += '<button class="link-btn my-data-delete-btn" onclick="deleteMyCV(\'' + escapeHtml(cv.id) + '\')">Delete</button>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+
+  // Career Coach history
+  html += '<div class="my-data-section">';
+  html += '<div class="my-data-section-title">Career Coach History <span class="my-data-count">(' + (data.coachMemory.length) + ')</span></div>';
+  if (data.coachMemory.length === 0) {
+    html += '<p class="my-data-empty">None yet.</p>';
+  } else {
+    data.coachMemory.forEach(entry => {
+      html += '<div class="my-data-history-row">';
+      html += '<span class="my-data-topic">' + escapeHtml(entry.gap_topic || '—') + '</span>';
+      if (entry.digest_summary) html += '<span class="my-data-digest">' + escapeHtml(entry.digest_summary) + '</span>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+
+  // HR conversations
+  const hrHistory = (data.conversationHistory || []).filter(e => e.agent === 'hr' || !e.agent);
+  html += '<div class="my-data-section">';
+  html += '<div class="my-data-section-title">HR Conversations <span class="my-data-count">(' + hrHistory.length + ')</span></div>';
+  if (hrHistory.length === 0) {
+    html += '<p class="my-data-empty">None yet.</p>';
+  } else {
+    hrHistory.forEach(entry => {
+      html += '<div class="my-data-history-row">';
+      if (entry.gap_topic) html += '<span class="my-data-topic">' + escapeHtml(entry.gap_topic) + '</span>';
+      if (entry.digest_summary) html += '<span class="my-data-digest">' + escapeHtml(entry.digest_summary) + '</span>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+
+  // Discipline data
+  html += '<div class="my-data-section">';
+  html += '<div class="my-data-section-title">Skills &amp; Discipline Data</div>';
+  html += '<p class="my-data-empty">None yet.</p>';
+  html += '</div>';
+
+  content.innerHTML = html;
+}
+
+async function deleteMyCV(cvId) {
+  if (!confirm('Delete this saved CV? This cannot be undone.')) return;
+  try {
+    const res = await fetch('/auth/saved-cvs/' + encodeURIComponent(cvId), { method: 'DELETE' });
+    if (!res.ok) { alert('Could not delete the CV. Please try again.'); return; }
+    const row = el('cv-row-' + cvId);
+    if (row) row.remove();
+  } catch (e) {
+    alert('Could not delete the CV. Please try again.');
+  }
+}
 
 // Prevents the ERR-HR-001/ERR-CV-001 nudge from firing in the first place (build.txt) — the
 // button starts disabled (see index.html) and only enables once a CV file is actually chosen,

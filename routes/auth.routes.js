@@ -1,8 +1,11 @@
 'use strict';
 const express = require('express');
 const passport = require('../core/passport');
-const { getSession } = require('../services/session');
-const { createUser, findUserByEmail, findUserById, hashPassword } = require('../services/auth');
+const { getSession, purgeSessionData } = require('../services/session');
+const {
+  createUser, findUserByEmail, findUserById, hashPassword,
+  listSavedCvs, deleteSavedCv, listConversationHistory, listCoachMemory,
+} = require('../services/auth');
 const { sendError } = require('../core/respondError');
 const { logEvent } = require('../core/logger');
 
@@ -74,12 +77,60 @@ router.get('/auth/google/callback', (req, res, next) => {
   })(req, res, next);
 });
 
-// ── POST /auth/logout — clear the user ID from the current session ─────────────
+// ── POST /auth/logout — clear auth state AND all in-progress working data ──────
+// purgeSessionData() resets the session to a blank createSession() state (userId=null,
+// cvText=null, etc.) so the next person using the browser sees nothing from the previous
+// user's session. DB records (saved_cvs, coach_memory, etc.) are left intact — those
+// belong to the account and persist across logins by design.
 router.post('/auth/logout', (req, res) => {
-  const appSession = getSession();
-  appSession.userId = null;
+  purgeSessionData();
   logEvent('user_logged_out', { route: '/auth/logout' });
   res.json({ ok: true });
+});
+
+// ── GET /auth/my-data — return all stored data for the current logged-in user ──
+router.get('/auth/my-data', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.userId) return sendError(res, '/auth/my-data', 'ERR-AUTH-007');
+
+    const user = await findUserById(appSession.userId);
+    if (!user) {
+      appSession.userId = null;
+      return sendError(res, '/auth/my-data', 'ERR-AUTH-007');
+    }
+
+    const [savedCvs, conversationHistory, coachMemory] = await Promise.all([
+      listSavedCvs(appSession.userId),
+      listConversationHistory(appSession.userId),
+      listCoachMemory(appSession.userId),
+    ]);
+
+    res.json({
+      account: { email: user.email, created_at: user.created_at },
+      savedCvs,
+      conversationHistory,
+      coachMemory,
+      disciplines: [], // file-based (knowledge/disciplines/); Phase 5 populates this
+    });
+  } catch (err) {
+    sendError(res, '/auth/my-data', 'ERR-AUTH-004', err);
+  }
+});
+
+// ── DELETE /auth/saved-cvs/:id — delete a saved CV (ownership-verified) ────────
+router.delete('/auth/saved-cvs/:id', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.userId) return sendError(res, '/auth/saved-cvs/:id', 'ERR-AUTH-007');
+
+    const deleted = await deleteSavedCv(req.params.id, appSession.userId);
+    if (!deleted) return sendError(res, '/auth/saved-cvs/:id', 'ERR-AUTH-008');
+
+    res.json({ ok: true });
+  } catch (err) {
+    sendError(res, '/auth/saved-cvs/:id', 'ERR-AUTH-004', err);
+  }
 });
 
 // ── GET /auth/me — return the current user or null (for guest sessions) ────────

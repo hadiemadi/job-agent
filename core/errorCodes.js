@@ -87,6 +87,8 @@ const ERROR_CODES = {
   'ERR-AUTH-004': { area: 'AUTH', status: 500, kind: 'error',      message: 'Authentication failed. Please try again.' },
   'ERR-AUTH-005': { area: 'AUTH', status: 401, kind: 'validation', message: 'Invalid email or password.' },
   'ERR-AUTH-006': { area: 'AUTH', status: 503, kind: 'error',      message: 'User accounts are not available right now — database is unreachable.' },
+  'ERR-AUTH-007': { area: 'AUTH', status: 401, kind: 'validation', message: 'You must be signed in to view your data.' },
+  'ERR-AUTH-008': { area: 'AUTH', status: 404, kind: 'validation', message: 'That saved CV could not be found.' },
 
   // ERR-SYS-### — uncaught / process-level errors that escape a route's own try/catch
   'ERR-SYS-001': { area: 'SYS', status: 500, kind: 'error', message: 'Something unexpected went wrong. Please try again.' },

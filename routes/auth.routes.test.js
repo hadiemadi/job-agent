@@ -2,16 +2,19 @@
 
 // Mock services/auth — all functions hit the DB which is not available in tests.
 jest.mock('../services/auth', () => ({
-  createUser:         jest.fn(),
-  findUserByEmail:    jest.fn(),
-  findUserByGoogleId: jest.fn(),
-  findUserById:       jest.fn(),
-  hashPassword:       jest.fn(),
-  verifyPassword:     jest.fn(),
-  setUserPreference:  jest.fn(),
-  getUserPreference:  jest.fn(),
-  saveCv:             jest.fn(),
-  listSavedCvs:       jest.fn(),
+  createUser:              jest.fn(),
+  findUserByEmail:         jest.fn(),
+  findUserByGoogleId:      jest.fn(),
+  findUserById:            jest.fn(),
+  hashPassword:            jest.fn(),
+  verifyPassword:          jest.fn(),
+  setUserPreference:       jest.fn(),
+  getUserPreference:       jest.fn(),
+  saveCv:                  jest.fn(),
+  listSavedCvs:            jest.fn(),
+  deleteSavedCv:           jest.fn(),
+  listConversationHistory: jest.fn(),
+  listCoachMemory:         jest.fn(),
 }));
 
 // Mock core/passport — strategies would try to connect to Google / DB in the real impl.
@@ -36,6 +39,7 @@ const request = require('supertest');
 const app     = require('../server');
 const {
   createUser, findUserByEmail, findUserById, hashPassword, verifyPassword,
+  listSavedCvs, deleteSavedCv, listConversationHistory, listCoachMemory,
 } = require('../services/auth');
 const passport = require('../core/passport');
 
@@ -51,6 +55,10 @@ beforeEach(() => {
   hashPassword.mockResolvedValue('$2b$10$hashed');
   createUser.mockResolvedValue(MOCK_USER);
   verifyPassword.mockResolvedValue(false);
+  listSavedCvs.mockResolvedValue([]);
+  deleteSavedCv.mockResolvedValue(true);
+  listConversationHistory.mockResolvedValue([]);
+  listCoachMemory.mockResolvedValue([]);
   // Default: authenticate calls callback with null (not authenticated).
   // When called with 2 args (no callback) — the OAuth redirect form — simulate a redirect
   // so the route doesn't fall through to a 404.
@@ -238,6 +246,139 @@ describe('POST /auth/logout', () => {
     // Verify cleared
     const afterLogout = await agent.get('/auth/me');
     expect(afterLogout.body.user).toBeNull();
+  });
+
+  test('logout clears working session state — /auth/my-data returns 401 after logout', async () => {
+    // purgeSessionData() is called on logout — it resets userId + all in-progress data.
+    // Verified behaviorally: /auth/my-data works while logged in, then returns 401 after logout
+    // (because userId was cleared from the session), proving the full session was purged.
+    passport.authenticate.mockImplementation((strategy, opts, cb) => {
+      return (req, res, next) => cb(null, MOCK_USER, null);
+    });
+    findUserById.mockResolvedValue(MOCK_USER);
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const beforeLogout = await agent.get('/auth/my-data');
+    expect(beforeLogout.status).toBe(200);
+
+    await agent.post('/auth/logout');
+
+    const afterLogout = await agent.get('/auth/my-data');
+    expect(afterLogout.status).toBe(401);
+    expect(afterLogout.body.error_code).toBe('ERR-AUTH-007');
+  });
+
+  test('logout does NOT call any DB-write functions — saved_cvs and other records are preserved', async () => {
+    await request(app).post('/auth/logout');
+    // None of the DB write functions should be called — only in-memory session state is cleared.
+    expect(listSavedCvs).not.toHaveBeenCalled();
+    expect(deleteSavedCv).not.toHaveBeenCalled();
+    expect(listConversationHistory).not.toHaveBeenCalled();
+    expect(listCoachMemory).not.toHaveBeenCalled();
+  });
+});
+
+// ── GET /auth/my-data ──────────────────────────────────────────────────────────
+
+describe('GET /auth/my-data', () => {
+  test('returns 401 ERR-AUTH-007 for a guest (unauthenticated) session', async () => {
+    const res = await request(app).get('/auth/my-data');
+    expect(res.status).toBe(401);
+    expect(res.body.error_code).toBe('ERR-AUTH-007');
+  });
+
+  test('returns account info, savedCvs, conversationHistory, coachMemory for a logged-in user', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => {
+      return (req, res, next) => cb(null, MOCK_USER, null);
+    });
+    findUserById.mockResolvedValue(MOCK_USER);
+    listSavedCvs.mockResolvedValue([{ id: 'cv-001', label: 'Test CV', created_at: new Date() }]);
+    listConversationHistory.mockResolvedValue([{ id: 'ch-001', gap_topic: 'Python', digest_summary: 'Discussed Python', created_at: new Date() }]);
+    listCoachMemory.mockResolvedValue([{ id: 'cm-001', gap_topic: 'leadership', digest_summary: 'Director track', created_at: new Date() }]);
+
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.get('/auth/my-data');
+    expect(res.status).toBe(200);
+    expect(res.body.account).toMatchObject({ email: 'hadi@example.com' });
+    expect(res.body.savedCvs).toHaveLength(1);
+    expect(res.body.savedCvs[0]).toMatchObject({ id: 'cv-001', label: 'Test CV' });
+    expect(res.body.conversationHistory).toHaveLength(1);
+    expect(res.body.coachMemory).toHaveLength(1);
+    expect(res.body.disciplines).toEqual([]); // Phase 5 placeholder
+  });
+
+  test('empty arrays returned when user has no stored data', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => {
+      return (req, res, next) => cb(null, MOCK_USER, null);
+    });
+    findUserById.mockResolvedValue(MOCK_USER);
+    // All list mocks already default to [] in beforeEach
+
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.get('/auth/my-data');
+    expect(res.status).toBe(200);
+    expect(res.body.savedCvs).toEqual([]);
+    expect(res.body.conversationHistory).toEqual([]);
+    expect(res.body.coachMemory).toEqual([]);
+  });
+
+  test('response body never includes password_hash', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => {
+      return (req, res, next) => cb(null, MOCK_USER, null);
+    });
+    findUserById.mockResolvedValue(MOCK_USER);
+
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.get('/auth/my-data');
+    expect(JSON.stringify(res.body)).not.toContain('password_hash');
+    expect(JSON.stringify(res.body)).not.toContain('$2b$10$');
+  });
+});
+
+// ── DELETE /auth/saved-cvs/:id ─────────────────────────────────────────────────
+
+describe('DELETE /auth/saved-cvs/:id', () => {
+  test('returns 401 ERR-AUTH-007 for a guest', async () => {
+    const res = await request(app).delete('/auth/saved-cvs/cv-001');
+    expect(res.status).toBe(401);
+    expect(res.body.error_code).toBe('ERR-AUTH-007');
+    expect(deleteSavedCv).not.toHaveBeenCalled();
+  });
+
+  test('returns 200 ok:true and calls deleteSavedCv for a logged-in user', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => {
+      return (req, res, next) => cb(null, MOCK_USER, null);
+    });
+    deleteSavedCv.mockResolvedValue(true);
+
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.delete('/auth/saved-cvs/cv-001');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('ok', true);
+    expect(deleteSavedCv).toHaveBeenCalledWith('cv-001', 'usr-001');
+  });
+
+  test('returns 404 ERR-AUTH-008 when the CV does not belong to this user', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => {
+      return (req, res, next) => cb(null, MOCK_USER, null);
+    });
+    deleteSavedCv.mockResolvedValue(false); // not found / not owned
+
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.delete('/auth/saved-cvs/cv-999');
+    expect(res.status).toBe(404);
+    expect(res.body.error_code).toBe('ERR-AUTH-008');
   });
 });
 

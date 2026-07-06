@@ -85,7 +85,7 @@
 
     <div class="privacy-block">
       <input type="checkbox" id="consentCheck" />
-      <label for="consentCheck">
+      <label for="consentCheck" id="privacyLabel">
         <strong>Your CV stays private.</strong> It's used only to tailor it to the job you paste below, is never shared, and is automatically deleted after your session ends.
       </label>
     </div>
@@ -240,6 +240,17 @@
     <div id="coachResults"></div>
   </div>
 
+</div>
+
+<!-- ── My Data modal (logged-in users only) ─────────────────────── -->
+<div class="modal-overlay" id="myDataModal" style="display:none;">
+  <div class="card modal-box my-data-modal">
+    <button class="auth-modal-close" onclick="closeMyData()" aria-label="Close">&times;</button>
+    <h2>My Data</h2>
+    <div id="myDataContent">
+      <div class="my-data-loading">Loading…</div>
+    </div>
+  </div>
 </div>
 
 <script src="/config.js"></script>
