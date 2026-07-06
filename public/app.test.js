@@ -142,6 +142,46 @@ describe('showValidationNudge / showErrorPopup — trial-mode code caption', () 
     expect(codeEl.textContent).toBe('');
   });
 
+  test('TRIAL_MODE: rate popup shows count/limit/window caption when server provides numbers', () => {
+    window.TRIAL_MODE = true;
+    loadAppInDom();
+    window.showErrorPopup(
+      {
+        error_code: 'ERR-RATE-002-UPLOAD',
+        error: 'Too many requests — slow down and try again shortly.',
+        kind: 'rate',
+        rl_count: 14,
+        rl_limit: 100,
+        rl_window_ms: 900000,
+      },
+      '/upload-cv'
+    );
+    const countEl = document.getElementById('rateCount');
+    expect(countEl.style.display).not.toBe('none');
+    expect(countEl.textContent).toContain('14');    // count
+    expect(countEl.textContent).toContain('100');   // limit
+    expect(countEl.textContent).toContain('900');   // window in seconds
+  });
+
+  test('TRIAL_MODE off: count caption is hidden even when numbers are present', () => {
+    window.TRIAL_MODE = false;
+    loadAppInDom();
+    window.showErrorPopup(
+      {
+        error_code: 'ERR-RATE-002-UPLOAD',
+        error: 'Too many requests.',
+        kind: 'rate',
+        rl_count: 14,
+        rl_limit: 100,
+        rl_window_ms: 900000,
+      },
+      '/upload-cv'
+    );
+    const countEl = document.getElementById('rateCount');
+    expect(countEl.style.display).toBe('none');
+    expect(countEl.textContent).toBe('');
+  });
+
   test('the real-error technical dialog is unchanged either way — full code/route/timestamp block', () => {
     window.TRIAL_MODE = true;
     loadAppInDom();

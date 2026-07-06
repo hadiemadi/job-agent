@@ -5,13 +5,21 @@
 
 **Last updated:** 2026-07-06
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 195/195 green · **origin/main HEAD:** `b94141c` (local: 3 commits ahead, not pushed)
+**Tests:** 200/200 green · **origin/main HEAD:** `f21f38c`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
 
-- **Double-poll-loop fix + stage-tagged error codes** (local, not yet pushed) —
+- **Rate-limit diagnostic visibility** — `tooManyRequests()` now logs a
+  `[RATE-LIMIT] ERR-RATE-002-{STAGE} | key=… | {count}/{limit} in {window}s | route=…`
+  line to the server console on every trip, and server startup prints the configured
+  limits once (`globalLimiter: 100 req/15min | aiLimiter: 20 req/60min`). The 429 JSON
+  response now includes `rl_count`, `rl_limit`, `rl_window_ms` so the frontend can show
+  real numbers. In TRIAL_MODE, the rate popup shows a diagnostic caption:
+  "14 req / 900s window · limit: 100". Thresholds unchanged — this is diagnostic only.
+  Tests: 200/200 (+5: 3 handler tests in ratelimit.test.js, 2 popup caption tests in app.test.js).
+- **Double-poll-loop fix + stage-tagged error codes** —
   Fixed ERR-RATE-002 triggered on every HR-review → Tailor-CV transition: an in-flight
   `hr_review` poll fetch was resurrecting `_pollTimer` after `startPolling('cv_tailor')`
   had already run, creating two parallel loops that doubled the request rate.
@@ -95,4 +103,6 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 ---
 
 ## ▶️ Suggested next action
-Push the 3 new commits. Then free choice: About-modal wiring, #32/#33 polish, or Mode B.
+Reproduce ERR-RATE-002-UPLOAD and ERR-RATE-002-POLL in browser; screenshot/copy the new
+diagnostic numbers shown in the popup. Once real data is captured, tune the threshold if needed.
+Then free choice: About-modal wiring, #32/#33 polish, or Mode B.

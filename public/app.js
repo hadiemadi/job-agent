@@ -235,6 +235,7 @@ function showRatePopup(data) {
         '<div class="nudge-popup-title" id="rateTitle"></div>' +
         '<div class="nudge-popup-body" id="rateBody"></div>' +
         '<div class="nudge-code" id="rateCode" style="display:none;"></div>' +
+        '<div class="nudge-code" id="rateCount" style="display:none;"></div>' +
         '<div class="nudge-popup-actions">' +
           '<button class="btn btn-blue btn-sm" id="rateCloseBtn" type="button"></button>' +
         '</div>' +
@@ -252,6 +253,17 @@ function showRatePopup(data) {
   } else {
     codeEl.textContent = '';
     hide('rateCode');
+  }
+  // Show count/limit/window as a small diagnostic caption in TRIAL_MODE when the server
+  // includes real numbers (rl_count, rl_limit, rl_window_ms) in the 429 response.
+  const countEl = el('rateCount');
+  if (window.TRIAL_MODE && data.rl_count != null && data.rl_limit != null) {
+    const windowSec = data.rl_window_ms != null ? data.rl_window_ms / 1000 : '?';
+    countEl.textContent = data.rl_count + ' req / ' + windowSec + 's window · limit: ' + data.rl_limit;
+    show('rateCount');
+  } else {
+    countEl.textContent = '';
+    hide('rateCount');
   }
   el('rateCloseBtn').textContent = copy.isDaily ? 'Close' : 'Try again';
   show('ratePopupOverlay');

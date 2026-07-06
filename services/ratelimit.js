@@ -37,13 +37,36 @@ function stageTag(path) {
   return '';
 }
 
-function tooManyRequests(req, res) {
+// Handler receives (req, res, next, optionsUsed) from express-rate-limit v6+.
+// req.rateLimit is populated by the limiter before this is called:
+//   { current, limit, remaining, resetTime }
+// optionsUsed carries { windowMs, max, ... } from the limiter config.
+function tooManyRequests(req, res, _next, optionsUsed) {
   const errorCode = 'ERR-RATE-002' + stageTag(req.path);
+  const rl        = req.rateLimit || {};
+  const count     = rl.current  != null ? rl.current  : '?';
+  const limit     = rl.limit    != null ? rl.limit    : (optionsUsed && optionsUsed.max) || '?';
+  const windowMs  = (optionsUsed && optionsUsed.windowMs) != null ? optionsUsed.windowMs : '?';
+  const windowSec = typeof windowMs === 'number' ? windowMs / 1000 : windowMs;
+  const key       = keyBySession(req);
+
+  // Diagnostic line always visible in Render/server logs — real numbers so we can
+  // tune the threshold without guessing.
+  console.log(`[RATE-LIMIT] ${errorCode} | key=${key} | ${count}/${limit} in ${windowSec}s window | route=${req.path}`);
+
   // kind:'rate' is required so public/app.js routes this to the calm showRatePopup
   // overlay instead of the red showTechnicalErrorDialog — omitting it was a bug.
-  res.status(429).json({ error: ERROR_CODES['ERR-RATE-002'].message, error_code: errorCode, kind: 'rate' });
-  logEvent('rate_limit_hit', { route: req.path, code: errorCode });
-  logError('ERR-RATE-002', req.path, {});
+  // rl_count/rl_limit/rl_window_ms are exposed so the TRIAL_MODE popup can show real numbers.
+  res.status(429).json({
+    error: ERROR_CODES['ERR-RATE-002'].message,
+    error_code: errorCode,
+    kind: 'rate',
+    rl_count:     count,
+    rl_limit:     limit,
+    rl_window_ms: windowMs,
+  });
+  logEvent('rate_limit_hit', { route: req.path, code: errorCode, count, limit, windowMs, key });
+  logError('ERR-RATE-002', req.path, { count, limit, windowMs });
 }
 
 // test.ui.js drives dozens of requests per test file through one shared supertest agent
@@ -51,6 +74,14 @@ function tooManyRequests(req, res) {
 // any test intends to exercise that behavior. Disabled under NODE_ENV==='test' (which Jest
 // sets by default) rather than loosening the real, production limits.
 const skip = () => process.env.NODE_ENV === 'test';
+
+// Print config once at startup so limits are visible in Render logs from the first request.
+if (process.env.NODE_ENV !== 'test') {
+  console.log(
+    `[RATE-LIMIT] config | globalLimiter: ${RATE_LIMIT_MAX} req/${RATE_LIMIT_WINDOW_MIN}min` +
+    ` | aiLimiter: ${AI_RATE_LIMIT_MAX} req/60min`
+  );
+}
 
 const globalLimiter = rateLimit({
   windowMs: RATE_LIMIT_WINDOW_MIN * 60 * 1000,
@@ -72,4 +103,4 @@ const aiLimiter = rateLimit({
   skip,
 });
 
-module.exports = { globalLimiter, aiLimiter, stageTag };
+module.exports = { globalLimiter, aiLimiter, stageTag, tooManyRequests };
