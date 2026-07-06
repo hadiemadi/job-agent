@@ -142,25 +142,39 @@ describe('showValidationNudge / showErrorPopup — trial-mode code caption', () 
     expect(codeEl.textContent).toBe('');
   });
 
-  test('TRIAL_MODE: rate popup shows count/limit/window caption when server provides numbers', () => {
-    window.TRIAL_MODE = true;
-    loadAppInDom();
-    window.showErrorPopup(
-      {
-        error_code: 'ERR-RATE-002-UPLOAD',
-        error: 'Too many requests — slow down and try again shortly.',
-        kind: 'rate',
-        rl_count: 14,
-        rl_limit: 100,
-        rl_window_ms: 900000,
-      },
-      '/upload-cv'
-    );
-    const countEl = document.getElementById('rateCount');
-    expect(countEl.style.display).not.toBe('none');
-    expect(countEl.textContent).toContain('14');    // count
-    expect(countEl.textContent).toContain('100');   // limit
-    expect(countEl.textContent).toContain('900');   // window in seconds
+  // Parametric check: caption must appear on ALL stage tags, not just -UPLOAD
+  const STAGE_TAGS = [
+    ['ERR-RATE-002-UPLOAD',       '/upload-cv'],
+    ['ERR-RATE-002-HR',           '/review-cv'],
+    ['ERR-RATE-002-REWRITE',      '/rewrite'],
+    ['ERR-RATE-002-POLL',         '/job/status'],
+    ['ERR-RATE-002-POLL-HR',      '/job/status'],
+    ['ERR-RATE-002-POLL-REWRITE', '/job/status'],
+    ['ERR-RATE-002-POLL-UPLOAD',  '/job/status'],
+    ['ERR-RATE-002-POLL-PARSE',   '/job/status'],
+  ];
+
+  STAGE_TAGS.forEach(([code, route]) => {
+    test(`TRIAL_MODE: count caption shown for ${code}`, () => {
+      window.TRIAL_MODE = true;
+      loadAppInDom();
+      window.showErrorPopup(
+        {
+          error_code: code,
+          error: 'Too many requests.',
+          kind: 'rate',
+          rl_count: 8,
+          rl_limit: 20,
+          rl_window_ms: 3600000,
+        },
+        route
+      );
+      const countEl = document.getElementById('rateCount');
+      expect(countEl.style.display).not.toBe('none');
+      expect(countEl.textContent).toContain('8');     // count
+      expect(countEl.textContent).toContain('20');    // limit
+      expect(countEl.textContent).toContain('3600');  // window in seconds
+    });
   });
 
   test('TRIAL_MODE off: count caption is hidden even when numbers are present', () => {

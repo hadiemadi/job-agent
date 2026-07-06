@@ -5,12 +5,18 @@
 
 **Last updated:** 2026-07-06
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 200/200 green · **origin/main HEAD:** `f21f38c`
+**Tests:** 215/215 green · **origin/main HEAD:** `adb1866`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
 
+- **Rate-limit full diagnostic + Anthropic spend visibility** —
+  - **Spend cap startup log**: `core/claude.js` now prints `[AI-SPEND] startup | cap=$5/day | today_so_far=$0.0000` at module load; `server.js` repeats it once the port is bound. `getSpendToday()` exported for tests and future dashboard.
+  - **-POLL caption fix**: `req.rateLimit.current` is `undefined` in express-rate-limit v8 — fixed to `req.rateLimit.used`. All stage tags now carry real counts, not '?'. Added null guard in `showRatePopup` so a missing `rateCount` DOM element can't throw into the poll's `.catch()` and silently retry instead of showing the popup.
+  - **Poll kind splitting**: frontend now passes `?k=<kind>` on every poll call. Rate handler maps `hr_review→-POLL-HR`, `cv_tailor→-POLL-REWRITE`, `reading_cv→-POLL-UPLOAD`, `parsing_job→-POLL-PARSE`. Exact poll loop visible in Render logs.
+  - **Per-request ramp log**: `rateLimitLogger` middleware (mounted after `globalLimiter`) logs `[RATE-LIMIT-RAMP] used=N/limit` on every API request so count ramp-up is visible before a trip fires.
+  - Tests: 215/215 (+15: 8 caption tests for all stage tags, 5 poll-kind tests, `rateLimitLogger` tests, `getSpendToday` test).
 - **Rate-limit diagnostic visibility** — `tooManyRequests()` now logs a
   `[RATE-LIMIT] ERR-RATE-002-{STAGE} | key=… | {count}/{limit} in {window}s | route=…`
   line to the server console on every trip, and server startup prints the configured
@@ -103,6 +109,9 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 ---
 
 ## ▶️ Suggested next action
-Reproduce ERR-RATE-002-UPLOAD and ERR-RATE-002-POLL in browser; screenshot/copy the new
-diagnostic numbers shown in the popup. Once real data is captured, tune the threshold if needed.
-Then free choice: About-modal wiring, #32/#33 polish, or Mode B.
+Deploy and trigger rate errors end-to-end. Check Render logs for:
+  `[RATE-LIMIT-RAMP]` lines showing ramp-up before the trip
+  `[RATE-LIMIT] ERR-RATE-002-POLL-HR | used=N/20` or similar showing exact count
+  `[AI-SPEND] server ready | cap=$5/day` confirming the spend cap
+Then compare `used/limit` to understand whether it's the `aiLimiter` (20/hr) or
+`globalLimiter` (100/15min) that's tripping — and decide whether to raise the threshold.

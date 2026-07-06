@@ -108,4 +108,17 @@ async function createJsonCompletion(params) {
   return { text, messages, raw: extractJSON(text) };
 }
 
-module.exports = { client, MODEL, createJsonCompletion, meteredCreate, DAILY_AI_BUDGET_USD };
+// Exposes the in-memory daily spend so callers (startup log, /cost endpoint, tests) can
+// read the current value without importing the private variable directly.
+function getSpendToday() {
+  rolloverIfNewUtcDay();
+  return { spendTodayUsd, DAILY_AI_BUDGET_USD };
+}
+
+// Log budget cap + today's running total at startup so Render/server logs always show the
+// safety margin from the first request. In-memory: value is 0 after every restart.
+if (process.env.NODE_ENV !== 'test') {
+  console.log(`[AI-SPEND] startup | cap=$${DAILY_AI_BUDGET_USD}/day | today_so_far=$${spendTodayUsd.toFixed(4)} (in-memory, resets on restart)`);
+}
+
+module.exports = { client, MODEL, createJsonCompletion, meteredCreate, DAILY_AI_BUDGET_USD, getSpendToday };

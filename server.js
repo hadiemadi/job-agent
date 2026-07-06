@@ -5,7 +5,8 @@ const express = require('express');
 const fse = require('fs-extra');
 const cookieParser = require('cookie-parser');
 const { sessionMiddleware, requestScope, isOwnedOutputFile, getOutputDownloadName } = require('./services/session');
-const { globalLimiter, aiLimiter } = require('./services/ratelimit');
+const { globalLimiter, aiLimiter, rateLimitLogger } = require('./services/ratelimit');
+const { getSpendToday } = require('./core/claude');
 const cvRoutes = require('./routes/cv.routes');
 const jobsRoutes = require('./routes/jobs.routes');
 const hrRoutes = require('./routes/hr.routes');
@@ -52,6 +53,8 @@ app.use(sessionMiddleware);
 // Broad, app-wide cap — keyed by the same "sid" cookie as the session itself (see
 // services/ratelimit.js), so it has to run after cookieParser/sessionMiddleware.
 app.use(globalLimiter);
+// Log running count on every API request so ramp-up is visible in Render logs before a trip.
+app.use(rateLimitLogger);
 
 app.use(express.static('public'));
 app.use('/templates', express.static('templates'));
@@ -127,6 +130,10 @@ const server = http.createServer(requestScope(app));
 
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
-  server.listen(PORT, '0.0.0.0', () => console.log(`Job Agent running on port ${PORT}`));
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Job Agent running on port ${PORT}`);
+    const { spendTodayUsd, DAILY_AI_BUDGET_USD } = getSpendToday();
+    console.log(`[AI-SPEND] server ready | cap=$${DAILY_AI_BUDGET_USD}/day | today_so_far=$${spendTodayUsd.toFixed(4)} (in-memory)`);
+  });
 }
 module.exports = server;

@@ -14,7 +14,16 @@ jest.mock('@anthropic-ai/sdk', () => {
 });
 
 const { als, getSessionSpend } = require('../services/session');
-const { client } = require('./claude');
+const { client, getSpendToday, DAILY_AI_BUDGET_USD } = require('./claude');
+
+test('getSpendToday() returns spendTodayUsd and DAILY_AI_BUDGET_USD', () => {
+  const spend = getSpendToday();
+  expect(typeof spend.spendTodayUsd).toBe('number');
+  expect(spend.spendTodayUsd).toBeGreaterThanOrEqual(0);
+  // DAILY_AI_BUDGET_USD default is 5 (overridable via env); must match the module's own const
+  expect(spend.DAILY_AI_BUDGET_USD).toBe(DAILY_AI_BUDGET_USD);
+  expect(spend.DAILY_AI_BUDGET_USD).toBeGreaterThan(0);
+});
 
 test('a metered call adds its cost to the current session, not a global total', async () => {
   await als.run('claude-test-sid', async () => {

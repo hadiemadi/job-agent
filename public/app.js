@@ -256,14 +256,19 @@ function showRatePopup(data) {
   }
   // Show count/limit/window as a small diagnostic caption in TRIAL_MODE when the server
   // includes real numbers (rl_count, rl_limit, rl_window_ms) in the 429 response.
+  // Guard against null: if the overlay was created without rateCount (e.g. stale cached DOM),
+  // skip silently rather than letting a TypeError propagate into the poll's .catch() handler
+  // which would retry the poll instead of showing the error.
   const countEl = el('rateCount');
-  if (window.TRIAL_MODE && data.rl_count != null && data.rl_limit != null) {
-    const windowSec = data.rl_window_ms != null ? data.rl_window_ms / 1000 : '?';
-    countEl.textContent = data.rl_count + ' req / ' + windowSec + 's window · limit: ' + data.rl_limit;
-    show('rateCount');
-  } else {
-    countEl.textContent = '';
-    hide('rateCount');
+  if (countEl) {
+    if (window.TRIAL_MODE && data.rl_count != null && data.rl_limit != null) {
+      const windowSec = data.rl_window_ms != null ? data.rl_window_ms / 1000 : '?';
+      countEl.textContent = data.rl_count + ' req / ' + windowSec + 's window · limit: ' + data.rl_limit;
+      show('rateCount');
+    } else {
+      countEl.textContent = '';
+      hide('rateCount');
+    }
   }
   el('rateCloseBtn').textContent = copy.isDaily ? 'Close' : 'Try again';
   show('ratePopupOverlay');
@@ -762,7 +767,10 @@ function startPolling(jobId, isResume, kind) {
   // reading_cv/parsing_job/hr_review resume: UI already set up by resumePendingJob().
 
   function poll() {
-    fetch('/job/' + jobId + '/status')
+    // Pass the job kind as ?k= so the rate-limit handler can emit -POLL-HR / -POLL-REWRITE /
+    // -POLL-UPLOAD / -POLL-PARSE instead of the generic -POLL tag — helps trace which poll
+    // loop is over-firing in Render logs.
+    fetch('/job/' + jobId + '/status?k=' + kind)
       .then(r => r.json())
       .then(data => {
         if (data.error && data.status !== 'done' && data.status !== 'failed') {

@@ -37,14 +37,34 @@ function stageTag(path) {
   return '';
 }
 
+// When the frontend passes ?k=<kind> on poll calls we can split -POLL further:
+//   hr_review   → -POLL-HR      (polling the HR-review background job)
+//   cv_tailor   → -POLL-REWRITE (polling the CV-tailoring background job)
+//   reading_cv  → -POLL-UPLOAD  (polling the CV-reading/upload background job)
+//   parsing_job → -POLL-PARSE   (polling the job-description parsing background job)
+// Falls back to -POLL for unknown or absent kind.
+const POLL_KIND_TAG = {
+  hr_review:   '-POLL-HR',
+  cv_tailor:   '-POLL-REWRITE',
+  reading_cv:  '-POLL-UPLOAD',
+  parsing_job: '-POLL-PARSE',
+};
+
 // Handler receives (req, res, next, optionsUsed) from express-rate-limit v6+.
-// req.rateLimit is populated by the limiter before this is called:
-//   { current, limit, remaining, resetTime }
-// optionsUsed carries { windowMs, max, ... } from the limiter config.
+// req.rateLimit is populated by the limiter before this is called.
+// NOTE: express-rate-limit v8 uses `used` not `current` for the request count —
+//       req.rateLimit.current is undefined in v8; use req.rateLimit.used.
 function tooManyRequests(req, res, _next, optionsUsed) {
-  const errorCode = 'ERR-RATE-002' + stageTag(req.path);
+  let tag = stageTag(req.path);
+  // Refine the generic -POLL tag using the ?k=<kind> query param the frontend passes
+  if (tag === '-POLL' && req.query && req.query.k) {
+    tag = POLL_KIND_TAG[req.query.k] || tag;
+  }
+  const errorCode = 'ERR-RATE-002' + tag;
+
   const rl        = req.rateLimit || {};
-  const count     = rl.current  != null ? rl.current  : '?';
+  // express-rate-limit v8: the count field is `used`, not `current`
+  const count     = rl.used     != null ? rl.used     : '?';
   const limit     = rl.limit    != null ? rl.limit    : (optionsUsed && optionsUsed.max) || '?';
   const windowMs  = (optionsUsed && optionsUsed.windowMs) != null ? optionsUsed.windowMs : '?';
   const windowSec = typeof windowMs === 'number' ? windowMs / 1000 : windowMs;
@@ -67,6 +87,20 @@ function tooManyRequests(req, res, _next, optionsUsed) {
   });
   logEvent('rate_limit_hit', { route: req.path, code: errorCode, count, limit, windowMs, key });
   logError('ERR-RATE-002', req.path, { count, limit, windowMs });
+}
+
+// API paths worth tracking in per-request count logs — skip static assets and healthz.
+const TRACKED_PREFIXES = ['/job/', '/upload-cv', '/fetch-job', '/review-cv', '/rewrite', '/coach', '/hr/'];
+
+// Middleware to log the RUNNING count on every non-tripped, API-bound request so we can
+// see ramp-up in Render logs BEFORE the trip fires, not just at the moment it fails.
+// Mount after globalLimiter — req.rateLimit is only set once the limiter has run.
+function rateLimitLogger(req, res, next) {
+  const rl = req.rateLimit;
+  if (rl && rl.used != null && TRACKED_PREFIXES.some(p => req.path.startsWith(p))) {
+    console.log(`[RATE-LIMIT-RAMP] ${req.method} ${req.path} | used=${rl.used}/${rl.limit} remaining=${rl.remaining}`);
+  }
+  next();
 }
 
 // test.ui.js drives dozens of requests per test file through one shared supertest agent
@@ -103,4 +137,4 @@ const aiLimiter = rateLimit({
   skip,
 });
 
-module.exports = { globalLimiter, aiLimiter, stageTag, tooManyRequests };
+module.exports = { globalLimiter, aiLimiter, stageTag, tooManyRequests, rateLimitLogger };
