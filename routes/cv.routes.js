@@ -10,6 +10,7 @@ const { getSession, setSession, registerOutputFile, purgeSessionData, als } = re
 const { getGaps } = require('../services/gapStore');
 const { tailorCvWithReview } = require('../services/workflows');
 const { createJob, updateJob, getJob } = require('../services/jobQueue');
+const { pollLimiter } = require('../services/ratelimit');
 const { sendError } = require('../core/respondError');
 const { logEvent } = require('../core/logger');
 
@@ -188,7 +189,7 @@ router.post('/rewrite', async (req, res) => {
 //   cv_tailor — restores hrThread/hrDisplayHistory/lastTailoredCvData etc.
 //   hr_review  — restores hrReview/hrThread/currentJob/gaps etc. so /rewrite and gap
 //                routes (/hr/refine, /gap-decision) work without another HR review call.
-router.get('/job/:id/status', async (req, res) => {
+router.get('/job/:id/status', pollLimiter, async (req, res) => {
   try {
     const job = await getJob(req.params.id);
     if (!job) return res.status(404).json({ error: 'Job not found', error_code: 'ERR-CV-004', kind: 'error' });

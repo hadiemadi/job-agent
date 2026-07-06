@@ -12,8 +12,22 @@ function envNumber(name, fallback) {
 }
 
 const RATE_LIMIT_WINDOW_MIN = envNumber('RATE_LIMIT_WINDOW_MIN', 15);
-const RATE_LIMIT_MAX        = envNumber('RATE_LIMIT_MAX', 100);
-const AI_RATE_LIMIT_MAX     = envNumber('AI_RATE_LIMIT_MAX', 20);
+// Raised 100 → 300: a full pipeline run with HR review generates ~42-50 HTTP requests
+// in 15 min; 300/15min gives 6× headroom above that worst case.
+const RATE_LIMIT_MAX        = envNumber('RATE_LIMIT_MAX', 300);
+
+// Raised 20 → 60: claude-sonnet-4-6 costs ~$0.03/call avg; $3/day cap ÷ $0.03 = 100 safe
+// calls/day. 60/hr lets a burst of 60 calls ($1.80) run in one hour — within the daily cap —
+// while a single full 4-step pipeline uses only ~6-8 AI calls (7-10 runs/hr supported).
+// Previously 20/hr was shared with /job/:id/status polling, causing false trips.
+const AI_RATE_LIMIT_MAX     = envNumber('AI_RATE_LIMIT_MAX', 60);
+
+// Polling (/job/:id/status) costs nothing — no Claude API calls. 300/hr = 1 poll every 12s;
+// the backoff cap is 10s so this only catches truly runaway loops (thousands of req/min).
+// Deliberately generous: a single HR review (several minutes) with 10s backoff generates
+// ~18 polls/3 min ≈ 360/hr at steady state — so this limiter is set to be permissive.
+// Use POLL_RATE_LIMIT_MAX=600 (or higher) in env if you need more headroom.
+const POLL_RATE_LIMIT_MAX   = envNumber('POLL_RATE_LIMIT_MAX', 600);
 
 // Same identity model as services/session.js: key by the "sid" cookie (one bucket per
 // browser) and fall back to IP only for the rare first-ever request, before
@@ -103,20 +117,26 @@ function rateLimitLogger(req, res, next) {
   next();
 }
 
-// test.ui.js drives dozens of requests per test file through one shared supertest agent
-// (one sid) — real per-user limits would start 429-ing the test suite itself well before
-// any test intends to exercise that behavior. Disabled under NODE_ENV==='test' (which Jest
-// sets by default) rather than loosening the real, production limits.
-const skip = () => process.env.NODE_ENV === 'test';
+// Skip helpers — passed to each limiter's `skip` option.
+// `skipInTest` disables all limiters during Jest runs (test.ui.js makes many rapid requests
+// through one shared supertest agent and would start 429-ing itself without this).
+// `skipAIForPollRoutes` additionally lets aiLimiter pass through /job/:id/status requests —
+// polling has no AI cost and must not share the AI bucket.
+const skipInTest         = () => process.env.NODE_ENV === 'test';
+const skipAIForPollRoutes = (req) =>
+  process.env.NODE_ENV === 'test' || /^\/job\/[^/]+\/status$/.test(req.path);
 
 // Print config once at startup so limits are visible in Render logs from the first request.
 if (process.env.NODE_ENV !== 'test') {
   console.log(
-    `[RATE-LIMIT] config | globalLimiter: ${RATE_LIMIT_MAX} req/${RATE_LIMIT_WINDOW_MIN}min` +
-    ` | aiLimiter: ${AI_RATE_LIMIT_MAX} req/60min`
+    `[RATE-LIMIT] config` +
+    ` | globalLimiter: ${RATE_LIMIT_MAX} req/${RATE_LIMIT_WINDOW_MIN}min` +
+    ` | aiLimiter: ${AI_RATE_LIMIT_MAX} req/60min (skips poll routes)` +
+    ` | pollLimiter: ${POLL_RATE_LIMIT_MAX} req/60min (poll routes only)`
   );
 }
 
+// Broad, app-wide cap — every HTTP request (including static files) counts.
 const globalLimiter = rateLimit({
   windowMs: RATE_LIMIT_WINDOW_MIN * 60 * 1000,
   max: RATE_LIMIT_MAX,
@@ -124,17 +144,36 @@ const globalLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: keyBySession,
   handler: tooManyRequests,
-  skip,
+  skip: skipInTest,
 });
 
+// Stricter cap for routes that trigger real Claude API calls.
+// Excludes /job/:id/status — polling has no AI cost and was falsely tripping this limiter
+// when aiLimiter was set to 20/hr and status-polls were counted against it.
 const aiLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour — stricter window than globalLimiter, for AI/job-search-heavy routes
+  windowMs: 60 * 60 * 1000,
   max: AI_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: keyBySession,
   handler: tooManyRequests,
-  skip,
+  skip: skipAIForPollRoutes,
 });
 
-module.exports = { globalLimiter, aiLimiter, stageTag, tooManyRequests, rateLimitLogger };
+// Generous cap for /job/:id/status polling only — polling costs nothing (no API calls).
+// Applied at the route level in cv.routes.js, not app-wide.
+const pollLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: POLL_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyBySession,
+  handler: tooManyRequests,
+  skip: skipInTest,
+});
+
+module.exports = {
+  globalLimiter, aiLimiter, pollLimiter, stageTag, tooManyRequests, rateLimitLogger,
+  // Export constants for tests and observability
+  RATE_LIMIT_MAX, AI_RATE_LIMIT_MAX, POLL_RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MIN,
+};

@@ -1,6 +1,10 @@
 // Unit tests for services/ratelimit.js: stageTag (pure function), tooManyRequests
-// (diagnostic logging + response shape), and rateLimitLogger (per-request ramp log).
-const { stageTag, tooManyRequests, rateLimitLogger } = require('./ratelimit');
+// (diagnostic logging + response shape), rateLimitLogger (per-request ramp log), and
+// threshold constants confirming the three limiters are properly separated.
+const {
+  stageTag, tooManyRequests, rateLimitLogger,
+  RATE_LIMIT_MAX, AI_RATE_LIMIT_MAX, POLL_RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MIN,
+} = require('./ratelimit');
 
 // --- stageTag ---
 
@@ -189,4 +193,34 @@ test('rateLimitLogger does not log for static asset paths', () => {
   expect(line).toBeUndefined();
 
   spy.mockRestore();
+});
+
+// --- limiter threshold constants (separate poll from AI) ---
+// These lock in the values from the fix so a future change is visible in test output.
+
+test('globalLimiter threshold is 300 req per window (raised from 100 to give headroom for polling)', () => {
+  expect(RATE_LIMIT_MAX).toBe(300);
+});
+
+test('globalLimiter window is 15 minutes (default)', () => {
+  expect(RATE_LIMIT_WINDOW_MIN).toBe(15);
+});
+
+test('aiLimiter threshold is 60 req/hour — raised from 20, AI routes only', () => {
+  // Math: claude-sonnet-4-6 ~$0.03/call avg; $3/day ÷ $0.03 = 100 max calls/day.
+  // 60/hr allows a 1-hr burst of $1.80 — safely under the daily cap.
+  expect(AI_RATE_LIMIT_MAX).toBe(60);
+});
+
+test('pollLimiter threshold is 600 req/hour — poll routes only, no AI cost', () => {
+  // 600/hr = 1 poll every 6s; backoff cap is 10s so this only catches runaway loops.
+  expect(POLL_RATE_LIMIT_MAX).toBe(600);
+});
+
+test('pollLimiter and aiLimiter have different max values — they are separate limiters', () => {
+  expect(POLL_RATE_LIMIT_MAX).not.toBe(AI_RATE_LIMIT_MAX);
+});
+
+test('pollLimiter max is higher than aiLimiter max — polling is free, AI calls have cost', () => {
+  expect(POLL_RATE_LIMIT_MAX).toBeGreaterThan(AI_RATE_LIMIT_MAX);
 });

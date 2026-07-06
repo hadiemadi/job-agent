@@ -5,12 +5,26 @@
 
 **Last updated:** 2026-07-06
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 215/215 green · **origin/main HEAD:** `adb1866`
+**Tests:** 221/221 green · **origin/main HEAD:** `12beb89`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
 
+- **Rate-limit fix: separate poll limiter + raised thresholds** —
+  Root cause confirmed: `aiLimiter` (20 req/hr) was shared between real Claude API calls AND
+  `/job/:id/status` polling. A single HR review (several minutes, polling every ~10s with backoff)
+  alone generated ~18 polls/3min which exceeded the 20/hr bucket alongside the actual AI calls.
+  **Fix:**
+  - New `pollLimiter` (600 req/hr) applied at route level on `/job/:id/status` only.
+    Polling costs nothing (no Anthropic calls); 600/hr catches only truly runaway loops.
+  - `aiLimiter` raised 20→60/hr and now skips poll routes. Math: claude-sonnet-4-6 ~$0.03/call;
+    $3/day ÷ $0.03 = 100 safe calls/day. 60/hr lets a 1-hr burst of $1.80 — under the daily cap.
+    A full 4-step pipeline = ~6-8 AI calls; 60/hr supports 7-10 full runs/hr.
+  - `globalLimiter` raised 100→300 req/15min. A pipeline run with HR review generates ~42-50
+    HTTP requests in 15min; 300/15min gives 6× headroom above worst case.
+  - All diagnostic logging and stage-tagged error codes from prior commit preserved.
+  Tests: 221/221 (+6 threshold constants, total).
 - **Rate-limit full diagnostic + Anthropic spend visibility** —
   - **Spend cap startup log**: `core/claude.js` now prints `[AI-SPEND] startup | cap=$5/day | today_so_far=$0.0000` at module load; `server.js` repeats it once the port is bound. `getSpendToday()` exported for tests and future dashboard.
   - **-POLL caption fix**: `req.rateLimit.current` is `undefined` in express-rate-limit v8 — fixed to `req.rateLimit.used`. All stage tags now carry real counts, not '?'. Added null guard in `showRatePopup` so a missing `rateCount` DOM element can't throw into the poll's `.catch()` and silently retry instead of showing the popup.
@@ -109,7 +123,8 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 ---
 
 ## ▶️ Suggested next action
-Deploy and trigger rate errors end-to-end. Check Render logs for:
+Deploy and run a full pipeline. Confirm no ERR-RATE-002-POLL-* fires during normal HR review.
+Check Render logs for:
   `[RATE-LIMIT-RAMP]` lines showing ramp-up before the trip
   `[RATE-LIMIT] ERR-RATE-002-POLL-HR | used=N/20` or similar showing exact count
   `[AI-SPEND] server ready | cap=$5/day` confirming the spend cap
