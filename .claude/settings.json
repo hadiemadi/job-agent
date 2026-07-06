@@ -69,7 +69,8 @@
       "Bash(node --check evals/run.js)",
       "Bash(node evals/run.js)",
       "Bash(curl -s -o /dev/null -w \"homepage: %{http_code}\\\\n\" http://localhost:3000/)",
-      "Bash(curl -s http://localhost:3000/healthz -w \"\\\\nhealthz: %{http_code}\\\\n\")"
+      "Bash(curl -s http://localhost:3000/healthz -w \"\\\\nhealthz: %{http_code}\\\\n\")",
+      "Bash(npm test *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\ezemaha\\Documents\\JobSeeker\\mocks",
