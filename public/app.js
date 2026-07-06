@@ -47,6 +47,99 @@ function dismissIntro() {
 // so this can't block or slow down anyone who's already used the app.
 if (!getCookie(ONBOARD_COOKIE)) show('introPanel');
 
+// ── Auth modal ─────────────────────────────────────────────────────────────────
+// sessionStorage flag: modal shows on fresh sessions but NOT after dismiss within the same tab.
+// Using sessionStorage (not a cookie) per build spec — cleared automatically when the tab closes,
+// so a brand-new session always sees the modal; a reload in the same tab does not.
+const AUTH_MODAL_DISMISSED_KEY = 'jsk_auth_dismissed';
+
+let _authMode = 'login'; // 'login' | 'register'
+
+function dismissAuthModal() {
+  hide('authModal');
+  sessionStorage.setItem(AUTH_MODAL_DISMISSED_KEY, '1');
+}
+
+function toggleAuthMode() {
+  _authMode = _authMode === 'login' ? 'register' : 'login';
+  el('authSubmitBtn').textContent = _authMode === 'login' ? 'Sign in' : 'Create account';
+  el('authToggleText').textContent = _authMode === 'login' ? 'No account yet?' : 'Already have one?';
+  el('authToggleBtn').textContent = _authMode === 'login' ? 'Create one' : 'Sign in';
+  hide('auth-error');
+}
+
+function showAuthError(msg) {
+  const e = el('auth-error');
+  e.textContent = msg;
+  show('auth-error');
+}
+
+async function submitAuth() {
+  const email = (el('auth-email').value || '').trim();
+  const password = el('auth-password').value || '';
+  if (!email || !password) { showAuthError('Please enter your email and password.'); return; }
+  const route = _authMode === 'login' ? '/auth/login' : '/auth/register';
+  const btn = el('authSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = _authMode === 'login' ? 'Signing in…' : 'Creating account…';
+  try {
+    const res = await fetch(route, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showAuthError(data.error || 'Something went wrong. Please try again.');
+      btn.disabled = false;
+      btn.textContent = _authMode === 'login' ? 'Sign in' : 'Create account';
+      return;
+    }
+    hide('authModal');
+    sessionStorage.setItem(AUTH_MODAL_DISMISSED_KEY, '1');
+    if (data.user) showAuthUser(data.user);
+  } catch (err) {
+    showAuthError(err.message);
+    btn.disabled = false;
+    btn.textContent = _authMode === 'login' ? 'Sign in' : 'Create account';
+  }
+}
+
+// Populate the header user area without a full page reload — called on successful login/register
+// and on page load when the session is already authenticated.
+function showAuthUser(user) {
+  const userArea = el('headerUserArea');
+  if (!userArea) return;
+  userArea.innerHTML =
+    '<span class="header-user-email">' + escapeHtml(user.email) + '</span>' +
+    '<button class="link-btn header-logout-btn" onclick="logout()">Sign out</button>';
+}
+
+async function logout() {
+  try { await fetch('/auth/logout', { method: 'POST' }); } catch (e) { /* best-effort */ }
+  const userArea = el('headerUserArea');
+  if (userArea) userArea.innerHTML = '';
+  // Remove the dismissed flag so the modal reappears — user may want to log in as someone else.
+  sessionStorage.removeItem(AUTH_MODAL_DISMISSED_KEY);
+  show('authModal');
+}
+
+// On page load: check auth state via /auth/me, then show modal if session is anonymous.
+// Errors (network, server down) fall through to guest mode — the modal shows unless dismissed.
+(async function initAuth() {
+  try {
+    const res = await fetch('/auth/me');
+    const data = await res.json();
+    if (data && data.user) {
+      showAuthUser(data.user);
+      return; // already authenticated — no modal needed
+    }
+  } catch (e) { /* offline or error — treat as guest */ }
+  if (!sessionStorage.getItem(AUTH_MODAL_DISMISSED_KEY)) {
+    show('authModal');
+  }
+})();
+
 // Prevents the ERR-HR-001/ERR-CV-001 nudge from firing in the first place (build.txt) — the
 // button starts disabled (see index.html) and only enables once a CV file is actually chosen,
 // with a tooltip explaining why while disabled. The validation popup stays as a rare fallback

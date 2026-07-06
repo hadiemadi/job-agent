@@ -5,11 +5,39 @@
 
 **Last updated:** 2026-07-06
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 247/247 green · **origin/main HEAD:** `23c9e00`
+**Tests:** 260/260 green · **origin/main HEAD:** `bd9df0c`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Phase 2 Part 2 — Frontend login modal** —
+  Visible on every fresh session (sessionStorage flag suppresses it after dismiss within the same
+  tab; closing the tab resets it so a new session always sees it).
+
+  **Modal features:**
+  - Google OAuth button — `<a href="/auth/google">` redirect, same as Part 1's route.
+  - Email/password form with inline toggle to switch between Login and Register modes.
+  - Short one-line benefit copy ("Sign in to save your CVs, preferences, and pick up where you
+    left off.") — not a sales pitch.
+  - "Continue as guest →" link — same visual weight as login options, not hidden or de-emphasised.
+  - On successful login/register: modal closes and user's email appears in the header (top-right
+    group) without a page reload. "Sign out" link in the header clears the session and re-shows
+    the modal.
+  - Mid-session login: the backend session is already session-to-user-linked (Part 1). Frontend
+    just calls the auth route and updates the header — no in-progress UI state is touched.
+  - `GET /auth/me` called on page load: if session is already authenticated, shows user in header
+    immediately without ever showing the modal.
+
+  **Header change**: "Delete my data" button and user area are now grouped in a `.header-actions`
+  flex row on the right of the header (same visual position, nothing moved).
+
+  **Style**: matches existing app design language — modal-overlay, card/modal-box, btn-go for
+  primary action, same design tokens, no new design language introduced.
+
+  Tests: 260/260 (+13: modal shows/hides on session state, dismiss sets flag, login/register
+  POST to correct route, failure shows error, success closes modal + updates header, toggle mode,
+  Google button href, already-logged-in flow).
 
 - **Phase 2 Part 1 — Backend auth (Google OAuth + email/password) + user schema** —
   Optional user accounts added on top of the existing anonymous/guest flow, which is
@@ -187,9 +215,9 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 ---
 
 ## ▶️ Suggested next action
-**Phase 2 Part 2 — Frontend login UI.** Add a login/register modal or page (email/password
-form + Google Sign-In button), wire to the new /auth/* routes, show user name/logout in
-the header once logged in.
+**Set Render env vars for Google OAuth** (set via Render dashboard — no shell access needed):
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`, `SESSION_SECRET`.
+Steps and generate-command are in the Part 1 section above.
 
-Before that: set the 4 Render env vars listed above under the auth section so Google OAuth
-is ready when the UI lands.
+**After that:** smoke-test the live site — login modal, Google OAuth flow, email/password
+register + login, dismiss-as-guest, mid-session login preserving in-progress work.

@@ -16,6 +16,17 @@ function loadAppInDom() {
   (0, eval)(code); // indirect eval — runs in global scope, not this module's local scope
 }
 
+// initAuth() calls fetch('/auth/me') at module load time (every loadAppInDom()). Ensure fetch
+// is mocked globally before any describe's beforeEach calls loadAppInDom, so existing tests
+// don't throw on the unresolved Promise. Individual tests override window.fetch as needed.
+beforeEach(() => {
+  sessionStorage.clear();
+  window.fetch = jest.fn(() => Promise.resolve({
+    ok: true,
+    json: () => Promise.resolve({ user: null }),
+  }));
+});
+
 describe('stopPolling — stacked-loop prevention', () => {
   beforeEach(() => {
     document.cookie = 'onboarded=1';
@@ -212,5 +223,151 @@ describe('showValidationNudge / showErrorPopup — trial-mode code caption', () 
       '/review-cv'
     );
     expect(document.getElementById('errPopupCode').textContent).toBe('ERR-HR-003');
+  });
+});
+
+// ── Auth modal ────────────────────────────────────────────────────────────────
+
+describe('Auth modal — login/register UI', () => {
+  beforeEach(() => {
+    document.cookie = 'onboarded=1';
+    window.TRIAL_MODE = false;
+    // fetch already mocked by the outer beforeEach (returns { user: null })
+    loadAppInDom();
+  });
+
+  test('modal is in the DOM and starts hidden before initAuth() resolves', () => {
+    // synchronously after loadAppInDom — initAuth has not yet resolved its fetch promise
+    const modal = document.getElementById('authModal');
+    expect(modal).not.toBeNull();
+  });
+
+  test('modal is shown when session is anonymous and no sessionStorage flag is set', async () => {
+    // sessionStorage is clear (outer beforeEach). Drain microtasks so initAuth() resolves.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const modal = document.getElementById('authModal');
+    expect(modal.style.display).not.toBe('none');
+  });
+
+  test('modal is NOT shown when sessionStorage dismissed flag is already set', async () => {
+    sessionStorage.setItem('jsk_auth_dismissed', '1');
+    // Reload the app JS with the flag already in place
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const modal = document.getElementById('authModal');
+    expect(modal.style.display).toBe('none');
+  });
+
+  test('modal is NOT shown when /auth/me returns a logged-in user', async () => {
+    window.fetch = jest.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
+    }));
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const modal = document.getElementById('authModal');
+    expect(modal.style.display).toBe('none');
+  });
+
+  test('dismissAuthModal() hides the modal and sets sessionStorage flag', async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    window.dismissAuthModal();
+    expect(document.getElementById('authModal').style.display).toBe('none');
+    expect(sessionStorage.getItem('jsk_auth_dismissed')).toBe('1');
+  });
+
+  test('dismissing modal does not block guest usage — main input card is still accessible', async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    window.dismissAuthModal();
+    expect(document.getElementById('inputCard')).not.toBeNull();
+    expect(document.getElementById('cvFile')).not.toBeNull();
+    expect(document.getElementById('goBtn')).not.toBeNull();
+  });
+
+  test('login form submits to /auth/login with the correct body', async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    window.fetch = jest.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, user: { id: 'usr-001', email: 'test@example.com' } }),
+    }));
+    document.getElementById('auth-email').value = 'test@example.com';
+    document.getElementById('auth-password').value = 'secret123';
+    await window.submitAuth();
+    expect(window.fetch).toHaveBeenCalledWith('/auth/login', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ email: 'test@example.com', password: 'secret123' }),
+    }));
+  });
+
+  test('register form submits to /auth/register after toggleAuthMode()', async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    window.toggleAuthMode(); // switch to register
+    window.fetch = jest.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, user: { id: 'usr-002', email: 'new@example.com' } }),
+    }));
+    document.getElementById('auth-email').value = 'new@example.com';
+    document.getElementById('auth-password').value = 'newpassword';
+    await window.submitAuth();
+    expect(window.fetch).toHaveBeenCalledWith('/auth/register', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ email: 'new@example.com', password: 'newpassword' }),
+    }));
+  });
+
+  test('login failure shows error message in modal and keeps modal open', async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    window.fetch = jest.fn(() => Promise.resolve({
+      ok: false,
+      json: () => Promise.resolve({ error: 'Invalid email or password.', error_code: 'ERR-AUTH-005' }),
+    }));
+    document.getElementById('auth-email').value = 'test@example.com';
+    document.getElementById('auth-password').value = 'wrong';
+    await window.submitAuth();
+    const errEl = document.getElementById('auth-error');
+    expect(errEl.style.display).not.toBe('none');
+    expect(errEl.textContent).toContain('Invalid email or password');
+    // Modal stays open
+    expect(document.getElementById('authModal').style.display).not.toBe('none');
+  });
+
+  test('successful login closes modal and shows user email in header', async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    window.fetch = jest.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, user: { id: 'usr-001', email: 'hadi@example.com' } }),
+    }));
+    document.getElementById('auth-email').value = 'hadi@example.com';
+    document.getElementById('auth-password').value = 'secret123';
+    await window.submitAuth();
+    expect(document.getElementById('authModal').style.display).toBe('none');
+    const userArea = document.getElementById('headerUserArea');
+    expect(userArea.innerHTML).toContain('hadi@example.com');
+  });
+
+  test('toggleAuthMode switches button label between Sign in and Create account', async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(document.getElementById('authSubmitBtn').textContent).toBe('Sign in');
+    window.toggleAuthMode();
+    expect(document.getElementById('authSubmitBtn').textContent).toBe('Create account');
+    window.toggleAuthMode();
+    expect(document.getElementById('authSubmitBtn').textContent).toBe('Sign in');
+  });
+
+  test('Google button href points to /auth/google', () => {
+    const googleBtn = document.querySelector('.auth-google-btn');
+    expect(googleBtn).not.toBeNull();
+    expect(googleBtn.getAttribute('href')).toBe('/auth/google');
+  });
+
+  test('already-logged-in user gets email shown in header, no modal', async () => {
+    window.fetch = jest.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
+    }));
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(document.getElementById('authModal').style.display).toBe('none');
+    expect(document.getElementById('headerUserArea').innerHTML).toContain('hadi@example.com');
   });
 });
