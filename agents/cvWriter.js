@@ -95,10 +95,7 @@ function flattenStringArrayFields(cvData, fields) {
 
 // Extract the original CV into structured JSON without changing anything
 async function parseCVStructure(cvText) {
-  const message = await client.messages.create({
-    model: MODEL,
-    max_tokens: 4000,
-    messages: [{ role: 'user', content: `Extract this CV into the exact JSON structure below.
+  const userMessage = `Extract this CV into the exact JSON structure below.
 
 CRITICAL RULES:
 - Include EVERY experience entry — do not skip or merge any roles
@@ -123,9 +120,19 @@ JSON structure:
 CV:
 ${cvText}
 
-Return ONLY the JSON, no explanation.` }]
-  });
-  const raw = extractJSON(firstText(message));
+Return ONLY the JSON, no explanation.`;
+  let message, raw;
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const msgs = attempt === 0
+      ? [{ role: 'user', content: userMessage }]
+      : [
+          { role: 'user', content: userMessage },
+          { role: 'assistant', content: firstText(message) },
+          { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
+        ];
+    message = await client.messages.create({ model: MODEL, max_tokens: 4000, messages: msgs });
+    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) throw e; }
+  }
   const cv = cleanBulletPrefixes(JSON.parse(raw));
   if (cv.linkedin) cv.linkedin = normalizeLinkedin(cv.linkedin);
   return enforceContactInfo(cv, cvText);

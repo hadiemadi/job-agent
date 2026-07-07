@@ -172,6 +172,14 @@ describe('agents/cvWriter', () => {
     ['parseCVStructure', 'rewriteCVWithChanges', 'adjustLanguageLevel', 'applyConcernChange']
       .forEach(name => expect(typeof cvWriter[name]).toBe('function'));
   });
+  test('parseCVStructure retries once when Claude returns prose instead of JSON — regression for ERR-CV-004', async () => {
+    client.messages.create
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: 'Sure, here is the CV extracted in plain English...' }] })
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: JSON.stringify({ name: 'Jane Doe', title: 'TPM', email: 'jane@example.com', phone: '', location: '', linkedin: '', summary: '', key_qualifications: [], experience: [], education: [], skills: [], additional_sections: [] }) }] });
+    const result = await cvWriter.parseCVStructure('Jane Doe - Senior TPM. Email: jane@example.com.');
+    expect(result.name).toBe('Jane Doe');
+    expect(client.messages.create).toHaveBeenCalledTimes(2);
+  });
   test('applyConcernChange resolves with a mocked response', async () => {
     mockTextResponse(JSON.stringify({ revised_text: 'Led RF integration.', changed: true }));
     const result = await cvWriter.applyConcernChange('cv text', { job_title: 'TPM' }, 'Led RF integration.', 'RF integration', [], {});
