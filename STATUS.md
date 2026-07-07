@@ -11,6 +11,22 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **Build.txt item 4a — gap_memory schema + auth service (commit 1/3)** —
+
+  New `gap_memory` Postgres table: per-user, per-gap-slogan persistent memory that
+  accumulates across CV-tailor sessions. Schema:
+  - `(id, user_id, gap_slogan, coach_conversation JSONB, coach_verdict, hr_statement,
+    user_decision, created_at, updated_at)` with `UNIQUE(user_id, gap_slogan)`.
+  - Coach conversation is appended (never replaced) via `JSONB || JSONB` on upsert.
+  - Other fields use `COALESCE(new, existing)` so null writes never clobber stored data.
+  - `ON DELETE CASCADE` from `users(id)` — gap memory is wiped with the account.
+  - ⚠ Known growth risk: no per-user row cap. Retention/pruning deferred (see STATUS backlog).
+
+  New auth service functions: `upsertGapMemory`, `findGapMemoryBySlogan`, `listGapMemory`.
+  Test mocks updated: `test.ui.js`, `routes/auth.routes.test.js`.
+
+  Tests: 350/350 green.
+
 - **Build.txt item 3 — Stripe live E2E test result** —
 
   Tested against live Render site `jobseeker-rpzr.onrender.com`:

@@ -188,8 +188,57 @@ async function getProfilePreferences(userId) {
   return getUserPreference(userId, 'profile_preferences');
 }
 
+// ── Gap memory — per user, per gap slogan ─────────────────────────────────────
+// Accumulates across CV-tailor sessions: coach conversation is APPENDED (never replaced),
+// other fields use latest non-null value. Linked by gap_slogan so the same gap topic is
+// recognised across different job applications for the same user.
+
+async function upsertGapMemory(userId, { gapSlogan, coachConversation, coachVerdict, hrStatement, userDecision }) {
+  const pool = getPool();
+  if (!pool) throw new Error('Database unavailable');
+  const id = genId();
+  await pool.query(
+    `INSERT INTO gap_memory (id, user_id, gap_slogan, coach_conversation, coach_verdict, hr_statement, user_decision)
+     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
+     ON CONFLICT (user_id, gap_slogan) DO UPDATE SET
+       coach_conversation = gap_memory.coach_conversation || EXCLUDED.coach_conversation,
+       coach_verdict      = COALESCE(EXCLUDED.coach_verdict,   gap_memory.coach_verdict),
+       hr_statement       = COALESCE(EXCLUDED.hr_statement,    gap_memory.hr_statement),
+       user_decision      = COALESCE(EXCLUDED.user_decision,   gap_memory.user_decision),
+       updated_at         = now()`,
+    [
+      id, userId, gapSlogan,
+      JSON.stringify(coachConversation || []),
+      coachVerdict   || null,
+      hrStatement    || null,
+      userDecision   || null,
+    ]
+  );
+}
+
+async function findGapMemoryBySlogan(userId, gapSlogan) {
+  const pool = getPool();
+  if (!pool) return null;
+  const { rows } = await pool.query(
+    'SELECT * FROM gap_memory WHERE user_id = $1 AND gap_slogan = $2',
+    [userId, gapSlogan]
+  );
+  return rows[0] || null;
+}
+
+async function listGapMemory(userId) {
+  const pool = getPool();
+  if (!pool) return [];
+  const { rows } = await pool.query(
+    `SELECT id, gap_slogan, coach_verdict, hr_statement, user_decision, updated_at
+     FROM gap_memory WHERE user_id = $1 ORDER BY updated_at DESC`,
+    [userId]
+  );
+  return rows;
+}
+
 // Hard-deletes the user row. All child tables (saved_cvs, user_preferences, conversation_history,
-// coach_memory) have ON DELETE CASCADE, so one DELETE clears the full account.
+// coach_memory, gap_memory) have ON DELETE CASCADE, so one DELETE clears the full account.
 async function deleteUserAccount(userId) {
   const pool = getPool();
   if (!pool) throw new Error('Database unavailable');
@@ -205,5 +254,6 @@ module.exports = {
   listCoachMemory, saveCoachMemory,
   getLatestSavedCv,
   saveProfilePreferences, getProfilePreferences,
+  upsertGapMemory, findGapMemoryBySlogan, listGapMemory,
   deleteUserAccount,
 };
