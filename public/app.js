@@ -127,15 +127,11 @@ function showAuthUser(user) {
       '<span class="header-user-email">' + escapeHtml(user.email) + '</span>' +
       '<button class="link-btn header-logout-btn" onclick="logout()">Sign out</button>';
   }
-  // Show the logged-in workspace panel with account info
-  const panel = el('loggedInPanel');
-  if (panel) {
-    const accountInfo = el('workspaceAccountInfo');
-    if (accountInfo) {
-      accountInfo.innerHTML =
-        '<span class="ws-account-email">' + escapeHtml(user.email) + '</span>';
-    }
-    panel.style.display = '';
+  // Populate account info in the left column (shown via _showThreeCols below)
+  const accountInfo = el('workspaceAccountInfo');
+  if (accountInfo) {
+    accountInfo.innerHTML =
+      '<span class="ws-account-email">' + escapeHtml(user.email) + '</span>';
   }
   updateConsentText(true);
   _showThreeCols(true);
@@ -150,9 +146,6 @@ async function logout() {
     userArea.innerHTML =
       '<button class="link-btn header-login-btn" onclick="openAuthModal()">Log in</button>';
   }
-  // Hide the workspace panel and side prefs columns — only for authenticated users.
-  const panel = el('loggedInPanel');
-  if (panel) panel.style.display = 'none';
   _showThreeCols(false);
   updateConsentText(false);
   sessionStorage.removeItem(AUTH_MODAL_DISMISSED_KEY);

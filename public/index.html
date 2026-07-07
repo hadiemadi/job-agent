@@ -60,49 +60,39 @@
 
 <div class="container">
 
-  <!-- ── Logged-in workspace panel (hidden for guests — shown by showAuthUser) ──── -->
-  <div class="card" id="loggedInPanel" style="display:none;">
-    <div class="workspace-account" id="workspaceAccountInfo"></div>
-    <div class="workspace-data-buttons">
-      <button class="btn ws-section-btn" onclick="openSection('cv')">
-        <span class="ws-section-icon">📄</span>
-        <div class="ws-section-text">
-          <span class="ws-section-label">Previous CV &amp; job info</span>
-          <span class="ws-section-desc">Your saved CVs and last job description</span>
-        </div>
-      </button>
-      <button class="btn ws-section-btn" onclick="openSection('coach')">
-        <span class="ws-section-icon">💬</span>
-        <div class="ws-section-text">
-          <span class="ws-section-label">Coach conversations</span>
-          <span class="ws-section-desc">Your career coaching history</span>
-        </div>
-      </button>
-      <button class="btn ws-section-btn" onclick="openSection('discipline')">
-        <span class="ws-section-icon">🧠</span>
-        <div class="ws-section-text">
-          <span class="ws-section-label">Discipline &amp; HR notes</span>
-          <span class="ws-section-desc">Skills data and HR review history</span>
-        </div>
-      </button>
-    </div>
-    <div class="model-picker-section">
-      <button class="model-picker-toggle" id="modelPickerToggle" onclick="toggleModelPicker()" type="button">
-        <span class="model-picker-title">AI model</span>
-        <span id="modelPickerCurrent" class="model-picker-current"></span>
-        <span class="model-picker-chevron">▾</span>
-      </button>
-      <div id="modelOptions" class="model-options" style="display:none;"></div>
-    </div>
-  </div>
-
   <!-- ── 3-column layout: Preferences | CV+job box | Advanced options ────────── -->
   <!-- Logged-in: left (Preferences) and right (Advanced options) columns shown.
        Logged-out: only col-center is visible — inputCard takes full container width. -->
   <div id="mainLayout" class="main-layout">
 
-    <!-- Left column: Preferences (logged-in only) -->
+    <!-- Left column: history cards stacked above Preferences (logged-in only) -->
     <div id="colLeft" class="col-side">
+      <div class="card prefs-side-card">
+        <div class="workspace-account" id="workspaceAccountInfo"></div>
+        <div class="workspace-data-buttons">
+          <button class="btn ws-section-btn" onclick="openSection('cv')">
+            <span class="ws-section-icon">📄</span>
+            <div class="ws-section-text">
+              <span class="ws-section-label">Previous CV &amp; job info</span>
+              <span class="ws-section-desc">Your saved CVs and last job description</span>
+            </div>
+          </button>
+          <button class="btn ws-section-btn" onclick="openSection('coach')">
+            <span class="ws-section-icon">💬</span>
+            <div class="ws-section-text">
+              <span class="ws-section-label">Coach conversations</span>
+              <span class="ws-section-desc">Your career coaching history</span>
+            </div>
+          </button>
+          <button class="btn ws-section-btn" onclick="openSection('discipline')">
+            <span class="ws-section-icon">🧠</span>
+            <div class="ws-section-text">
+              <span class="ws-section-label">Discipline &amp; HR notes</span>
+              <span class="ws-section-desc">Skills data and HR review history</span>
+            </div>
+          </button>
+        </div>
+      </div>
       <div class="card prefs-side-card">
         <div class="prefs-box-label">Preferences</div>
         <div class="form-group" style="margin:0;">
@@ -157,8 +147,18 @@
       </div><!-- /inputCard -->
     </div><!-- /col-center -->
 
-    <!-- Right column: Advanced options (logged-in only) -->
+    <!-- Right column: AI model picker stacked above Advanced options (logged-in only) -->
     <div id="colRight" class="col-side">
+      <div class="card prefs-side-card">
+        <div class="model-picker-section">
+          <button class="model-picker-toggle" id="modelPickerToggle" onclick="toggleModelPicker()" type="button">
+            <span class="model-picker-title">AI model</span>
+            <span id="modelPickerCurrent" class="model-picker-current"></span>
+            <span class="model-picker-chevron">▾</span>
+          </button>
+          <div id="modelOptions" class="model-options" style="display:none;"></div>
+        </div>
+      </div>
       <div class="card prefs-side-card">
         <div class="prefs-box-label">Advanced options</div>
         <div class="form-group" style="margin-bottom:12px;">

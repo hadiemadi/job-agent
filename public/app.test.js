@@ -606,47 +606,47 @@ describe('Login/sign-out toggle + workspace panel', () => {
     expect(userArea.innerHTML).not.toContain('hadi@example.com');
   });
 
-  test('#loggedInPanel is hidden for guests', async () => {
+  test('side columns are hidden for guests (no three-col class on mainLayout)', async () => {
     loadAppInDom();
     await new Promise(resolve => setTimeout(resolve, 0));
-    expect(document.getElementById('loggedInPanel').style.display).toBe('none');
+    expect(document.getElementById('mainLayout').classList.contains('three-col')).toBe(false);
   });
 
-  test('#loggedInPanel is shown after login', async () => {
+  test('side columns are shown after login (three-col class added to mainLayout)', async () => {
     window.fetch = jest.fn(() => Promise.resolve({
       ok: true,
       json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
     }));
     loadAppInDom();
     await new Promise(resolve => setTimeout(resolve, 0));
-    expect(document.getElementById('loggedInPanel').style.display).not.toBe('none');
+    expect(document.getElementById('mainLayout').classList.contains('three-col')).toBe(true);
   });
 
-  test('#loggedInPanel is hidden again after logout', async () => {
+  test('side columns are hidden again after logout (three-col class removed)', async () => {
     window.fetch = jest.fn(() => Promise.resolve({
       ok: true,
       json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
     }));
     loadAppInDom();
     await new Promise(resolve => setTimeout(resolve, 0));
-    expect(document.getElementById('loggedInPanel').style.display).not.toBe('none');
+    expect(document.getElementById('mainLayout').classList.contains('three-col')).toBe(true);
 
     window.fetch = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }));
     await window.logout();
-    expect(document.getElementById('loggedInPanel').style.display).toBe('none');
+    expect(document.getElementById('mainLayout').classList.contains('three-col')).toBe(false);
   });
 
-  test('workspace panel contains the 3 section buttons', async () => {
+  test('left column contains the 3 history section buttons', async () => {
     window.fetch = jest.fn(() => Promise.resolve({
       ok: true,
       json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
     }));
     loadAppInDom();
     await new Promise(resolve => setTimeout(resolve, 0));
-    const panel = document.getElementById('loggedInPanel');
-    expect(panel.innerHTML).toContain('Previous CV');
-    expect(panel.innerHTML).toContain('Coach conversations');
-    expect(panel.innerHTML).toContain('Discipline');
+    const colLeft = document.getElementById('colLeft');
+    expect(colLeft.innerHTML).toContain('Previous CV');
+    expect(colLeft.innerHTML).toContain('Coach conversations');
+    expect(colLeft.innerHTML).toContain('Discipline');
   });
 });
 
