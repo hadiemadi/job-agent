@@ -186,18 +186,16 @@
             <label class="sev-check"><input type="checkbox" id="ci-sev-minor" /> <span class="gap-severity minor">minor</span></label>
           </div>
         </div>
-        <div class="check-row">
-          <input type="checkbox" id="ci-extensive-search" />
-          <label for="ci-extensive-search">
-            Live web research for CV conventions <span class="opt">(country/industry norms — slower)</span>
-          </label>
-        </div>
-        <div class="check-row">
-          <input type="checkbox" id="ci-refresh-discipline" />
-          <label for="ci-refresh-discipline">
-            Refresh discipline knowledge from web <span class="opt">(slower)</span>
-          </label>
-        </div>
+        <label class="toggle-row">
+          <input type="checkbox" id="ci-extensive-search" class="toggle-input" />
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span class="toggle-label-text">Live web research for CV conventions <span class="opt">(country/industry norms — slower)</span></span>
+        </label>
+        <label class="toggle-row">
+          <input type="checkbox" id="ci-refresh-discipline" class="toggle-input" />
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span class="toggle-label-text">Refresh discipline knowledge from web <span class="opt">(slower)</span></span>
+        </label>
         <!-- Future: LLM model picker — once each search/call has a visible price tag
              (see core/claude.js's spend metering), let the user choose which model runs
              their searches here. Not built yet — see CLAUDE.md Bug Backlog item #13. -->

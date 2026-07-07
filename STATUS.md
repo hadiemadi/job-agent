@@ -5,11 +5,35 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 327/327 green · **origin/main HEAD:** `1533fc5` (pending push)
+**Tests:** 327/327 green (319/319 mocked; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `a605459`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Cosmetic backlog — #32, #33, toggle redesign**
+
+  **#32 — Toolbar tooltips now appear to the right** (`render/cvHtml.js`):
+  Tooltip CSS changed from `left: 0; top: 100%` (below button, clips off-screen at the
+  bottom of the sidebar) to `left: 100%; top: 50%; transform: translateY(-50%);
+  margin-left: 10px` — tooltip now appears to the right of the hovered toolbar button at
+  its vertical centre, always visible and never clipped.
+
+  **#33 — Error popup on standalone tailored-CV page** (`render/cvHtml.js`):
+  All 9 `alert()` calls replaced with self-contained helpers: `showCvPageError(msg)` (red
+  overlay with Close button, for actual failures), `showCvPageInfo(msg)` (blue info overlay
+  for HR notes and selection warnings), `showCvPageToast(msg)` (auto-dismissing bottom toast
+  for clipboard confirmations). Consistent with the UX in `public/app.js`.
+
+  **Toggle redesign — Advanced panel checkboxes** (`public/index.html`, `public/style.css`):
+  `ci-extensive-search` and `ci-refresh-discipline` redesigned from plain `.check-row`
+  checkboxes (where the `.opt` description text wrapped below the checkbox) to inline
+  `.toggle-row` pill switches — the `<input type="checkbox">` is kept with the same ID for
+  full test/JS compatibility (`.checked` reads and writes unchanged), but the visual is a
+  compact 34×20 pill that slides on check. `.opt` description sits naturally on the same
+  line as the label text.
+
+  No new tests needed (pure presentation; existing ID-based tests pass unchanged).
 
 - **My Data history fixes — Items 1+2+3** (audit of 4 broken/missing history panel items, 3 now fixed)
 
@@ -349,10 +373,11 @@
 ## 📋 Backlog
 
 **Ready (small/cosmetic):**
-- **#32** — Tailored-CV toolbar tooltips: right-side on hover, fix visibility (`style.css`).
-- **#33** — Extend error popup to the standalone Tailored-CV page (`render/cvHtml.js`).
-- **About modal** — built (`about-modal-v2.html`). TODO: match agent labels, retheme, wire
-  button+modal+script into `index.html` / `public/app.js`.
+- ~~**#32** — Tailored-CV toolbar tooltips~~ ✅ shipped
+- ~~**#33** — Error popup on standalone Tailored-CV page~~ ✅ shipped
+- **About modal** — `about-modal-v2.html` referenced in CLAUDE.md but file not found; needs
+  rebuild or confirmation it was never committed. Wire button + modal + script into
+  `index.html` / `public/app.js` once the file exists.
 - **Feedback button** — on the real-error dialog, replace "Copy" with "Send feedback":
   store `{code, route, timestamp, user_note}` to `events`. ⚠️ user_note is free text →
   PII risk; needs "no PII please" hint + GDPR delete path.
@@ -378,7 +403,7 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 
 ## ▶️ Suggested next action
 
-**Push `main`** — all 4 My Data history items are fixed, 327/327 tests green.
+**Push `main`** — cosmetic backlog (#32, #33, toggle) + My Data history fixes all shipped.
 
 **Smoke-test on the live site after push:**
 Login → CV upload → HR review → `POST /coach/discuss` → `POST /hr/chat` → open My Data

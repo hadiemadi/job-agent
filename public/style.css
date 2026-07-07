@@ -252,10 +252,15 @@ input[type="range"] { width:100%; cursor:pointer; accent-color:var(--accent); }
 .adv-panel { border:1px solid var(--border); border-radius:var(--radius-md); background:#fafaf8; padding:var(--space-4); margin-top:var(--space-2); }
 .severity-checks { display:flex; gap:16px; flex-wrap:wrap; }
 .sev-check { display:flex; align-items:center; gap:5px; cursor:pointer; }
-.check-row { display:flex; align-items:flex-start; gap:10px; margin-bottom:var(--space-3); }
-.check-row:last-child { margin-bottom:0; }
-.check-row input[type="checkbox"] { margin-top:2px; flex-shrink:0; accent-color:var(--accent); width:15px; height:15px; cursor:pointer; }
-.check-row label { font-size:13px; color:var(--ink); font-weight:400; text-transform:none; letter-spacing:0; cursor:pointer; }
+/* Toggle switch rows — replaces .check-row checkboxes in the Advanced panel */
+.toggle-row { display:flex; align-items:center; gap:10px; margin-bottom:var(--space-3); cursor:pointer; user-select:none; }
+.toggle-row:last-child { margin-bottom:0; }
+.toggle-input { position:absolute; opacity:0; width:0; height:0; pointer-events:none; }
+.toggle-track { flex-shrink:0; width:34px; height:20px; border-radius:10px; background:#d1d5db; position:relative; transition:background 0.18s; }
+.toggle-input:checked ~ .toggle-track { background:var(--accent); }
+.toggle-thumb { position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.22); transition:left 0.18s; }
+.toggle-input:checked ~ .toggle-track .toggle-thumb { left:16px; }
+.toggle-label-text { font-size:13px; color:var(--ink); line-height:1.4; }
 
 /* Chat panel */
 .chat-panel { background:#fafaf8; border:1px solid var(--border); border-radius:0 0 var(--radius-md) var(--radius-md); padding:var(--space-3) 14px; margin-top:-4px; margin-bottom:var(--space-3); }

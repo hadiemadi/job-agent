@@ -168,7 +168,8 @@ ${CV_CSS}
   [data-tooltip] { position: relative; }
   [data-tooltip]:hover::after, [data-tooltip]:focus::after, [data-tooltip]:focus-visible::after {
     content: attr(data-tooltip);
-    position: absolute; left: 0; top: 100%; margin-top: 6px; z-index: 10030;
+    position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+    margin-left: 10px; z-index: 10030;
     width: 210px; background: #111; color: #fff; font-size: 11.5px; line-height: 1.45;
     font-weight: 400; font-family: var(--font-ui); padding: 7px 10px; border-radius: 6px;
     box-shadow: 0 4px 14px rgba(0,0,0,0.35); pointer-events: none; white-space: normal;
@@ -386,6 +387,67 @@ ${pageHtml}
     });
   });
 
+  // ── Lightweight error overlay + clipboard toast for this self-contained page ──
+  // These mirror the UX of public/app.js's showTechnicalErrorDialog / clipboard feedback
+  // but live entirely in this file (no shared JS). All alert() calls on this page route
+  // through here so error handling is consistent: real errors get a closeable overlay,
+  // one-off confirmations (clipboard) get a brief auto-dismissing toast.
+
+  function showCvPageError(message) {
+    let overlay = document.getElementById('cvErrOverlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'cvErrOverlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:20000;display:flex;align-items:center;justify-content:center;';
+      overlay.innerHTML =
+        '<div style="background:#fff;border-radius:10px;padding:24px 28px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.22);font-family:var(--font-ui);">' +
+          '<div style="font-weight:600;font-size:15px;color:#b91c1c;margin-bottom:8px;">Something went wrong</div>' +
+          '<div id="cvErrMsg" style="font-size:13.5px;color:#374151;line-height:1.5;margin-bottom:16px;"></div>' +
+          '<div style="text-align:right;">' +
+            '<button onclick="document.getElementById(\'cvErrOverlay\').style.display=\'none\'" ' +
+              'style="background:#185FA5;color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:13px;cursor:pointer;">Close</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+    }
+    document.getElementById('cvErrMsg').textContent = message;
+    overlay.style.display = 'flex';
+  }
+
+  function showCvPageInfo(message) {
+    let overlay = document.getElementById('cvInfoOverlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'cvInfoOverlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:20000;display:flex;align-items:center;justify-content:center;';
+      overlay.innerHTML =
+        '<div style="background:#fff;border-radius:10px;padding:22px 28px;max-width:400px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.18);font-family:var(--font-ui);">' +
+          '<div id="cvInfoMsg" style="font-size:13.5px;color:#374151;line-height:1.5;margin-bottom:16px;"></div>' +
+          '<div style="text-align:right;">' +
+            '<button onclick="document.getElementById(\'cvInfoOverlay\').style.display=\'none\'" ' +
+              'style="background:#185FA5;color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:13px;cursor:pointer;">OK</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+    }
+    document.getElementById('cvInfoMsg').textContent = message;
+    overlay.style.display = 'flex';
+  }
+
+  function showCvPageToast(message) {
+    let toast = document.getElementById('cvToast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'cvToast';
+      toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;font-size:13px;font-family:var(--font-ui);padding:9px 18px;border-radius:8px;z-index:20001;opacity:0;transition:opacity 0.2s;pointer-events:none;';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.style.opacity = '1';
+    clearTimeout(toast._hide);
+    toast._hide = setTimeout(() => { toast.style.opacity = '0'; }, 1600);
+  }
+
   // Shows/hides the centered "working…" overlay so the user is never left wondering whether
   // a click registered, and greys out every other toolbar/sidebar control so two requests
   // can't be fired at once. opts.overlay:false skips the popup box (used for HR chat, where
@@ -487,7 +549,7 @@ ${pageHtml}
       status.textContent = 'Template uploaded ✓';
     } catch (err) {
       status.textContent = '';
-      alert('Template upload failed: ' + err.message);
+      showCvPageError('Template upload failed: ' + err.message);
     } finally {
       setBusy(false);
     }
@@ -509,10 +571,10 @@ ${pageHtml}
       });
       const data = await res.json();
       if (!data.filePath) throw new Error(data.error || 'Regeneration failed');
-      if (data.templateSuggestion) alert('HR note: ' + data.templateSuggestion);
+      if (data.templateSuggestion) showCvPageInfo('HR note: ' + data.templateSuggestion);
       location.reload();
     } catch (err) {
-      alert('Regenerate wording failed: ' + err.message);
+      showCvPageError('Regenerate wording failed: ' + err.message);
       btn.disabled = false; btn.textContent = original;
     } finally {
       setBusy(false);
@@ -539,7 +601,7 @@ ${pageHtml}
       if (!data.filePath) throw new Error(data.error || 'Regeneration failed');
       location.reload();
     } catch (err) {
-      alert('Regenerate CV failed: ' + err.message);
+      showCvPageError('Regenerate CV failed: ' + err.message);
       btn.disabled = false; btn.textContent = original;
     } finally {
       setBusy(false);
@@ -567,7 +629,7 @@ ${pageHtml}
       a.click();
       document.body.removeChild(a);
     } catch (err) {
-      alert('Export to Word failed: ' + err.message);
+      showCvPageError('Export to Word failed: ' + err.message);
     } finally {
       btn.disabled = false; btn.textContent = original;
       setBusy(false);
@@ -615,7 +677,7 @@ ${pageHtml}
   async function copyCoverLetter() {
     if (!lastCoverLetterText) return;
     await navigator.clipboard.writeText(lastCoverLetterText);
-    alert('Cover letter copied to clipboard.');
+    showCvPageToast('Cover letter copied to clipboard.');
   }
 
   async function downloadCoverLetterWord() {
@@ -636,7 +698,7 @@ ${pageHtml}
       a.click();
       document.body.removeChild(a);
     } catch (err) {
-      alert('Download failed: ' + err.message);
+      showCvPageError('Download failed: ' + err.message);
     } finally {
       btn.disabled = false;
       setBusy(false);
@@ -699,7 +761,7 @@ ${pageHtml}
   async function copyInterviewQuestions() {
     if (!lastInterviewQuestionsText) return;
     await navigator.clipboard.writeText(lastInterviewQuestionsText);
-    alert('Interview questions copied to clipboard.');
+    showCvPageToast('Interview questions copied to clipboard.');
   }
 
   function toggleHrSidebar() {
@@ -757,7 +819,7 @@ ${pageHtml}
     try {
       range.surroundContents(span);
     } catch (err) {
-      alert('Please select text within a single line or bullet to discuss it with HR.');
+      showCvPageInfo('Please select text within a single line or bullet to discuss it with HR.');
       return;
     }
     activeConcern = { id: span.id, targetEl: fieldEl, selectedText: text, originalFieldText: fieldEl.textContent, firstMessageSent: false };
