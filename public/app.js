@@ -384,6 +384,22 @@ function formatCostEstimate(cost) {
   return '$' + cost.toFixed(2);
 }
 
+function _updateModelPickerCurrent() {
+  const cur = el('modelPickerCurrent');
+  if (!cur) return;
+  const m = MODEL_OPTIONS.find(o => o.id === _selectedModel);
+  cur.textContent = m ? m.label : _selectedModel;
+}
+
+function toggleModelPicker() {
+  const opts = el('modelOptions');
+  const toggle = el('modelPickerToggle');
+  if (!opts) return;
+  const open = opts.style.display !== 'none';
+  opts.style.display = open ? 'none' : '';
+  if (toggle) toggle.classList.toggle('open', !open);
+}
+
 function initModelPicker(preferredModel) {
   _selectedModel = preferredModel || 'claude-sonnet-5';
   const container = el('modelOptions');
@@ -401,6 +417,7 @@ function initModelPicker(preferredModel) {
       '<span class="model-opt-desc">' + escapeHtml(m.desc) + '</span>' +
       '</div>';
   }).join('');
+  _updateModelPickerCurrent();
   updateCostEstimate();
 }
 
@@ -421,6 +438,12 @@ async function selectModel(modelId) {
   const safeId = modelId.replace(/[^a-zA-Z0-9]/g, '-');
   const optEl = el('model-opt-' + safeId);
   if (optEl) optEl.classList.add('selected');
+  _updateModelPickerCurrent();
+  // Collapse the picker after selection
+  const opts = el('modelOptions');
+  const toggle = el('modelPickerToggle');
+  if (opts) opts.style.display = 'none';
+  if (toggle) toggle.classList.remove('open');
   try {
     await fetch('/auth/preferences', {
       method: 'POST',

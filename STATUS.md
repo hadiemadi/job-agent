@@ -11,6 +11,44 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **UI layout cleanup (#7 from build.txt)** —
+
+  All four layout items from build.txt §7 complete.
+
+  - **Contact info modal renamed**: h2 changed from "Profile & Preferences" to "Preferences".
+  - **Advanced options already a permanent bordered box**: no toggle present; `.adv-panel` has
+    always-visible `border:1px solid var(--border)` styling. Verified — no HTML or CSS change needed.
+  - **Default gapSeverities already `['major']`**: verified in `services/session.js`, `routes/cv.routes.js`,
+    and `public/index.html` (only `ci-sev-major` is pre-checked). No change needed.
+  - **Model picker now collapsible**: a compact toggle button replaces the static "AI model for
+    this session" title. Shows current model name ("Sonnet 5", "Opus 4.8", etc.) in accent colour.
+    Click to expand all 4 model cards; selecting one collapses the picker automatically. CSS:
+    `.model-picker-toggle`, `.model-picker-current`, `.model-picker-chevron` (rotates 180° when open).
+    JS: `toggleModelPicker()` + `_updateModelPickerCurrent()` (called from `initModelPicker` and
+    `selectModel`).
+  - **Consent checkbox moved directly above Tailor button**: the `.privacy-block` div was above
+    the job description textarea; it's now between the textarea and the `#goBtn` button — visually
+    adjacent and left-aligned with the button.
+
+  No new tests needed (pure presentation; existing ID/behaviour-based tests pass unchanged).
+  Tests: 336/336.
+
+- **About modal rework (#5 from build.txt)** —
+
+  Modal content replaced from a 4-bullet feature list to a per-agent pipeline explanation.
+  Seven agents described: Recruiter, CV Writer, Coach, Extractor, Curator, Researcher, Input Router —
+  each as a name + one-paragraph description. Layout: CSS grid, agent name right-aligned in accent
+  colour with a vertical border separator, description left-aligned. h2 changed from "Job Agent"
+  to "How it works". Modal max-width widened to 520px to accommodate the two-column agent grid.
+
+  "About" link was already moved to the nav (`header-actions`) in a previous pass.
+
+  CSS: `.about-agents`, `.about-agent`, `.about-agent-name`, `.about-agent-desc` added;
+  `.about-list` + `.about-list li` removed.
+
+  No tests needed (pure presentation).
+  Tests: 336/336.
+
 - **Feedback button rework (#2 from build.txt)** —
 
   Error dialog now has both Copy and Send feedback buttons. "Send feedback" reveals an

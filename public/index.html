@@ -16,6 +16,7 @@
     <span>Tailor your CV to any job — instantly</span>
   </div>
   <div class="header-actions">
+    <button class="link-btn header-about-btn" onclick="openAbout()">About</button>
     <div id="headerUserArea" class="header-user"></div>
     <button class="header-delete-btn" onclick="deleteMyData()" title="Permanently delete your uploaded CV, contact info, and any generated files from this session">Delete my data now</button>
   </div>
@@ -86,8 +87,12 @@
       </button>
     </div>
     <div class="model-picker-section">
-      <div class="model-picker-title">AI model for this session</div>
-      <div id="modelOptions" class="model-options"></div>
+      <button class="model-picker-toggle" id="modelPickerToggle" onclick="toggleModelPicker()" type="button">
+        <span class="model-picker-title">AI model</span>
+        <span id="modelPickerCurrent" class="model-picker-current"></span>
+        <span class="model-picker-chevron">▾</span>
+      </button>
+      <div id="modelOptions" class="model-options" style="display:none;"></div>
     </div>
   </div>
 
@@ -115,18 +120,18 @@
     </div>
     <div class="file-chosen" id="fileChosenDisplay" style="display:none;"></div>
 
+    <div class="form-group" id="jobTextGroup">
+      <label>Job description — copy &amp; paste from LinkedIn or any job posting</label>
+      <textarea id="jobText" rows="9" placeholder="Paste the full job description here — title, company, requirements, responsibilities…"></textarea>
+    </div>
+    <div class="job-desc-display" id="jobDescDisplay" style="display:none;"></div>
+
     <div class="privacy-block">
       <input type="checkbox" id="consentCheck" />
       <label for="consentCheck" id="privacyLabel">
         <strong>Your CV stays private.</strong> It's used only to tailor it to the job you paste below, is never shared, and is automatically deleted after your session ends.
       </label>
     </div>
-
-    <div class="form-group" id="jobTextGroup">
-      <label>Job description — copy &amp; paste from LinkedIn or any job posting</label>
-      <textarea id="jobText" rows="9" placeholder="Paste the full job description here — title, company, requirements, responsibilities…"></textarea>
-    </div>
-    <div class="job-desc-display" id="jobDescDisplay" style="display:none;"></div>
 
     <button class="btn btn-go" id="goBtn" onclick="go()" disabled title="Upload your CV first.">Tailor my CV →</button>
     <div id="goStatus" style="display:none;margin-top:10px;"></div>
@@ -135,7 +140,7 @@
   <!-- ── Contact review pop-up ───────────────────── -->
   <div class="modal-overlay" id="contactCard" style="display:none;">
     <div class="card modal-box">
-      <h2>Profile &amp; Preferences</h2>
+      <h2>Preferences</h2>
       <p class="contact-hint">We read this from your CV — correct anything that looks wrong. These values will be used on every tailored CV, exactly as you type them here.</p>
       <div class="form-row">
         <div class="form-group">
@@ -283,22 +288,42 @@
   </div>
 </div>
 
-<footer class="app-footer">
-  <button class="link-btn footer-about-btn" onclick="openAbout()">About</button>
-</footer>
-
 <!-- ── About modal ──────────────────────────────────────────── -->
 <div class="modal-overlay" id="aboutModal" style="display:none;">
   <div class="card modal-box about-modal">
     <button class="auth-modal-close" onclick="closeAbout()" aria-label="Close">&times;</button>
-    <h2>Job Agent</h2>
-    <p class="about-tagline">AI-powered CV tailoring — find the right job and apply with a CV that speaks directly to it.</p>
-    <ul class="about-list">
-      <li>Upload your CV (PDF) and paste any job description</li>
-      <li>HR review identifies strengths, flags gaps, and suggests safe improvements</li>
-      <li>One-click tailored CV — edit in-browser, export to Word, apply</li>
-      <li>Career Coach advises on your next step across three tracks: Specialist, Generalist, and Leadership</li>
-    </ul>
+    <h2>How it works</h2>
+    <p class="about-tagline">Seven AI agents collaborate every time you tailor a CV.</p>
+    <div class="about-agents">
+      <div class="about-agent">
+        <span class="about-agent-name">Recruiter</span>
+        <span class="about-agent-desc">Reads your CV and the job description together. Decides which changes are safe to apply automatically (skills already mentioned but missing from the list, keyword alignment) versus which gaps need your input. Sets the bar for what counts as evidenced vs invented.</span>
+      </div>
+      <div class="about-agent">
+        <span class="about-agent-name">CV Writer</span>
+        <span class="about-agent-desc">Applies the approved changes and rewrites the CV. Uses only content that is already in your CV — it never invents facts, adds companies you didn't work at, or inflates titles. Exports to the Executive HTML template and to Word.</span>
+      </div>
+      <div class="about-agent">
+        <span class="about-agent-name">Coach</span>
+        <span class="about-agent-desc">Analyses your CV and career direction to suggest the right next role — not just more of the same. Maps those suggestions to real jobs in today's market and traces a path of challenges, skill gaps, and milestones for each direction you could take.</span>
+      </div>
+      <div class="about-agent">
+        <span class="about-agent-name">Extractor</span>
+        <span class="about-agent-desc">Parses your CV to identify job titles and field/seniority level. That field label drives the Recruiter's discipline-aware prompts — an RF hardware TPM is reviewed differently from a frontend engineer.</span>
+      </div>
+      <div class="about-agent">
+        <span class="about-agent-name">Curator</span>
+        <span class="about-agent-desc">Maintains a per-field knowledge store of skills, keywords, and red-flags. Every time the Researcher surfaces new findings, the Curator merges them — bumping confidence on repeated signals, never touching entries you pinned yourself.</span>
+      </div>
+      <div class="about-agent">
+        <span class="about-agent-name">Researcher</span>
+        <span class="about-agent-desc">Fetches up-to-date field conventions from the web — what skills are valued, what keywords appear in real job postings, what red-flags HR teams notice. Currently a stub (no live search yet); the architecture is in place and wired to the Curator.</span>
+      </div>
+      <div class="about-agent">
+        <span class="about-agent-name">Input Router</span>
+        <span class="about-agent-desc">Reads anything you type in the "Anything you'd like the AI to know?" box and decides where it belongs: a general instruction (e.g. "prefer one page") flows into every prompt; a field-specific skill claim (e.g. "I know RFIC design") is pinned into the discipline store as a trusted, permanent fact.</span>
+      </div>
+    </div>
     <div class="about-meta">
       <span>Powered by Claude AI</span>
       <span class="about-sep">·</span>
