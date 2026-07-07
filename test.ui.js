@@ -148,7 +148,7 @@ const { readCV }        = require('./src/cv');
 const { scrapeJobPage } = require('./src/scraper');
 const { generateWordCV, generateWordCVAlt } = require('./src/wordExport');
 const { generateWordFromTemplate } = require('./src/wordTemplateExport');
-const { saveCv, upsertGapMemory } = require('./services/auth');
+const { saveCv, upsertGapMemory, findGapMemoryBySlogan } = require('./services/auth');
 const fse               = require('fs-extra');
 const request           = require('supertest');
 const app               = require('./server');
@@ -1249,5 +1249,59 @@ describe('Write paths — upsertGapMemory fires on gap lifecycle events', () => 
     const guestGapId = job.result.hrReview.confirm_changes[0].id;
     await guestAgent.post('/coach/discuss').send({ message: 'Hello.', gapId: guestGapId });
     expect(upsertGapMemory).not.toHaveBeenCalled();
+  });
+});
+
+// ── 13. Read/relevance — Coach checks prior gap history on first turn ──────────
+
+describe('Read/relevance — prior gap history injected into first coach turn', () => {
+  const priorAgent = request.agent(app);
+  let priorGapId;
+
+  beforeAll(async () => {
+    const uploadRes = await priorAgent.post('/upload-cv').attach('cv', 'cv.pdf');
+    await waitForJobWith(priorAgent, uploadRes.body.jobId);
+    await priorAgent.post('/auth/register').send({ email: 'prior-test@test.com', password: 'pass1234' });
+    const reviewRes = await priorAgent.post('/review-cv').send({ job: MOCK_JOB });
+    const job = await waitForJobWith(priorAgent, reviewRes.body.jobId);
+    priorGapId = job.result.hrReview.confirm_changes[0].id;
+  });
+
+  test('findGapMemoryBySlogan called on first coach turn for logged-in user', async () => {
+    findGapMemoryBySlogan.mockClear();
+    findGapMemoryBySlogan.mockResolvedValueOnce(null); // no prior history
+    await priorAgent.post('/coach/discuss').send({ message: 'First message.', gapId: priorGapId });
+    expect(findGapMemoryBySlogan).toHaveBeenCalledTimes(1);
+    expect(findGapMemoryBySlogan).toHaveBeenCalledWith('test-user-42', MOCK_GAPS[0].description);
+  });
+
+  test('when prior history exists, chatWithCoach receives it as priorGapHistory arg', async () => {
+    const priorData = {
+      coach_conversation: [{ role: 'user', content: 'Old message' }, { role: 'assistant', content: 'Old reply' }],
+      coach_verdict: 'Previously assessed: gap is real',
+      hr_statement: 'Add PMP certification',
+      user_decision: 'added',
+    };
+    findGapMemoryBySlogan.mockResolvedValueOnce(priorData);
+    // Re-run review to get a fresh gap with empty coachConversation
+    const reviewRes = await priorAgent.post('/review-cv').send({ job: MOCK_JOB });
+    const job = await waitForJobWith(priorAgent, reviewRes.body.jobId);
+    const freshGapId = job.result.hrReview.confirm_changes[0].id;
+    chatWithCoach.mockClear();
+    await priorAgent.post('/coach/discuss').send({ message: 'Hello again.', gapId: freshGapId });
+    // chatWithCoach receives priorGapHistory as the 11th argument (index 10)
+    const callArgs = chatWithCoach.mock.calls[0];
+    expect(callArgs[10]).toEqual(priorData);
+  });
+
+  test('findGapMemoryBySlogan NOT called for a guest on /coach/discuss', async () => {
+    findGapMemoryBySlogan.mockClear();
+    const guestAgent = request.agent(app);
+    await uploadCVFor(guestAgent);
+    const reviewRes = await guestAgent.post('/review-cv').send({ job: MOCK_JOB });
+    const job = await waitForJobWith(guestAgent, reviewRes.body.jobId);
+    const gapIdGuest = job.result.hrReview.confirm_changes[0].id;
+    await guestAgent.post('/coach/discuss').send({ message: 'Hi.', gapId: gapIdGuest });
+    expect(findGapMemoryBySlogan).not.toHaveBeenCalled();
   });
 });

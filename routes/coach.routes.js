@@ -4,7 +4,7 @@ const { getSession } = require('../services/session');
 const { getGap, appendGapMessage, buildSharedGapContext } = require('../services/gapStore');
 const { loadDiscipline } = require('../core/knowledge');
 const { sendError } = require('../core/respondError');
-const { saveCoachMemory, upsertGapMemory } = require('../services/auth');
+const { saveCoachMemory, upsertGapMemory, findGapMemoryBySlogan } = require('../services/auth');
 
 const router = express.Router();
 
@@ -19,10 +19,24 @@ router.post('/coach/discuss', async (req, res) => {
     // a cheap sync file read (core/knowledge.js), no extra AI call.
     const disciplineStore = appSession.field ? loadDiscipline(appSession.field.field) : null;
     const sharedContext = buildSharedGapContext(gapId);
+    // Before the first coach reply in a NEW gap chat, check for prior history from previous
+    // sessions. The coach agent itself judges relevance — no hardcoded template forces a reference.
+    let priorGapHistory = null;
+    if (appSession.userId && gap && gap.coachConversation.length === 0) {
+      try {
+        const prior = await findGapMemoryBySlogan(appSession.userId, gap.description);
+        if (prior && (
+          (Array.isArray(prior.coach_conversation) && prior.coach_conversation.length > 0) ||
+          prior.hr_statement || prior.user_decision
+        )) {
+          priorGapHistory = prior;
+        }
+      } catch (e) { /* best-effort — never block coach chat on DB errors */ }
+    }
     const { reply, history } = await chatWithCoach(
       appSession.cvText, appSession.currentJob, appSession.hrReview,
       appSession.coachHistory, message, gap?.description, appSession.clientPreferences,
-      appSession.field, disciplineStore, sharedContext
+      appSession.field, disciplineStore, sharedContext, priorGapHistory
     );
     appSession.coachHistory = history;
     // Persisted server-side (services/gapStore.js) so /hr/refine can read this conversation

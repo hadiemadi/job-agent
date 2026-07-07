@@ -202,8 +202,29 @@ function selectTopGaps(gaps, severities = ['major', 'mild', 'minor'], minCount =
 // Word export), so this is the same coach throughout, exactly like the HR thread. Lives here
 // (not agents/recruiter.js) since it's a Coach interaction, even though it runs during the
 // HR review step — the candidate is talking to their coach about a gap HR flagged.
-async function chatWithCoach(cvText, job, hrReview, history, userMessage, gapDescription, preferences, field, disciplineStore, sharedContext) {
+// Builds a compact prior-history block from a gap_memory row, injected into the Coach prompt
+// on the first turn of a new gap chat. The coach agent itself judges relevance and phrasing —
+// no hardcoded template forces a reference when nothing useful exists.
+function buildPriorGapBlock(prior) {
+  const turns = Array.isArray(prior.coach_conversation) ? prior.coach_conversation : [];
+  const parts = [];
+  if (turns.length > 0) {
+    const excerpt = turns.slice(-4).map(t => `${t.role === 'user' ? 'Candidate' : 'Coach'}: ${String(t.content || '').slice(0, 120)}`).join('\n');
+    parts.push('Recent conversation:\n' + excerpt);
+  }
+  if (prior.coach_verdict) parts.push('Coach\'s last verdict: ' + String(prior.coach_verdict).slice(0, 200));
+  if (prior.hr_statement) parts.push('HR\'s previous statement: ' + String(prior.hr_statement).slice(0, 200));
+  if (prior.user_decision) parts.push('Candidate\'s prior decision: ' + prior.user_decision);
+  if (!parts.length) return '';
+  return `PRIOR HISTORY FOR THIS GAP (from a previous session with this candidate):
+${parts.join('\n')}
+
+If any of the above is genuinely relevant to the current discussion, you may reference it naturally — connecting past context to the current gap as a clarifying question or direct suggestion, depending on fit. Do not force a reference when nothing relevant exists. You are the judge.`;
+}
+
+async function chatWithCoach(cvText, job, hrReview, history, userMessage, gapDescription, preferences, field, disciplineStore, sharedContext, priorGapHistory = null) {
   const gapContext = gapDescription ? `The candidate is currently discussing this specific gap: "${gapDescription}"\n\n` : '';
+  const priorBlock = priorGapHistory ? buildPriorGapBlock(priorGapHistory) : '';
   const systemPrompt = `${CAREER_COACH_PERSONA}
 
 CV (summary):
@@ -226,7 +247,7 @@ Your role:
 KEEP THIS SHORT — this is a quick check on one specific gap, not an open-ended interview:
 - Ask at most 1-3 follow-up questions total for this gap, then converge on a clear verdict
 - The moment you have enough to judge the gap, say so plainly instead of asking more questions
-- Every response is 2-3 sentences maximum, no filler, no restating what the candidate just said${preferencesBlock(preferences)}${sharedContext ? `\n\n${sharedContext}` : ''}`;
+- Every response is 2-3 sentences maximum, no filler, no restating what the candidate just said${preferencesBlock(preferences)}${sharedContext ? `\n\n${sharedContext}` : ''}${priorBlock ? `\n\n${priorBlock}` : ''}`;
 
   const messages = [...history, { role: 'user', content: gapContext + userMessage }];
   const response = await client.messages.create({

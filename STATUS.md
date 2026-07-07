@@ -5,11 +5,31 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 350/350 green (350 mocked pass; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `26b71ff`
+**Tests:** 357/357 green (357 mocked pass; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** pending push
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Build.txt item 4c — gap_memory read/relevance logic for Coach agent (commit 3/3)** —
+
+  Prior gap history is now injected into the Coach's system prompt on the **first turn** of a
+  new gap chat, letting the Coach reference context from previous sessions with the same candidate.
+
+  - `buildPriorGapBlock(prior)` in `agents/coach.js`: structures the prior history row into a
+    compact block (last 4 conversation turns, coach verdict, HR statement, candidate decision).
+  - `chatWithCoach` signature gains an optional 11th param `priorGapHistory = null`.
+  - `routes/coach.routes.js`: before the first coach reply (`gap.coachConversation.length === 0`),
+    calls `findGapMemoryBySlogan(userId, gap.description)` — only for logged-in users, only when
+    the gap has no existing conversation turns. Returns a history row only when non-empty data exists
+    (conversation, HR statement, or user decision). Never blocks the response on DB errors.
+  - Access boundary preserved: Coach reads the full prior row but HR still only writes `hrStatement`.
+  - Coach agent judges relevance — the injected block instructs "reference naturally if relevant,
+    do not force a reference when nothing useful exists. You are the judge."
+
+  Tests (+3): `findGapMemoryBySlogan` called on first turn for logged-in user; `chatWithCoach`
+  receives `priorGapHistory` (index 10) when prior data exists; not called for guest sessions.
+  Tests: 357/357 green.
 
 - **Build.txt item 4b — gap_memory write paths wired to gap lifecycle (commit 2/3)** —
 
@@ -674,6 +694,8 @@
 - ~~**Discipline learning loop**~~ ✅ verified — `loadOrRefreshDiscipline()` fires on every
   HR review; discipline JSON files ARE written on first review (stamped with `updated` date,
   empty skills until Researcher stub is upgraded to live web search).
+- ~~**#25 — VS Code settings sync**~~ ✅ shipped — `.vscode/settings.json` and `.vscode/extensions.json` already in repo; consistent across Windows/Mac.
+- ~~**#26 — Kiro GUI**~~ ✅ shipped — `.kiro/` already present in repo (specs, hooks, steering); confirmed via code.
 
 **Parked (external deps):** **#19** PayPal (Business acct + GDPR).
 
@@ -691,14 +713,17 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 
 ## ▶️ Suggested next action
 
-**Push `main`** — feedback button + About modal + all prior cosmetic + My Data fixes are
-local-only (origin/main is still at `2339a07`).
+**All build.txt items shipped — push `main`:**
+- Item 1: 3-column CSS grid layout ✅
+- Item 2: Donation amounts $1/$3/$5 confirmed ✅
+- Item 3: Stripe live E2E test completed ✅
+- Item 4a/4b/4c: Persistent per-account gap memory (schema + write paths + read/relevance) ✅
 
 **Smoke-test on the live site after push:**
-1. Login → CV upload → HR review → `POST /coach/discuss` → `POST /hr/chat` → open My Data
-   modal and verify all three sections show real content.
-2. Trigger a real error → click "Send feedback" → enter a note → verify "Feedback sent" appears.
-3. Click "About" footer link → verify modal opens with feature list + GitHub link.
+1. Login → CV upload → HR review → `/coach/discuss` → `/hr/refine` → gap decision →
+   logout → re-login → `/coach/discuss` same gap → verify coach sees prior history context.
+2. Confirm 3-column layout shows for logged-in users; guest sees single-column.
+3. Verify donation button → $3 → Stripe checkout URL opens.
 
 **Set Render env vars for Google OAuth** (set via Render dashboard):
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`, `SESSION_SECRET`.
