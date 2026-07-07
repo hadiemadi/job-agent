@@ -4,7 +4,7 @@ const { getSession } = require('../services/session');
 const { getGap, appendGapMessage, buildSharedGapContext } = require('../services/gapStore');
 const { loadDiscipline } = require('../core/knowledge');
 const { sendError } = require('../core/respondError');
-const { saveCoachMemory } = require('../services/auth');
+const { saveCoachMemory, upsertGapMemory } = require('../services/auth');
 
 const router = express.Router();
 
@@ -30,6 +30,18 @@ router.post('/coach/discuss', async (req, res) => {
     if (gap) {
       appendGapMessage(gapId, 'user', message);
       appendGapMessage(gapId, 'assistant', reply);
+    }
+    // Persist the new turns to gap_memory (fire-and-forget — never blocks the response).
+    // Only the 2 new turns are written; the upsert APPENDS them to the stored conversation.
+    if (appSession.userId && gap) {
+      const lastCoachTurn = gap.coachConversation.slice().reverse().find(m => m.role === 'assistant');
+      upsertGapMemory(appSession.userId, {
+        gapSlogan: gap.description,
+        coachConversation: [{ role: 'user', content: message }, { role: 'assistant', content: reply }],
+        coachVerdict: lastCoachTurn ? lastCoachTurn.content : null,
+        hrStatement: null,
+        userDecision: null,
+      }).catch(e => console.warn('[upsertGapMemory/coach] write failed:', e.message));
     }
     if (appSession.userId) {
       saveCoachMemory(appSession.userId, {

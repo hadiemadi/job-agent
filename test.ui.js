@@ -148,7 +148,7 @@ const { readCV }        = require('./src/cv');
 const { scrapeJobPage } = require('./src/scraper');
 const { generateWordCV, generateWordCVAlt } = require('./src/wordExport');
 const { generateWordFromTemplate } = require('./src/wordTemplateExport');
-const { saveCv } = require('./services/auth');
+const { saveCv, upsertGapMemory } = require('./services/auth');
 const fse               = require('fs-extra');
 const request           = require('supertest');
 const app               = require('./server');
@@ -1175,5 +1175,79 @@ describe('Write paths — saveCv fires for logged-in users', () => {
     const job = await waitForJobWith(guestAgent, rewriteRes.body.jobId);
     expect(job.status).toBe('done');
     expect(saveCv).not.toHaveBeenCalled();
+  });
+});
+
+// ── 12. Write paths — upsertGapMemory fires on gap lifecycle events ────────────
+// Confirms gap_memory write paths fire correctly for logged-in users and stay
+// silent for guests. services/auth is fully mocked (no real DB).
+
+describe('Write paths — upsertGapMemory fires on gap lifecycle events', () => {
+  const gapAgent = request.agent(app);
+  let gapId;
+
+  beforeAll(async () => {
+    const uploadRes = await gapAgent.post('/upload-cv').attach('cv', 'cv.pdf');
+    await waitForJobWith(gapAgent, uploadRes.body.jobId);
+    await gapAgent.post('/auth/register').send({ email: 'gap-tester@test.com', password: 'pass1234' });
+    const reviewRes = await gapAgent.post('/review-cv').send({ job: MOCK_JOB });
+    const job = await waitForJobWith(gapAgent, reviewRes.body.jobId);
+    gapId = job.result.hrReview.confirm_changes[0].id;
+  });
+
+  test('upsertGapMemory called after /coach/discuss for logged-in user with gap', async () => {
+    upsertGapMemory.mockClear();
+    const res = await gapAgent.post('/coach/discuss').send({ message: 'I have RF experience.', gapId });
+    expect(res.status).toBe(200);
+    expect(upsertGapMemory).toHaveBeenCalledTimes(1);
+    expect(upsertGapMemory).toHaveBeenCalledWith(
+      'test-user-42',
+      expect.objectContaining({
+        gapSlogan: MOCK_GAPS[0].description,
+        coachConversation: expect.arrayContaining([
+          expect.objectContaining({ role: 'user' }),
+          expect.objectContaining({ role: 'assistant' }),
+        ]),
+      })
+    );
+  });
+
+  test('upsertGapMemory called after /hr/refine for logged-in user with hr_statement', async () => {
+    upsertGapMemory.mockClear();
+    const res = await gapAgent.post('/hr/refine').send({ gapId });
+    expect(res.status).toBe(200);
+    expect(upsertGapMemory).toHaveBeenCalledTimes(1);
+    expect(upsertGapMemory).toHaveBeenCalledWith(
+      'test-user-42',
+      expect.objectContaining({
+        gapSlogan: MOCK_GAPS[0].description,
+        hrStatement: expect.any(String),
+      })
+    );
+  });
+
+  test('upsertGapMemory called after /gap-decision for logged-in user with userDecision', async () => {
+    upsertGapMemory.mockClear();
+    const res = await gapAgent.post('/gap-decision').send({ gapId, decision: 'left-out' });
+    expect(res.status).toBe(200);
+    expect(upsertGapMemory).toHaveBeenCalledTimes(1);
+    expect(upsertGapMemory).toHaveBeenCalledWith(
+      'test-user-42',
+      expect.objectContaining({
+        gapSlogan: MOCK_GAPS[0].description,
+        userDecision: 'left-out',
+      })
+    );
+  });
+
+  test('upsertGapMemory NOT called for a guest session on /coach/discuss', async () => {
+    upsertGapMemory.mockClear();
+    const guestAgent = request.agent(app);
+    await uploadCVFor(guestAgent);
+    const reviewRes = await guestAgent.post('/review-cv').send({ job: MOCK_JOB });
+    const job = await waitForJobWith(guestAgent, reviewRes.body.jobId);
+    const guestGapId = job.result.hrReview.confirm_changes[0].id;
+    await guestAgent.post('/coach/discuss').send({ message: 'Hello.', gapId: guestGapId });
+    expect(upsertGapMemory).not.toHaveBeenCalled();
   });
 });

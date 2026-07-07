@@ -11,6 +11,21 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **Build.txt item 4b — gap_memory write paths wired to gap lifecycle (commit 2/3)** —
+
+  `upsertGapMemory` now fires (fire-and-forget, logged-in users only) on three gap events:
+  - `/coach/discuss` — appends the 2 new turns (user + assistant) to the stored conversation;
+    updates `coach_verdict` to the latest assistant message. Only new turns written, not full
+    conversation, so the JSONB append is additive and cross-session history accumulates.
+  - `/hr/refine` — updates `hr_statement` after HR drafts a CV-ready sentence.
+  - `/gap-decision` — updates `user_decision` ('added'/'left-out') after the candidate decides.
+
+  Access boundary preserved: HR only passes `hrStatement`; coach only reads/writes
+  coach_conversation and coach_verdict (never touches hr_statement).
+
+  Tests (+4): upsertGapMemory called for logged-in user on /coach/discuss, /hr/refine,
+  /gap-decision; NOT called for a guest session. Tests: 354/354 green.
+
 - **Build.txt item 4a — gap_memory schema + auth service (commit 1/3)** —
 
   New `gap_memory` Postgres table: per-user, per-gap-slogan persistent memory that

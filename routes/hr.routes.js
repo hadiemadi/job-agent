@@ -9,7 +9,7 @@ const { setGaps, getGap, proposeStatement, setUserDecision, buildSharedGapContex
 const { createJob, updateJob } = require('../services/jobQueue');
 const { sendError } = require('../core/respondError');
 const { logEvent } = require('../core/logger');
-const { saveProfilePreferences, getProfilePreferences, saveConversationHistory } = require('../services/auth');
+const { saveProfilePreferences, getProfilePreferences, saveConversationHistory, upsertGapMemory } = require('../services/auth');
 
 // Builds the profile-preferences snapshot from the current session state — used by both the
 // confirm-contact save and the HR-completion safety upsert to guarantee they write the same shape.
@@ -229,6 +229,15 @@ router.post('/hr/refine', async (req, res) => {
       rationale: result.rationale, lean: result.lean, targetSection: result.targetSection || null, statement: hrStatement,
     });
     if (!updated) return sendError(res, '/hr/refine', 'ERR-HR-004');
+    if (appSession.userId) {
+      upsertGapMemory(appSession.userId, {
+        gapSlogan: gap.description,
+        coachConversation: [],
+        coachVerdict: null,
+        hrStatement,
+        userDecision: null,
+      }).catch(e => console.warn('[upsertGapMemory/hr] write failed:', e.message));
+    }
     res.json({
       proposedStatement: updated.proposedStatement, rationale: result.rationale, lean: result.lean,
       targetSection: result.targetSection || null, hrStatement, status: updated.status,
@@ -245,11 +254,21 @@ router.post('/hr/refine', async (req, res) => {
 // a gap at any point, with or without ever asking HR to draft anything). Neither is terminal —
 // changing (overriding) an existing decision is allowed and expected.
 router.post('/gap-decision', (req, res) => {
+  const appSession = getSession();
   const { gapId, decision } = req.body;
   if (!['added', 'left-out'].includes(decision)) return sendError(res, '/gap-decision', 'ERR-GAP-001');
   const gap = setUserDecision(gapId, decision);
   if (!gap) return sendError(res, '/gap-decision', decision === 'added' ? 'ERR-GAP-002' : 'ERR-GAP-003');
   logEvent('gap_decided', { route: '/gap-decision', outcome: 'ok' });
+  if (appSession.userId) {
+    upsertGapMemory(appSession.userId, {
+      gapSlogan: gap.description,
+      coachConversation: [],
+      coachVerdict: null,
+      hrStatement: null,
+      userDecision: gap.userDecision,
+    }).catch(e => console.warn('[upsertGapMemory/decision] write failed:', e.message));
+  }
   res.json({ ok: true, userDecision: gap.userDecision });
 });
 
