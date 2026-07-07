@@ -11,10 +11,10 @@ async function extractJobTitles(cvText) {
 }
 
 async function parseJobFromText(rawText, sourceUrl) {
-  const message = await client.messages.create({
-    model: MODEL,
-    max_tokens: 1000,
-    messages: [{ role: 'user', content: `Extract the job posting details from this text. Return JSON only:
+  if (!rawText || !rawText.trim()) throw new Error('Job text is empty — nothing to parse');
+  // Guard against extremely long pastes that inflate cost without improving extraction.
+  const text = rawText.slice(0, 14000);
+  const userContent = `Extract the job posting details from this text. Return JSON only:
 {
   "job_title": "",
   "employer_name": "",
@@ -25,9 +25,21 @@ async function parseJobFromText(rawText, sourceUrl) {
 For job_description include the full responsibilities and requirements. Leave unknown fields as empty string.
 
 Text:
-${rawText}` }]
-  });
-  const raw = extractJSON(firstText(message));
+${text}`;
+
+  // Retry once if the model returns prose instead of JSON (ERR-JOB-007 root cause).
+  let message, raw;
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const msgs = attempt === 0
+      ? [{ role: 'user', content: userContent }]
+      : [
+          { role: 'user', content: userContent },
+          { role: 'assistant', content: firstText(message) },
+          { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
+        ];
+    message = await client.messages.create({ model: MODEL, max_tokens: 1000, messages: msgs });
+    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) throw e; }
+  }
   const parsed = JSON.parse(raw);
   return {
     job_id: 'imported-' + Date.now(),

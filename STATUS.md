@@ -5,11 +5,56 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 367/367 green (367 mocked pass; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `9fea4ce`
+**Tests:** 372/372 green · **origin/main HEAD:** pending push
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Build-batch §1: Layout restructure — history cards to left column, model picker to right column** —
+
+  Removed `#loggedInPanel` (full-width card at top). History section buttons
+  (Previous CV, Coach, Discipline) moved into `#colLeft`, stacked above the Preferences
+  card. AI model picker moved into `#colRight`, stacked above Advanced options. All visibility
+  still driven by the CSS `three-col` class — no inline styles. `app.test.js` updated to
+  check `mainLayout.classList.contains('three-col')` instead of the removed panel's
+  `style.display`. Tests: 372/372.
+
+- **Build-batch §2: Widen center column, reduce outer margins** —
+
+  Three-col max-width raised from 1100px → 1280px. Grid changed from
+  `minmax(180px,1fr) 2fr minmax(180px,1fr)` → `minmax(160px,1fr) 3fr minmax(160px,1fr)`.
+  Center column now ~60% of viewport width; side columns ~20% each. `model-picker-section`
+  border-top removed (now leading item in its own card, no preceding content to separate from).
+
+- **Build-batch §3: ERR-HR-003 root cause fix — robust JSON repair and retry** —
+
+  `extractJSON` (core/json.js): truncated responses (no closing bracket) no longer throw
+  immediately before jsonrepair; the fragment is passed to jsonrepair first. Fixes the
+  "Unclosed JSON in model response" class of ERR-HR-003 failures.
+
+  `createJsonCompletion` (core/claude.js): uses `firstText(response)` not `content[0].text`
+  — thinking blocks on newer models no longer bypass JSON extraction.
+
+  `reviewCV` gains a one-retry loop: on parse failure adds a correction turn and retries once.
+  `rewriteCVWithChanges` gains the same loop; `.cv` field validated inside try block so a
+  structurally incomplete response also triggers retry instead of crashing in `enforceContactInfo`.
+  `refineWithHR`, `chatWithHRExpert`, `draftFromSidebarDiscussion` updated to `firstText()`.
+
+  Regression tests (+4 in `core/json.test.js`): truncated JSON repaired, truncated object
+  repaired, `firstText` skips thinking block, `firstText` throws on no-text response.
+
+- **Build-batch §4: ERR-JOB-007 recurrence fix — empty text guard + retry in parseJobFromText** —
+
+  Root cause: `parseJobFromText` (agents/extractor.js) received empty/whitespace text (e.g.
+  from a failed scrape) and called the Claude API on an empty payload — model returned no
+  JSON, causing the cascading parse error ERR-JOB-007. Fix: explicit early throw when
+  `rawText` is empty/whitespace (never calls the API). Also: retry loop on parse failure
+  (same correction-turn pattern as §3); long pastes truncated to 14K chars before the call.
+
+  Regression tests (+3 in `agents/agents.smoke.test.js`): empty text throws without calling
+  API; whitespace-only text also throws; retry loop fires and succeeds on prose-then-JSON
+  two-call sequence. Plus `reviewCV` retry regression test (+1 in same file) covering §3.
 
 - **Build-batch item 4: Feedback storage confirmed + scripts/list-feedback.js** —
 
@@ -793,21 +838,15 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 ## ▶️ Suggested next action
 
 **All build.txt items shipped — push `main`:**
-- Item 1: 3-column CSS grid layout ✅
-- Item 2: Donation amounts $1/$3/$5 confirmed ✅
-- Item 3: Stripe live E2E test completed ✅
-- Item 4a/4b/4c: Persistent per-account gap memory (schema + write paths + read/relevance) ✅
+- §1: Layout restructure (history → left col, model picker → right col) ✅
+- §2: Widen center column (max-width 1280px, 3fr grid) ✅
+- §3: ERR-HR-003 robust JSON repair + retry ✅
+- §4: ERR-JOB-007 empty-text guard + retry ✅
 
 **Smoke-test on the live site after push:**
-1. Login → CV upload → HR review → `/coach/discuss` → `/hr/refine` → gap decision →
-   logout → re-login → `/coach/discuss` same gap → verify coach sees prior history context.
-2. Confirm 3-column layout shows for logged-in users; guest sees single-column.
-3. Verify donation button → $3 → Stripe checkout URL opens.
-
-**Set Render env vars for Google OAuth** (set via Render dashboard):
-`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`, `SESSION_SECRET`.
-Steps and generate-command are in the Phase 2 Part 1 section above.
+1. Login → verify 3-column layout with history buttons in left col, model picker in right col.
+2. Test HR review on a real job — no ERR-HR-003 when model returns prose first time.
+3. Paste a job URL → verify /fetch-job handles edge cases without ERR-JOB-007.
 
 **Remaining backlog** is either Mode B (market/scrape — complex, blocked on
-`agents/researcher.js` live search) or infrastructure (GDPR, PayPal). All "Ready" and
-"Verify" items are now shipped/confirmed.
+`agents/researcher.js` live search) or infrastructure (GDPR, PayPal).

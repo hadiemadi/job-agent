@@ -35,6 +35,22 @@ describe('agents/extractor', () => {
     const result = await extractor.detectField('some cv text');
     expect(result).toEqual({ field: 'RF/Hardware Engineering', seniority: 'senior' });
   });
+  test('parseJobFromText throws a clear error when job text is empty — regression for ERR-JOB-007', async () => {
+    await expect(extractor.parseJobFromText('', 'https://example.com')).rejects.toThrow('Job text is empty');
+    await expect(extractor.parseJobFromText('   ', '')).rejects.toThrow('Job text is empty');
+    // Confirm Claude was NOT called — the guard fires before the API call.
+    expect(client.messages.create).not.toHaveBeenCalled();
+  });
+  test('parseJobFromText retries once when Claude returns prose — regression for ERR-JOB-007', async () => {
+    // First call returns prose (no JSON) — should trigger retry.
+    // Second call returns valid JSON — should succeed.
+    client.messages.create
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: 'Sure, here is the job information in plain English...' }] })
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: JSON.stringify({ job_title: 'TPM', employer_name: 'Acme', job_city: 'London', job_employment_type: 'Full-time', job_description: 'Lead programs.' }) }] });
+    const result = await extractor.parseJobFromText('Senior TPM at Acme. Lead programs. London.', '');
+    expect(result.job_title).toBe('TPM');
+    expect(client.messages.create).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('agents/recruiter', () => {
@@ -71,6 +87,15 @@ describe('agents/recruiter', () => {
     } finally {
       if (fs.existsSync(storePath)) fs.unlinkSync(storePath);
     }
+  });
+  test('reviewCV retries once when Claude returns prose instead of JSON — regression for ERR-HR-003', async () => {
+    client.messages.create
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: JSON.stringify({ field: 'RF/Hardware Engineering', seniority: 'senior' }) }] })
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: 'Sure, here is my analysis in plain English...' }] })
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: JSON.stringify({ overall_match: 'Strong', strengths: [], recommended_sections: [], section_rationale: '', auto_changes: [] }) }] });
+    const { review } = await recruiter.reviewCV('cv text', { job_title: 'TPM' }, [], {});
+    expect(review.overall_match).toBe('Strong');
+    expect(client.messages.create).toHaveBeenCalledTimes(3); // detectField + first attempt + retry
   });
   test('reviewCV resolves with a mocked response and also detects/returns a field', async () => {
     mockTextResponse(JSON.stringify({ overall_match: 'Strong', strengths: [], recommended_sections: [], section_rationale: '', auto_changes: [] }));
