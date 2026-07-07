@@ -53,6 +53,7 @@
     "supertest": "^7.2.2"
   },
   "devDependencies": {
-    "jest-environment-jsdom": "^30.4.1"
+    "jest-environment-jsdom": "^30.4.1",
+    "playwright": "^1.61.1"
   }
 }
