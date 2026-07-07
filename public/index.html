@@ -96,59 +96,42 @@
     </div>
   </div>
 
-  <!-- ── Inline preferences (logged-in only) ────────────────────────────────── -->
-  <!-- Shown beside / below the workspace panel for logged-in users so Preferences
-       and Advanced options are always reachable without waiting for the CV-upload modal. -->
-  <div id="prefsPanel" style="display:none;">
-    <div class="prefs-inline-row">
-      <div class="card prefs-inline-box">
+  <!-- ── 3-column layout: Preferences | CV+job box | Advanced options ────────── -->
+  <!-- Logged-in: left (Preferences) and right (Advanced options) columns shown.
+       Logged-out: only col-center is visible — inputCard takes full container width. -->
+  <div id="mainLayout" class="main-layout">
+
+    <!-- Left column: Preferences (logged-in only) -->
+    <div id="colLeft" class="col-side" style="display:none;">
+      <div class="card prefs-side-card">
         <div class="prefs-box-label">Preferences</div>
         <div class="form-group" style="margin:0;">
           <label>Anything you'd like the AI to know? <span class="opt">(optional)</span></label>
-          <textarea id="side-instructions" rows="3" placeholder="e.g. emphasize my leadership experience, avoid mentioning my current employer by name…"></textarea>
+          <textarea id="side-instructions" rows="6" placeholder="e.g. emphasize my leadership experience, avoid mentioning my current employer by name…"></textarea>
         </div>
       </div>
-      <div class="card prefs-inline-box">
-        <div class="prefs-box-label">Advanced options</div>
-        <div class="form-group" style="margin-bottom:10px;">
-          <label>HR Review — gaps to show <span class="opt">(up to 20 total)</span></label>
-          <div class="severity-checks">
-            <label class="sev-check"><input type="checkbox" id="side-sev-major" checked /> <span class="gap-severity major">major</span></label>
-            <label class="sev-check"><input type="checkbox" id="side-sev-mild" /> <span class="gap-severity mild">mild</span></label>
-            <label class="sev-check"><input type="checkbox" id="side-sev-minor" /> <span class="gap-severity minor">minor</span></label>
+    </div>
+
+    <!-- Center column: always visible — inputCard only -->
+    <div class="col-center">
+
+      <!-- ── First-time onboarding (dismissible — see app.js initIntro/dismissIntro) ── -->
+      <div class="intro-panel" id="introPanel" style="display:none;">
+        <div class="intro-icon">👋</div>
+        <div class="intro-body">
+          <div class="intro-title">New here? Here's how it works</div>
+          <div class="intro-steps">
+            <strong>1. Upload your CV</strong> — PDF, we'll read it automatically.<br>
+            <strong>2. Check your profile &amp; preferences</strong> — confirm your details before we start.<br>
+            <strong>3. Review with HR</strong> — see strengths, gaps, and what we'd change.<br>
+            <strong>4. Get your tailored CV</strong> — edit it, export to Word, and apply.
           </div>
+          <button class="intro-dismiss" onclick="dismissIntro()">Got it</button>
         </div>
-        <label class="toggle-row">
-          <input type="checkbox" id="side-extensive-search" class="toggle-input" />
-          <span class="toggle-track"><span class="toggle-thumb"></span></span>
-          <span class="toggle-label-text">Live web research <span class="opt">(slower)</span></span>
-        </label>
-        <label class="toggle-row" style="margin-top:8px;">
-          <input type="checkbox" id="side-refresh-discipline" class="toggle-input" />
-          <span class="toggle-track"><span class="toggle-thumb"></span></span>
-          <span class="toggle-label-text">Refresh discipline knowledge <span class="opt">(slower)</span></span>
-        </label>
       </div>
-    </div>
-  </div>
 
-  <!-- ── First-time onboarding (dismissible — see app.js initIntro/dismissIntro) ── -->
-  <div class="intro-panel" id="introPanel" style="display:none;">
-    <div class="intro-icon">👋</div>
-    <div class="intro-body">
-      <div class="intro-title">New here? Here's how it works</div>
-      <div class="intro-steps">
-        <strong>1. Upload your CV</strong> — PDF, we'll read it automatically.<br>
-        <strong>2. Check your profile &amp; preferences</strong> — confirm your details before we start.<br>
-        <strong>3. Review with HR</strong> — see strengths, gaps, and what we'd change.<br>
-        <strong>4. Get your tailored CV</strong> — edit it, export to Word, and apply.
-      </div>
-      <button class="intro-dismiss" onclick="dismissIntro()">Got it</button>
-    </div>
-  </div>
-
-  <!-- ── Input card ─────────────────────────────── -->
-  <div class="card" id="inputCard">
+      <!-- ── Input card ─────────────────────────────── -->
+      <div class="card" id="inputCard">
     <h2>Tailor your CV to a job</h2>
     <div class="form-group" id="cvPickerGroup">
       <label>Your CV <span class="opt">(PDF)</span></label>
@@ -169,9 +152,37 @@
       </label>
     </div>
 
-    <button class="btn btn-go" id="goBtn" onclick="go()" disabled title="Upload your CV first.">Tailor my CV →</button>
-    <div id="goStatus" style="display:none;margin-top:10px;"></div>
-  </div>
+      <button class="btn btn-go" id="goBtn" onclick="go()" disabled title="Upload your CV first.">Tailor my CV →</button>
+      <div id="goStatus" style="display:none;margin-top:10px;"></div>
+      </div><!-- /inputCard -->
+    </div><!-- /col-center -->
+
+    <!-- Right column: Advanced options (logged-in only) -->
+    <div id="colRight" class="col-side" style="display:none;">
+      <div class="card prefs-side-card">
+        <div class="prefs-box-label">Advanced options</div>
+        <div class="form-group" style="margin-bottom:12px;">
+          <label>HR Review — gaps to show <span class="opt">(up to 20 total)</span></label>
+          <div class="severity-checks">
+            <label class="sev-check"><input type="checkbox" id="side-sev-major" checked /> <span class="gap-severity major">major</span></label>
+            <label class="sev-check"><input type="checkbox" id="side-sev-mild" /> <span class="gap-severity mild">mild</span></label>
+            <label class="sev-check"><input type="checkbox" id="side-sev-minor" /> <span class="gap-severity minor">minor</span></label>
+          </div>
+        </div>
+        <label class="toggle-row">
+          <input type="checkbox" id="side-extensive-search" class="toggle-input" />
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span class="toggle-label-text">Live web research <span class="opt">(slower)</span></span>
+        </label>
+        <label class="toggle-row" style="margin-top:8px;">
+          <input type="checkbox" id="side-refresh-discipline" class="toggle-input" />
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span class="toggle-label-text">Refresh discipline knowledge <span class="opt">(slower)</span></span>
+        </label>
+      </div>
+    </div>
+
+  </div><!-- /mainLayout -->
 
   <!-- ── Contact review pop-up ───────────────────── -->
   <div class="modal-overlay" id="contactCard" style="display:none;">
@@ -208,7 +219,7 @@
           <input type="text" id="ci-linkedin" placeholder="https://www.linkedin.com/in/username" />
         </div>
       </div>
-      <!-- ci-prefs-section: hidden in the modal when the side panel (#prefsPanel) is
+      <!-- ci-prefs-section: hidden in the modal when the side columns (#colLeft/#colRight) are
            shown for logged-in users — confirmContact() reads from side-* elements instead. -->
       <div id="ci-prefs-section">
         <div class="form-group" style="margin-bottom:14px;">

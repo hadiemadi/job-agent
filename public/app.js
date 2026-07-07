@@ -106,6 +106,18 @@ async function submitAuth() {
   }
 }
 
+// Show or hide the 3-column layout (Preferences | inputCard | Advanced options).
+// Called from showAuthUser (true) and logout (false).
+function _showThreeCols(on) {
+  const colLeft = el('colLeft'), colRight = el('colRight'), mainLayout = el('mainLayout');
+  const container = document.querySelector('.container');
+  const disp = on ? '' : 'none';
+  if (colLeft) colLeft.style.display = disp;
+  if (colRight) colRight.style.display = disp;
+  if (mainLayout) mainLayout.classList.toggle('three-col', on);
+  if (container) container.classList.toggle('three-col', on);
+}
+
 // Populate the header user area without a full page reload — called on successful login/register
 // and on page load when the session is already authenticated.
 function showAuthUser(user) {
@@ -127,7 +139,7 @@ function showAuthUser(user) {
     panel.style.display = '';
   }
   updateConsentText(true);
-  if (el('prefsPanel')) el('prefsPanel').style.display = '';
+  _showThreeCols(true);
   loadPrefillData();
 }
 
@@ -139,10 +151,10 @@ async function logout() {
     userArea.innerHTML =
       '<button class="link-btn header-login-btn" onclick="openAuthModal()">Log in</button>';
   }
-  // Hide the workspace panel and inline prefs — only for authenticated users.
+  // Hide the workspace panel and side prefs columns — only for authenticated users.
   const panel = el('loggedInPanel');
   if (panel) panel.style.display = 'none';
-  if (el('prefsPanel')) el('prefsPanel').style.display = 'none';
+  _showThreeCols(false);
   updateConsentText(false);
   sessionStorage.removeItem(AUTH_MODAL_DISMISSED_KEY);
   show('authModal');
@@ -885,7 +897,7 @@ async function go() {
 function showContactCard() {
   const prefsSectionEl = el('ci-prefs-section');
   if (prefsSectionEl) {
-    const sideActive = !!(el('prefsPanel') && el('prefsPanel').style.display !== 'none');
+    const sideActive = !!(el('colLeft') && el('colLeft').style.display !== 'none');
     prefsSectionEl.style.display = sideActive ? 'none' : '';
   }
   show('contactCard');
@@ -893,9 +905,9 @@ function showContactCard() {
 
 // Saves confirmed contact to server, then continues with job + HR steps
 async function confirmContact() {
-  // When the side panel (#prefsPanel) is visible (logged-in users), read
+  // When the 3-column side panels are visible (#colLeft/#colRight — logged-in users), read
   // Preferences and Advanced from the side-* elements instead of the modal.
-  const usePanel = !!(el('prefsPanel') && el('prefsPanel').style.display !== 'none');
+  const usePanel = !!(el('colLeft') && el('colLeft').style.display !== 'none');
   const gapSeverities = usePanel
     ? ['major', 'mild', 'minor'].filter(s => el('side-sev-' + s) && el('side-sev-' + s).checked)
     : ['major', 'mild', 'minor'].filter(s => el('ci-sev-' + s).checked);

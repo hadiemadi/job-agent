@@ -225,7 +225,7 @@ describe('showValidationNudge / showErrorPopup — trial-mode code caption', () 
     expect(document.getElementById('errPopupCode').textContent).toBe('ERR-HR-003');
   });
 
-  test('real-error dialog has Copy + Send feedback buttons; feedback form hidden by default', () => {
+  test('real-error dialog has Copy + Send feedback buttons; no inline feedback form', () => {
     loadAppInDom();
     window.showErrorPopup(
       { error_code: 'ERR-CV-002', error: 'Upload failed.', kind: 'error' },
@@ -235,19 +235,22 @@ describe('showValidationNudge / showErrorPopup — trial-mode code caption', () 
     const feedbackBtn = document.getElementById('errPopupFeedbackBtn');
     expect(feedbackBtn).not.toBeNull();
     expect(feedbackBtn.textContent).toBe('Send feedback');
-    expect(document.getElementById('errPopupFeedback').style.display).toBe('none');
+    // Auto-capture: no inline form elements
+    expect(document.getElementById('errPopupFeedback')).toBeNull();
+    expect(document.getElementById('errPopupMsgInput')).toBeNull();
   });
 
-  test('clicking Send feedback reveals message textarea and optional email input', () => {
+  test('clicking Send feedback disables button and fires fetch with captured error context', () => {
     loadAppInDom();
+    global.fetch = jest.fn().mockResolvedValue({ ok: true });
     window.showErrorPopup(
       { error_code: 'ERR-CV-002', error: 'Upload failed.', kind: 'error' },
       '/upload-cv'
     );
-    document.getElementById('errPopupFeedbackBtn').click();
-    expect(document.getElementById('errPopupFeedback').style.display).not.toBe('none');
-    expect(document.getElementById('errPopupMsgInput')).not.toBeNull();
-    expect(document.getElementById('errPopupEmailInput')).not.toBeNull();
+    const feedbackBtn = document.getElementById('errPopupFeedbackBtn');
+    feedbackBtn.click();
+    expect(feedbackBtn.disabled).toBe(true);
+    expect(fetch).toHaveBeenCalledWith('/feedback', expect.objectContaining({ method: 'POST' }));
   });
 });
 

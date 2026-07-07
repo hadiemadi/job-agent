@@ -343,11 +343,15 @@ input[type="range"] { width:100%; cursor:pointer; accent-color:var(--accent); }
 .mjt-company { color:var(--muted); }
 .mjt-date { color:var(--muted); white-space:nowrap; }
 .mjt-id { font-family:'Courier New',monospace; font-size:10px; color:var(--muted-light); white-space:nowrap; }
-/* Inline Preferences + Advanced options boxes for logged-in users */
-.prefs-inline-row { display:flex; gap:var(--space-4); margin-bottom:0; }
-.prefs-inline-box { flex:1; min-width:0; padding:var(--space-5); margin-bottom:0; }
+/* 3-column layout: Preferences | CV+job box | Advanced options (logged-in users) */
+.main-layout { display:grid; grid-template-columns:1fr; gap:var(--space-4); align-items:start; }
+.col-center { min-width:0; }
+.col-side { display:none; min-width:0; } /* JS shows these when logged in */
+.prefs-side-card { padding:var(--space-5); margin-bottom:0; }
 .prefs-box-label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin-bottom:var(--space-4); }
-@media (max-width:620px) { .prefs-inline-row { flex-direction:column; } }
+.main-layout.three-col { grid-template-columns:minmax(180px,1fr) 2fr minmax(180px,1fr); }
+.container.three-col { max-width:1100px; }
+@media (max-width:900px) { .main-layout.three-col { grid-template-columns:1fr; } .container.three-col { max-width:780px; } }
 .header-login-btn { color:rgba(255,255,255,0.65) !important; font-size:11px; text-decoration:none; border:1px solid rgba(255,255,255,0.25); padding:5px 12px; border-radius:var(--radius-sm); }
 .header-login-btn:hover { color:white !important; background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.4); }
 

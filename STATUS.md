@@ -5,11 +5,33 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 350/350 green (342/342 mocked; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `61d4f03` (local ahead)
+**Tests:** 350/350 green (350 mocked pass; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `26b71ff`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Build.txt item 1 — True 3-column layout for logged-in users** —
+
+  First-page layout restructured: for logged-in users the main area is a CSS grid with
+  Preferences (left) | CV+job input card (center) | Advanced options (right). The center
+  column contains ONLY the `#inputCard`. For guests, only the center column shows and it
+  takes full container width — no change to guest experience.
+
+  - `#prefsPanel` (two side-by-side boxes below workspace) replaced with `#mainLayout`
+    (CSS grid wrapper), `#colLeft` (Preferences), `.col-center` (inputCard + intro),
+    and `#colRight` (Advanced options).
+  - `_showThreeCols(on)` helper added: shows/hides columns and toggles `.three-col` class
+    on both `#mainLayout` and `.container` (expands max-width to 1100px).
+  - `showAuthUser()` calls `_showThreeCols(true)`; `logout()` calls `_showThreeCols(false)`.
+  - `showContactCard()` and `confirmContact()` check `#colLeft` visibility instead of the
+    removed `#prefsPanel`.
+  - CSS: `.main-layout`, `.col-side`, `.col-center`, `.prefs-side-card`, `.main-layout.three-col`,
+    `.container.three-col` (max-width:1100px), responsive collapse at 900px.
+  - `public/app.test.js`: 2 error-popup tests updated to match the auto-capture behavior
+    shipped in fix-batch 4/4 (form removed; tests verify button disables and fetch fires).
+
+  Tests: 350/350 green (350 mocked; 1 real-API transient flake in test.js, pre-existing).
 
 - **Fix batch (4/4): Feedback auto-capture on error popup** —
 
