@@ -1,5 +1,5 @@
 const Anthropic = require('@anthropic-ai/sdk');
-const { extractJSON } = require('./json');
+const { extractJSON, firstText } = require('./json');
 const { addSessionSpend, getSession } = require('../services/session');
 const { taggedError } = require('./errorCodes');
 const { logEvent } = require('./logger');
@@ -102,7 +102,7 @@ client.messages.create = meteredCreate;
 async function createJsonCompletion(params) {
   let messages = params.messages;
   let response = await client.messages.create({ ...params, messages });
-  let text = response.content[0].text;
+  let text = firstText(response);
   try {
     extractJSON(text);
   } catch (err) {
@@ -112,7 +112,7 @@ async function createJsonCompletion(params) {
       { role: 'user', content: 'Your previous reply did not contain the requested JSON object. Reply again with ONLY the JSON object — no prose, no explanation, nothing before or after it.' },
     ];
     response = await client.messages.create({ ...params, messages });
-    text = response.content[0].text;
+    text = firstText(response);
   }
   return { text, messages, raw: extractJSON(text) };
 }

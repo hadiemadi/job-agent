@@ -56,6 +56,26 @@ describe('extractJSON', () => {
     });
   });
 
+  test('repairs truncated JSON with no closing bracket — regression for ERR-HR-003 "Unclosed JSON"', () => {
+    // The model truncated its response mid-way through a JSON object. extractJSON used to
+    // throw "Unclosed JSON in model response" immediately (before jsonrepair got a chance).
+    // Now it passes the fragment to jsonrepair which adds the missing brackets.
+    const truncated = '{"overall_match": "Strong", "strengths": ["Good experience", "RF background"';
+    const fixed = extractJSON(truncated);
+    expect(() => JSON.parse(fixed)).not.toThrow();
+    const parsed = JSON.parse(fixed);
+    expect(parsed.overall_match).toBe('Strong');
+    expect(parsed.strengths).toEqual(['Good experience', 'RF background']);
+  });
+
+  test('repairs an object truncated with no closing brace — the "No text content" shape', () => {
+    // Another truncation shape: a closing ] is present but the outer } is missing.
+    const truncated = '{"auto_changes": [{"description": "Add skills", "rationale": "missing"}]';
+    const fixed = extractJSON(truncated);
+    expect(() => JSON.parse(fixed)).not.toThrow();
+    expect(JSON.parse(fixed).auto_changes[0].description).toBe('Add skills');
+  });
+
   test('throws a clear error when even jsonrepair cannot fix the candidate', () => {
     // "{[}..." slices to the candidate "{[}" — mismatched bracket types that jsonrepair
     // itself cannot resolve, not just a missing-bracket case extractJSON's own slicing logic

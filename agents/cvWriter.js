@@ -282,7 +282,9 @@ async function rewriteCVWithChanges(cvText, job, autoChanges, confirmedChanges, 
     customSections.length                   ? `"additional_sections": [{ "title": "", "items": [""] }]` : null,
   ].filter(Boolean).join(',\n    ');
 
-  const userMessage = `Rewrite this candidate's CV applying the specific changes listed below.
+  const userMessage = `IMPORTANT: You must respond with ONLY a JSON object. No prose, no explanations, no markdown — just the raw JSON.
+
+Rewrite this candidate's CV applying the specific changes listed below.
 
 RULES:
 - Apply every listed change exactly as described
@@ -311,14 +313,25 @@ Return JSON only:
 IMPORTANT: skills and key_qualifications must be flat arrays of plain strings only — no objects, no nested arrays.`;
 
   const messages = [...thread, { role: 'user', content: userMessage }];
-  const message = await client.messages.create({
-    model: MODEL,
-    max_tokens: 4096, // bumped from 3500 to reduce truncation risk on long/senior CVs
-    system: writerSystemPrompt(cvText, job, preferences),
-    messages,
-  });
-
-  const raw = extractJSON(firstText(message));
+  let message, raw;
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const msgs = attempt === 0 ? messages : [
+      ...messages,
+      { role: 'assistant', content: firstText(message) },
+      { role: 'user', content: 'Your previous reply did not contain valid JSON. Reply again with ONLY the JSON object.' },
+    ];
+    message = await client.messages.create({
+      model: MODEL,
+      max_tokens: 4096, // bumped from 3500 to reduce truncation risk on long/senior CVs
+      system: writerSystemPrompt(cvText, job, preferences),
+      messages: msgs,
+    });
+    try {
+      raw = extractJSON(firstText(message));
+      if (!JSON.parse(raw).cv) throw new Error('Model response JSON missing required .cv field');
+      break;
+    } catch (e) { if (attempt === 1) throw e; }
+  }
   const result = JSON.parse(raw);
   const updatedThread = [...messages, { role: 'assistant', content: firstText(message) }];
   const { cv: cvData, modified_sections = [] } = result;

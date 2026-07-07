@@ -166,13 +166,21 @@ Return JSON only:
 }`;
 
   const messages = [...thread, { role: 'user', content: userMessage }];
-  const message = await client.messages.create({
-    model: MODEL,
-    max_tokens: 3000,
-    system: hrSystemPrompt(cvText, job, preferences, field, disciplineStore),
-    messages,
-  });
-  const raw = extractJSON(firstText(message));
+  let message, raw;
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const msgs = attempt === 0 ? messages : [
+      ...messages,
+      { role: 'assistant', content: firstText(message) },
+      { role: 'user', content: 'Your previous reply did not contain valid JSON. Reply again with ONLY the JSON object.' },
+    ];
+    message = await client.messages.create({
+      model: MODEL,
+      max_tokens: 3000,
+      system: hrSystemPrompt(cvText, job, preferences, field, disciplineStore),
+      messages: msgs,
+    });
+    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) throw e; }
+  }
   const review = JSON.parse(raw);
   return { review, field, thread: [...messages, { role: 'assistant', content: firstText(message) }] };
 }
@@ -253,9 +261,9 @@ clause, never a full sentence with subordinate clauses, never a paragraph.`;
     system: hrSystemPrompt(cvText, job, preferences),
     messages,
   });
-  const raw = extractJSON(response.content[0].text);
+  const raw = extractJSON(firstText(response));
   const result = JSON.parse(raw);
-  return { result, thread: [...messages, { role: 'assistant', content: response.content[0].text }] };
+  return { result, thread: [...messages, { role: 'assistant', content: firstText(response) }] };
 }
 
 // Sidebar Q&A on the editable tailored CV page — continues the same HR thread, so the
@@ -270,7 +278,7 @@ async function chatWithHRExpert(cvText, job, thread, userMessage, model, prefere
     system: hrSystemPrompt(cvText, job, preferences),
     messages,
   });
-  const reply = response.content[0].text;
+  const reply = firstText(response);
   return { reply, thread: [...messages, { role: 'assistant', content: reply }] };
 }
 
@@ -312,7 +320,7 @@ do not invent a statement just to have something to return.`;
     system: hrSystemPrompt(cvText, job, preferences),
     messages: [{ role: 'user', content: userMessage }],
   });
-  const raw = extractJSON(response.content[0].text);
+  const raw = extractJSON(firstText(response));
   const result = JSON.parse(raw);
   return result.added ? { description: result.description, rationale: result.rationale, targetSection: result.targetSection || null } : null;
 }

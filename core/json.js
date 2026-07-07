@@ -47,8 +47,10 @@ function extractJSON(text) {
   const openChar  = text[start];
   const closeChar = openChar === '{' ? '}' : ']';
   const end = text.lastIndexOf(closeChar);
-  if (end === -1) throw new Error('Unclosed JSON in model response');
-  const candidate = sanitizeJsonControlChars(text.slice(start, end + 1));
+  // When no closing bracket is found (truncated response), pass the fragment to
+  // jsonrepair rather than throwing immediately — it can close missing brackets.
+  const rawSlice = end === -1 ? text.slice(start) : text.slice(start, end + 1);
+  const candidate = sanitizeJsonControlChars(rawSlice);
 
   try {
     JSON.parse(candidate);
