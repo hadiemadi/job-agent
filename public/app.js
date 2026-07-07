@@ -127,6 +127,7 @@ function showAuthUser(user) {
     panel.style.display = '';
   }
   updateConsentText(true);
+  if (el('prefsPanel')) el('prefsPanel').style.display = '';
   loadPrefillData();
 }
 
@@ -138,9 +139,10 @@ async function logout() {
     userArea.innerHTML =
       '<button class="link-btn header-login-btn" onclick="openAuthModal()">Log in</button>';
   }
-  // Hide the workspace panel — it's only for authenticated users.
+  // Hide the workspace panel and inline prefs — only for authenticated users.
   const panel = el('loggedInPanel');
   if (panel) panel.style.display = 'none';
+  if (el('prefsPanel')) el('prefsPanel').style.display = 'none';
   updateConsentText(false);
   sessionStorage.removeItem(AUTH_MODAL_DISMISSED_KEY);
   show('authModal');
@@ -467,16 +469,28 @@ function applyProfilePrefill(profile) {
   if (profile.phone      !== undefined) el('ci-phone').value       = profile.phone;
   if (profile.location   !== undefined) el('ci-location').value    = profile.location;
   if (profile.linkedin   !== undefined) el('ci-linkedin').value    = profile.linkedin;
-  if (profile.customInstructions !== undefined) el('ci-instructions').value = profile.customInstructions;
-  if (profile.tone       !== undefined) el('ci-tone').value        = profile.tone;
+  if (profile.customInstructions !== undefined) {
+    el('ci-instructions').value = profile.customInstructions;
+    if (el('side-instructions')) el('side-instructions').value = profile.customInstructions;
+  }
+  if (profile.tone !== undefined) el('ci-tone').value = profile.tone;
   if (Array.isArray(profile.gapSeverities)) {
     const gs = profile.gapSeverities;
     if (el('ci-sev-major'))  el('ci-sev-major').checked  = gs.includes('major');
     if (el('ci-sev-mild'))   el('ci-sev-mild').checked   = gs.includes('mild');
     if (el('ci-sev-minor'))  el('ci-sev-minor').checked  = gs.includes('minor');
+    if (el('side-sev-major'))  el('side-sev-major').checked  = gs.includes('major');
+    if (el('side-sev-mild'))   el('side-sev-mild').checked   = gs.includes('mild');
+    if (el('side-sev-minor'))  el('side-sev-minor').checked  = gs.includes('minor');
   }
-  if (profile.extensiveSearch   !== undefined && el('ci-extensive-search'))  el('ci-extensive-search').checked   = !!profile.extensiveSearch;
-  if (profile.refreshDiscipline !== undefined && el('ci-refresh-discipline')) el('ci-refresh-discipline').checked = !!profile.refreshDiscipline;
+  if (profile.extensiveSearch !== undefined) {
+    if (el('ci-extensive-search'))   el('ci-extensive-search').checked   = !!profile.extensiveSearch;
+    if (el('side-extensive-search')) el('side-extensive-search').checked = !!profile.extensiveSearch;
+  }
+  if (profile.refreshDiscipline !== undefined) {
+    if (el('ci-refresh-discipline'))   el('ci-refresh-discipline').checked   = !!profile.refreshDiscipline;
+    if (el('side-refresh-discipline')) el('side-refresh-discipline').checked = !!profile.refreshDiscipline;
+  }
 }
 
 // Loads the user's saved preferences and pre-fills the form for returning users.
@@ -879,9 +893,25 @@ async function go() {
   }
 }
 
+// Hides the prefs/advanced section inside the contact modal when the side panel
+// is active (logged-in users), then shows the modal.
+function showContactCard() {
+  const prefsSectionEl = el('ci-prefs-section');
+  if (prefsSectionEl) {
+    const sideActive = !!(el('prefsPanel') && el('prefsPanel').style.display !== 'none');
+    prefsSectionEl.style.display = sideActive ? 'none' : '';
+  }
+  show('contactCard');
+}
+
 // Saves confirmed contact to server, then continues with job + HR steps
 async function confirmContact() {
-  const gapSeverities = ['major', 'mild', 'minor'].filter(s => el('ci-sev-' + s).checked);
+  // When the side panel (#prefsPanel) is visible (logged-in users), read
+  // Preferences and Advanced from the side-* elements instead of the modal.
+  const usePanel = !!(el('prefsPanel') && el('prefsPanel').style.display !== 'none');
+  const gapSeverities = usePanel
+    ? ['major', 'mild', 'minor'].filter(s => el('side-sev-' + s) && el('side-sev-' + s).checked)
+    : ['major', 'mild', 'minor'].filter(s => el('ci-sev-' + s).checked);
   const contact = {
     name:     el('ci-name').value.trim(),
     title:    el('ci-title').value.trim(),
@@ -889,10 +919,10 @@ async function confirmContact() {
     phone:    el('ci-phone').value.trim(),
     location: el('ci-location').value.trim(),
     linkedin: el('ci-linkedin').value.trim(),
-    customInstructions: el('ci-instructions').value.trim(),
+    customInstructions: (usePanel ? el('side-instructions') : el('ci-instructions')).value.trim(),
     tone:     parseInt(el('ci-tone').value, 10),
-    extensiveSearch: el('ci-extensive-search').checked,
-    refreshDiscipline: el('ci-refresh-discipline').checked,
+    extensiveSearch:   usePanel ? el('side-extensive-search').checked : el('ci-extensive-search').checked,
+    refreshDiscipline: usePanel ? el('side-refresh-discipline').checked : el('ci-refresh-discipline').checked,
     gapSeverities: gapSeverities.length ? gapSeverities : ['major'],
     model: _selectedModel,
   };
@@ -1316,7 +1346,7 @@ function startPolling(jobId, isResume, kind) {
             // DB data always wins: override extracted values with saved preferences if available.
             // Returning users see their own confirmed data; only first-time users see raw extraction.
             if (_prefillProfile) applyProfilePrefill(_prefillProfile);
-            show('contactCard');
+            showContactCard();
           }, 400);
           return;
         }

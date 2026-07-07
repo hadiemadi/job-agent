@@ -11,6 +11,28 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **Fix batch (3/4): Inline Preferences + Advanced options for logged-in users** —
+
+  For logged-in users, "Preferences" and "Advanced options" are now always-visible labeled
+  boxes on the main page (between the workspace panel and the input card), so they're
+  reachable without waiting for the CV-upload modal.
+
+  - `#prefsPanel` added to `index.html` with two `.card.prefs-inline-box` elements:
+    - "Preferences" box: `#side-instructions` textarea
+    - "Advanced options" box: `#side-sev-major/mild/minor`, `#side-extensive-search`,
+      `#side-refresh-discipline` (same fields as the contact modal, different IDs)
+  - `showAuthUser()` shows `#prefsPanel`; `logout()` hides it.
+  - `applyProfilePrefill()` fills both the modal fields AND the side-panel fields.
+  - `confirmContact()` reads from `side-*` elements when `#prefsPanel` is visible (logged-in),
+    from `ci-*` elements when not (guest). Tone slider always comes from the modal.
+  - `showContactCard()` added: hides `#ci-prefs-section` in the modal when the side panel
+    is active (avoids showing duplicate prefs fields to logged-in users).
+  - For guests: popup modal behavior is unchanged — the same contact card appears with the
+    Preferences textarea and Advanced options visible as before.
+
+  CSS: `.prefs-inline-row`, `.prefs-inline-box`, `.prefs-box-label` (flex, collapses on mobile).
+  Tests: 350/350 green (no route changes).
+
 - **Fix batch (2/4): Saved CVs compact table in My Data** —
 
   Replaced the raw `lastJobText` text dump in My Data with a compact, scrollable table
