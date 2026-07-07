@@ -5,11 +5,40 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 323/323 green · **origin/main HEAD:** `751c59a`
+**Tests:** 326/326 green · **origin/main HEAD:** `04f60d0` (pending push after Item 2+4)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **My Data history fixes — Items 1+2+3** (audit of 4 broken/missing history panel items, 3 now fixed)
+
+  **Item 1 — Discipline data now shown in My Data panel:**
+  `GET /auth/my-data` was hardcoding `disciplines: []`; added `listDisciplines()` to
+  `core/knowledge.js` (reads all `knowledge/disciplines/*.json` files, safe empty-return if dir
+  absent); `auth.routes.js` now calls it and returns real content; `public/app.js`
+  `renderMyData()` renders per-field skills/date instead of a static "None yet".
+
+  **Item 2 — Saved CVs written after CV tailoring:**
+  `saveCv()` existed in `services/auth.js` but was never called. Wired into `routes/cv.routes.js`
+  `/rewrite` background task (after `logEvent('cv_tailored', …)`) — fire-and-forget for logged-in
+  users only; failures are console-warned but never surfaced to the user. Label = "Job Title at
+  Company" for easy recall in the My Data panel.
+
+  **Item 3 — Last job description shown in My Data panel:**
+  `last_job_text` from `user_preferences` was already written by `/fetch-job` but missing from
+  `GET /auth/my-data`; added it to the parallel fetch and rendered as "Last Job Description"
+  under "Previous CV & job info" in `renderMyData()`.
+
+  **Tests added** (+3, one per item): disciplines returns real store data; savedCvs populated
+  for logged-in user; lastJobText included in my-data response. Tests: 326/326.
+
+  **Files changed:** `core/knowledge.js`, `routes/auth.routes.js`, `routes/cv.routes.js`,
+  `public/app.js`, `routes/auth.routes.test.js`.
+
+  **Item 4 (Coach & HR history) — in progress.** Write functions `saveCoachMemory` /
+  `saveConversationHistory` not yet added to `services/auth.js`; call sites in coach/HR routes
+  not yet wired.
 
 - **Phase 2.5 — Profile & Preferences persistent storage** —
 
@@ -342,14 +371,16 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 ---
 
 ## ▶️ Suggested next action
-**Set Render env vars for Google OAuth** (set via Render dashboard — no shell access needed):
+
+**Item 4 — Coach & HR conversation history:** Add `saveCoachMemory(userId, entry)` and
+`saveConversationHistory(userId, agent, entry)` to `services/auth.js`; call `saveCoachMemory`
+in `routes/coach.routes.js` after `/coach/discuss` and `/coach/analyze`; call
+`saveConversationHistory` in `routes/hr.routes.js` after `/hr/chat`. Logged-in users only.
+One test: `GET /auth/my-data` returns non-empty `coachMemory` / `conversationHistory`.
+
+**After Item 4:** push `main`, then smoke-test the live site — login, My Data modal (all
+sections now populated), workspace panel.
+
+**Set Render env vars for Google OAuth** (set via Render dashboard):
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`, `SESSION_SECRET`.
-Steps and generate-command are in the Part 1 section above.
-
-**After that:** smoke-test the live site — login modal, Google OAuth flow, email/password
-register + login, dismiss-as-guest, mid-session login, My Data modal (filtered sections),
-workspace panel, model picker, job text pre-fill on second login.
-
-**CV pre-fill (deferred):** `saveCv()` is not called during the upload flow, so returning
-users' CV is never stored in `saved_cvs`. Wire `saveCv()` into `POST /upload-cv`'s done
-handler to unlock CV pre-fill via `latestCv` from `GET /auth/prefill`.
+Steps and generate-command are in the Phase 2 Part 1 section above.

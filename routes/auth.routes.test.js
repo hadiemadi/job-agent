@@ -403,6 +403,22 @@ describe('GET /auth/my-data', () => {
     expect(res.status).toBe(200);
     expect(res.body.lastJobText).toBe('Senior TPM at Apple — RF background required');
   });
+
+  test('returns savedCvs after CV tailoring has been persisted for a logged-in user (item 2)', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    findUserById.mockResolvedValue(MOCK_USER);
+    listSavedCvs.mockResolvedValue([{
+      id: 'cv-100', label: 'Senior TPM at Apple', created_at: new Date().toISOString(),
+    }]);
+
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.get('/auth/my-data');
+    expect(res.status).toBe(200);
+    expect(res.body.savedCvs).toHaveLength(1);
+    expect(res.body.savedCvs[0]).toMatchObject({ id: 'cv-100', label: 'Senior TPM at Apple' });
+  });
 });
 
 // ── DELETE /auth/saved-cvs/:id ─────────────────────────────────────────────────

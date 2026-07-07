@@ -7,7 +7,7 @@ const { generateWordCV, generateWordCVAlt } = require('../src/wordExport');
 const { generateWordFromTemplate } = require('../src/wordTemplateExport');
 const { upload, templateUpload } = require('../services/uploads');
 const { getSession, setSession, registerOutputFile, purgeSessionData, als } = require('../services/session');
-const { saveProfilePreferences } = require('../services/auth');
+const { saveProfilePreferences, saveCv } = require('../services/auth');
 const { getGaps } = require('../services/gapStore');
 const { tailorCvWithReview } = require('../services/workflows');
 const { createJob, updateJob, getJob } = require('../services/jobQueue');
@@ -195,6 +195,15 @@ router.post('/rewrite', async (req, res) => {
           },
         });
         logEvent('cv_tailored', { route: '/rewrite', outcome: 'ok' });
+
+        // Persist a snapshot of this tailored CV for logged-in users so it appears
+        // in "Previous CV & job info" under My Data. Fire-and-forget — DB failure must
+        // not break the tailor flow. Label = "Job Title at Company" for easy recall.
+        if (appSession.userId) {
+          const label = [job.job_title, job.employer_name].filter(Boolean).join(' at ') || 'Tailored CV';
+          saveCv(appSession.userId, { cvText: jobParams.cvText, fileRef: filePath, label })
+            .catch(e => console.warn('[saveCv] write failed:', e.message));
+        }
       } catch (err) {
         await updateJob(jobId, {
           status: 'failed',
