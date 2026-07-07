@@ -11,6 +11,19 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **Fix batch (2/4): Saved CVs compact table in My Data** —
+
+  Replaced the raw `lastJobText` text dump in My Data with a compact, scrollable table
+  of tailored CVs. The table shows Job Title, Company, Date, Job ID (first 8 chars of
+  the saved CV's UUID), and a Delete button per row.
+
+  Job Title and Company are parsed from the saved CV's `label` field by splitting on
+  " at " (the format set in `/rewrite`: `"Job Title at Company"`). The scrollable
+  container (`max-height: 220px`) keeps My Data compact even with many saved CVs.
+
+  Files changed: `public/app.js` (`renderMyData`), `public/style.css` (`.my-data-job-*`,
+  `.mjt-*` table classes). Tests unchanged (client-side rendering, no route changes).
+
 - **Fix batch (1/4): Write-path test coverage** —
 
   Confirmed `saveCv` (and the other fire-and-forget DB writes) are called correctly.

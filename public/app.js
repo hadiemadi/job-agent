@@ -250,30 +250,34 @@ function renderMyData(data, section) {
   }
 
   // Saved CVs — full view or 'cv' section
+  // Shown as a compact table: Job Title | Company | Date | ID (first 8 chars) | Delete
   if (!section || section === 'cv') {
     html += '<div class="my-data-section">';
-    html += '<div class="my-data-section-title">Saved CVs <span class="my-data-count">(' + (data.savedCvs.length) + ')</span></div>';
+    html += '<div class="my-data-section-title">Saved CVs <span class="my-data-count">(' + data.savedCvs.length + ')</span></div>';
     if (data.savedCvs.length === 0) {
       html += '<p class="my-data-empty">None yet.</p>';
     } else {
+      html += '<div class="my-data-job-scroll">';
+      html += '<table class="my-data-job-table">';
+      html += '<thead><tr><th>Job Title</th><th>Company</th><th>Date</th><th>ID</th><th></th></tr></thead>';
+      html += '<tbody>';
       data.savedCvs.forEach(cv => {
-        html += '<div class="my-data-cv-row" id="cv-row-' + escapeHtml(cv.id) + '">';
-        html += '<span class="my-data-cv-label">' + escapeHtml(cv.label || 'Untitled CV') + '</span>';
-        html += '<span class="my-data-cv-date">' + fmt(cv.created_at) + '</span>';
-        html += '<button class="link-btn my-data-delete-btn" onclick="deleteMyCV(\'' + escapeHtml(cv.id) + '\')">Delete</button>';
-        html += '</div>';
+        const raw = (cv.label || '').trim();
+        const atIdx = raw.indexOf(' at ');
+        const jobTitle = (atIdx === -1 ? raw : raw.slice(0, atIdx)).trim() || '—';
+        const company  = (atIdx === -1 ? '—' : raw.slice(atIdx + 4)).trim() || '—';
+        const shortId  = (cv.id || '').slice(0, 8);
+        html += '<tr id="cv-row-' + escapeHtml(cv.id) + '">';
+        html += '<td class="mjt-title">' + escapeHtml(jobTitle) + '</td>';
+        html += '<td class="mjt-company">' + escapeHtml(company) + '</td>';
+        html += '<td class="mjt-date">' + fmt(cv.created_at) + '</td>';
+        html += '<td class="mjt-id" title="' + escapeHtml(cv.id || '') + '">' + escapeHtml(shortId) + '</td>';
+        html += '<td><button class="link-btn my-data-delete-btn" onclick="deleteMyCV(\'' + escapeHtml(cv.id) + '\')">Delete</button></td>';
+        html += '</tr>';
       });
+      html += '</tbody></table></div>';
     }
     html += '</div>';
-
-    // Last job searched — shown in the 'cv' section alongside saved CVs
-    if (data.lastJobText) {
-      html += '<div class="my-data-section">';
-      html += '<div class="my-data-section-title">Last Job Description</div>';
-      const preview = data.lastJobText.length > 300 ? data.lastJobText.slice(0, 300) + '…' : data.lastJobText;
-      html += '<p class="my-data-digest">' + escapeHtml(preview) + '</p>';
-      html += '</div>';
-    }
   }
 
   // Career Coach history — full view or 'coach' section
