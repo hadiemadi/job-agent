@@ -45,4 +45,21 @@ function saveDiscipline(field, store) {
   fs.writeFileSync(filePath, JSON.stringify(store, null, 2));
 }
 
-module.exports = { loadCore, loadDiscipline, saveDiscipline };
+// Returns all discipline stores on disk — used by GET /auth/my-data to show the user
+// their accumulated field knowledge. Safe: returns [] if the directory doesn't exist yet.
+function listDisciplines() {
+  try {
+    if (!fs.existsSync(DISCIPLINES_DIR)) return [];
+    return fs.readdirSync(DISCIPLINES_DIR)
+      .filter(f => f.endsWith('.json'))
+      .map(f => {
+        try { return JSON.parse(fs.readFileSync(path.join(DISCIPLINES_DIR, f), 'utf8')); }
+        catch (e) { return null; }
+      })
+      .filter(Boolean);
+  } catch (e) {
+    return [];
+  }
+}
+
+module.exports = { loadCore, loadDiscipline, saveDiscipline, listDisciplines };

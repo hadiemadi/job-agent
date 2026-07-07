@@ -259,6 +259,15 @@ function renderMyData(data, section) {
       });
     }
     html += '</div>';
+
+    // Last job searched — shown in the 'cv' section alongside saved CVs
+    if (data.lastJobText) {
+      html += '<div class="my-data-section">';
+      html += '<div class="my-data-section-title">Last Job Description</div>';
+      const preview = data.lastJobText.length > 300 ? data.lastJobText.slice(0, 300) + '…' : data.lastJobText;
+      html += '<p class="my-data-digest">' + escapeHtml(preview) + '</p>';
+      html += '</div>';
+    }
   }
 
   // Career Coach history — full view or 'coach' section
@@ -300,7 +309,19 @@ function renderMyData(data, section) {
   if (!section || section === 'discipline') {
     html += '<div class="my-data-section">';
     html += '<div class="my-data-section-title">Skills &amp; Discipline Data</div>';
-    html += '<p class="my-data-empty">None yet.</p>';
+    const disciplines = data.disciplines || [];
+    if (disciplines.length === 0) {
+      html += '<p class="my-data-empty">None yet.</p>';
+    } else {
+      disciplines.forEach(d => {
+        html += '<div class="my-data-discipline-row">';
+        html += '<span class="my-data-topic">' + escapeHtml(d.field || '—') + '</span>';
+        if (d.updated) html += '<span class="my-data-date"> — updated ' + escapeHtml(d.updated) + '</span>';
+        const skills = (d.skills || []).slice(0, 5).map(s => escapeHtml(s.text || '')).filter(Boolean);
+        if (skills.length) html += '<div class="my-data-digest">Skills: ' + skills.join(', ') + '</div>';
+        html += '</div>';
+      });
+    }
     html += '</div>';
   }
 

@@ -8,6 +8,7 @@ const {
   setUserPreference, getUserPreference, getLatestSavedCv,
   getProfilePreferences,
 } = require('../services/auth');
+const { listDisciplines } = require('../core/knowledge');
 const { sendError } = require('../core/respondError');
 const { logEvent } = require('../core/logger');
 
@@ -102,10 +103,11 @@ router.get('/auth/my-data', async (req, res) => {
       return sendError(res, '/auth/my-data', 'ERR-AUTH-007');
     }
 
-    const [savedCvs, conversationHistory, coachMemory] = await Promise.all([
+    const [savedCvs, conversationHistory, coachMemory, lastJobText] = await Promise.all([
       listSavedCvs(appSession.userId),
       listConversationHistory(appSession.userId),
       listCoachMemory(appSession.userId),
+      getUserPreference(appSession.userId, 'last_job_text'),
     ]);
 
     res.json({
@@ -113,7 +115,8 @@ router.get('/auth/my-data', async (req, res) => {
       savedCvs,
       conversationHistory,
       coachMemory,
-      disciplines: [], // file-based (knowledge/disciplines/); Phase 5 populates this
+      lastJobText: lastJobText || null,
+      disciplines: listDisciplines(),
     });
   } catch (err) {
     sendError(res, '/auth/my-data', 'ERR-AUTH-004', err);

@@ -26,6 +26,15 @@ jest.mock('../agents/inputRouter', () => ({
   classify: jest.fn(),
 }));
 
+// Mock core/knowledge — listDisciplines() reads disk files; loadDiscipline/saveDiscipline are
+// called by agent modules that load with the server. All safe no-ops in test context.
+jest.mock('../core/knowledge', () => ({
+  loadCore:        jest.fn().mockReturnValue(''),
+  loadDiscipline:  jest.fn().mockReturnValue(null),
+  saveDiscipline:  jest.fn(),
+  listDisciplines: jest.fn().mockReturnValue([]),
+}));
+
 // Mock core/passport — strategies would try to connect to Google / DB in the real impl.
 // Initial factory: handles both the redirect (2-arg) and callback (3-arg) forms.
 // For the 2-arg OAuth-redirect form (used at route-definition time for GET /auth/google),
@@ -53,6 +62,7 @@ const {
   saveProfilePreferences, getProfilePreferences,
 } = require('../services/auth');
 const { classify } = require('../agents/inputRouter');
+const { listDisciplines } = require('../core/knowledge');
 const passport = require('../core/passport');
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -77,6 +87,7 @@ beforeEach(() => {
   saveProfilePreferences.mockResolvedValue(undefined);
   getProfilePreferences.mockResolvedValue(null);
   classify.mockResolvedValue({ bucket: 'none', text: '' });
+  listDisciplines.mockReturnValue([]);
   // Default: authenticate calls callback with null (not authenticated).
   // When called with 2 args (no callback) — the OAuth redirect form — simulate a redirect
   // so the route doesn't fall through to a 404.
@@ -357,6 +368,40 @@ describe('GET /auth/my-data', () => {
     const res = await agent.get('/auth/my-data');
     expect(JSON.stringify(res.body)).not.toContain('password_hash');
     expect(JSON.stringify(res.body)).not.toContain('$2b$10$');
+  });
+
+  test('returns disciplines from knowledge/disciplines files (item 1)', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    findUserById.mockResolvedValue(MOCK_USER);
+    listDisciplines.mockReturnValue([{
+      field: 'RF/Hardware Engineering', updated: '2026-07-07',
+      skills: [{ text: 'RF systems', confidence: 2, pinned: false }],
+      keywords: [], red_flags: [],
+    }]);
+
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.get('/auth/my-data');
+    expect(res.status).toBe(200);
+    expect(res.body.disciplines).toHaveLength(1);
+    expect(res.body.disciplines[0].field).toBe('RF/Hardware Engineering');
+    expect(res.body.disciplines[0].skills[0].text).toBe('RF systems');
+  });
+
+  test('returns lastJobText in my-data response (item 3)', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    findUserById.mockResolvedValue(MOCK_USER);
+    getUserPreference.mockImplementation((userId, key) =>
+      Promise.resolve(key === 'last_job_text' ? 'Senior TPM at Apple — RF background required' : null)
+    );
+
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.get('/auth/my-data');
+    expect(res.status).toBe(200);
+    expect(res.body.lastJobText).toBe('Senior TPM at Apple — RF background required');
   });
 });
 
