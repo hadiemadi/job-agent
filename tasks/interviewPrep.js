@@ -1,5 +1,5 @@
 const { client, MODEL } = require('../core/claude');
-const { extractJSON } = require('../core/json');
+const { extractJSON, firstText } = require('../core/json');
 const { hrSystemPrompt, stealthWritingDirective } = require('../agents/recruiter');
 
 // Interview prep — generated only on explicit sidebar button press. Both answer proposals per
@@ -38,9 +38,9 @@ Return exactly 10 items in "questions".`;
     system: hrSystemPrompt(cvText, job, preferences),
     messages,
   });
-  const raw = extractJSON(message.content[0].text);
+  const raw = extractJSON(firstText(message));
   const { questions } = JSON.parse(raw);
-  const updatedThread = [...messages, { role: 'assistant', content: message.content[0].text }];
+  const updatedThread = [...messages, { role: 'assistant', content: firstText(message) }];
 
   const initialHrMessage = "I've put together your top 10 likely interview questions for this role, each with two different ways to answer — take a look in the panel.";
   const updatedDisplayHistory = [...(hrDisplayHistory || []), { role: 'expert', text: initialHrMessage }];

@@ -1,5 +1,5 @@
 const { client, MODEL } = require('../core/claude');
-const { extractJSON } = require('../core/json');
+const { extractJSON, firstText } = require('../core/json');
 const { hrSystemPrompt } = require('../agents/recruiter');
 
 // NOTE: this is the AI placement-PLANNING task (decides where content goes). The separate
@@ -58,9 +58,9 @@ ${JSON.stringify(fields, null, 2)}`;
     system: hrSystemPrompt(cvText, job, preferences),
     messages,
   });
-  const raw = extractJSON(message.content[0].text);
+  const raw = extractJSON(firstText(message));
   const plan = JSON.parse(raw);
-  return { plan, thread: [...messages, { role: 'assistant', content: message.content[0].text }] };
+  return { plan, thread: [...messages, { role: 'assistant', content: firstText(message) }] };
 }
 
 module.exports = { planDocxPlacement };

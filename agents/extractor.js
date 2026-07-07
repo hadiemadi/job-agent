@@ -1,5 +1,5 @@
 const { client, MODEL } = require('../core/claude');
-const { extractJSON } = require('../core/json');
+const { extractJSON, firstText } = require('../core/json');
 
 async function extractJobTitles(cvText) {
   const message = await client.messages.create({
@@ -7,7 +7,7 @@ async function extractJobTitles(cvText) {
     max_tokens: 100,
     messages: [{ role: 'user', content: `Based on this CV, return ONLY the 3 most suitable job search queries as a comma-separated list. No explanation, just the queries.\n\nCV:\n${cvText}` }]
   });
-  return message.content[0].text.split(',').map(t => t.trim());
+  return firstText(message).split(',').map(t => t.trim());
 }
 
 async function parseJobFromText(rawText, sourceUrl) {
@@ -27,7 +27,7 @@ For job_description include the full responsibilities and requirements. Leave un
 Text:
 ${rawText}` }]
   });
-  const raw = extractJSON(message.content[0].text);
+  const raw = extractJSON(firstText(message));
   const parsed = JSON.parse(raw);
   return {
     job_id: 'imported-' + Date.now(),
@@ -63,7 +63,7 @@ Return JSON only:
   "seniority": "junior|mid|senior|principal|executive"
 }` }]
   });
-  const raw = extractJSON(message.content[0].text);
+  const raw = extractJSON(firstText(message));
   return JSON.parse(raw);
 }
 

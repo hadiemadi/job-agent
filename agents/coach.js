@@ -1,5 +1,5 @@
 const { client, MODEL } = require('../core/claude');
-const { extractJSON } = require('../core/json');
+const { extractJSON, firstText } = require('../core/json');
 const { loadCore } = require('../core/knowledge');
 const { preferencesBlock } = require('../core/preferences');
 const { fieldBlock } = require('./recruiter');
@@ -52,7 +52,7 @@ Return JSON only, no explanation:
   });
 
   try {
-    const raw = extractJSON(message.content[0].text);
+    const raw = extractJSON(firstText(message));
     return JSON.parse(raw);
   } catch (e) {
     return null;
@@ -92,7 +92,7 @@ Return JSON only:
   });
 
   try {
-    const raw = extractJSON(message.content[0].text);
+    const raw = extractJSON(firstText(message));
     return JSON.parse(raw);
   } catch (e) {
     return [];
@@ -125,7 +125,7 @@ Return JSON only:
   });
 
   try {
-    const raw = extractJSON(message.content[0].text);
+    const raw = extractJSON(firstText(message));
     return JSON.parse(raw);
   } catch (e) {
     return null;
@@ -178,7 +178,7 @@ with very few genuine gaps, return fewer items rather than inventing weak ones.`
   });
 
   try {
-    const raw = extractJSON(message.content[0].text);
+    const raw = extractJSON(firstText(message));
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed.gaps) ? parsed.gaps : [];
   } catch (e) {

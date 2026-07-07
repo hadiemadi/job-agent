@@ -1,5 +1,5 @@
 const { client, MODEL } = require('../core/claude');
-const { extractJSON } = require('../core/json');
+const { extractJSON, firstText } = require('../core/json');
 const { hrSystemPrompt, stealthWritingDirective } = require('../agents/recruiter');
 
 // Cover letter — written by the same HR persona, only on explicit client request (button
@@ -32,9 +32,9 @@ Return JSON only:
     system: hrSystemPrompt(cvText, job, preferences),
     messages,
   });
-  const raw = extractJSON(message.content[0].text);
+  const raw = extractJSON(firstText(message));
   const { cover_letter } = JSON.parse(raw);
-  const updatedThread = [...messages, { role: 'assistant', content: message.content[0].text }];
+  const updatedThread = [...messages, { role: 'assistant', content: firstText(message) }];
 
   const initialHrMessage = "I've drafted a cover letter to match your tailored CV's tone and content — take a look and let me know if you'd like adjustments.";
   const updatedDisplayHistory = [...(hrDisplayHistory || []), { role: 'expert', text: initialHrMessage }];

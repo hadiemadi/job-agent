@@ -1,7 +1,7 @@
 const fse = require('fs-extra');
 const { generateExecutiveTemplate } = require('../render/cvHtml');
 const { client, MODEL, createJsonCompletion } = require('../core/claude');
-const { extractJSON } = require('../core/json');
+const { extractJSON, firstText } = require('../core/json');
 const { loadCore } = require('../core/knowledge');
 const { registerOutputFile, getSessionSpend } = require('../services/session');
 const { hrSystemPrompt, stealthWritingDirective, EVIDENCE_HIERARCHY } = require('./recruiter');
@@ -125,7 +125,7 @@ ${cvText}
 
 Return ONLY the JSON, no explanation.` }]
   });
-  const raw = extractJSON(message.content[0].text);
+  const raw = extractJSON(firstText(message));
   const cv = cleanBulletPrefixes(JSON.parse(raw));
   if (cv.linkedin) cv.linkedin = normalizeLinkedin(cv.linkedin);
   return enforceContactInfo(cv, cvText);
@@ -318,9 +318,9 @@ IMPORTANT: skills and key_qualifications must be flat arrays of plain strings on
     messages,
   });
 
-  const raw = extractJSON(message.content[0].text);
+  const raw = extractJSON(firstText(message));
   const result = JSON.parse(raw);
-  const updatedThread = [...messages, { role: 'assistant', content: message.content[0].text }];
+  const updatedThread = [...messages, { role: 'assistant', content: firstText(message) }];
   const { cv: cvData, modified_sections = [] } = result;
   // Section inclusion was already decided by reviewCV (`sections`) — re-assert it here rather
   // than trusting the rewrite call to have honored it under sampling, since dropping a
@@ -443,9 +443,9 @@ Return JSON only:
     system: writerSystemPrompt(cvText, job, preferences),
     messages,
   });
-  const raw = extractJSON(message.content[0].text);
+  const raw = extractJSON(firstText(message));
   const { revised_text, changed } = JSON.parse(raw);
-  const updatedThread = [...messages, { role: 'assistant', content: message.content[0].text }];
+  const updatedThread = [...messages, { role: 'assistant', content: firstText(message) }];
   return { revisedText: revised_text, changed: changed !== false, thread: updatedThread };
 }
 

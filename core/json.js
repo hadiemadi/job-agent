@@ -64,4 +64,13 @@ function extractJSON(text) {
   }
 }
 
-module.exports = { extractJSON, sanitizeJsonControlChars };
+// Finds the first text block in a Claude API response, skipping thinking/tool_use blocks
+// that newer models (Opus 4.8, Sonnet 5) may prepend before the actual text response.
+// Using message.content[0].text directly crashes when content[0] is a thinking block.
+function firstText(response) {
+  const block = (response.content || []).find(b => b.type === 'text');
+  if (!block) throw new Error('No text content returned by model');
+  return block.text;
+}
+
+module.exports = { extractJSON, sanitizeJsonControlChars, firstText };

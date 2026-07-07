@@ -1,5 +1,5 @@
 const { client, MODEL } = require('../core/claude');
-const { extractJSON } = require('../core/json');
+const { extractJSON, firstText } = require('../core/json');
 const { loadCore, loadDiscipline, saveDiscipline } = require('../core/knowledge');
 const { preferencesBlock } = require('../core/preferences');
 const { detectField } = require('./extractor');
@@ -172,9 +172,9 @@ Return JSON only:
     system: hrSystemPrompt(cvText, job, preferences, field, disciplineStore),
     messages,
   });
-  const raw = extractJSON(message.content[0].text);
+  const raw = extractJSON(firstText(message));
   const review = JSON.parse(raw);
-  return { review, field, thread: [...messages, { role: 'assistant', content: message.content[0].text }] };
+  return { review, field, thread: [...messages, { role: 'assistant', content: firstText(message) }] };
 }
 
 async function analyzeJobFit(cvText, jobs, countryCode = 'GB') {
@@ -190,7 +190,7 @@ async function analyzeJobFit(cvText, jobs, countryCode = 'GB') {
     messages: [{ role: 'user', content: `Here is my CV:\n${cvText}\n\nHere are the jobs found:\n${jobList}\n\nPlease rank these jobs by fit. Prioritize jobs based in ${preferredCountry} or Remote. Return a JSON array with this exact structure, no explanation:\n[{\n  "rank": 1,\n  "job_title": "",\n  "company": "",\n  "location": "",\n  "fit_score": 5,\n  "reasons_for": "",\n  "reasons_against": "",\n  "apply_link": ""\n}]` }]
   });
   try {
-    const raw = extractJSON(message.content[0].text);
+    const raw = extractJSON(firstText(message));
     const ranked = JSON.parse(raw);
     return ranked.map(r => ({ ...r, apply_link: r.apply_link || topJobs[r.rank - 1]?.job_apply_link || '' }));
   } catch (e) { return []; }
@@ -384,7 +384,7 @@ Go through the checklist one item at a time. Return JSON only:
     system: preReleaseReviewPrompt(),
     messages: [{ role: 'user', content: userMessage }],
   });
-  const raw = extractJSON(message.content[0].text);
+  const raw = extractJSON(firstText(message));
   return JSON.parse(raw);
 }
 

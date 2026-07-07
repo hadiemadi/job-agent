@@ -1,4 +1,4 @@
-const { extractJSON, sanitizeJsonControlChars } = require('./json');
+const { extractJSON, sanitizeJsonControlChars, firstText } = require('./json');
 
 describe('extractJSON', () => {
   test('extracts a JSON object wrapped in a ```json fenced code block', () => {
@@ -61,6 +61,34 @@ describe('extractJSON', () => {
     // itself cannot resolve, not just a missing-bracket case extractJSON's own slicing logic
     // already catches (that's "Unclosed JSON in model response", a different message).
     expect(() => extractJSON('prefix {[} suffix')).toThrow('Model JSON could not be parsed or repaired:');
+  });
+});
+
+describe('firstText', () => {
+  test('returns the text of the first text block', () => {
+    const response = { content: [{ type: 'text', text: 'hello world' }] };
+    expect(firstText(response)).toBe('hello world');
+  });
+
+  test('skips a leading thinking block and returns the text block — regression for ERR-HR-003', () => {
+    // Newer models (Opus 4.8, Sonnet 5) prepend a thinking block before the text block.
+    // content[0].text is undefined on a thinking block, triggering "No text content returned".
+    const response = {
+      content: [
+        { type: 'thinking', thinking: 'internal reasoning...' },
+        { type: 'text', text: '{"ok": true}' },
+      ],
+    };
+    expect(firstText(response)).toBe('{"ok": true}');
+  });
+
+  test('throws a clear error when no text block is present', () => {
+    const response = { content: [{ type: 'tool_use', id: 'x', name: 'fn', input: {} }] };
+    expect(() => firstText(response)).toThrow('No text content returned by model');
+  });
+
+  test('throws when content is empty', () => {
+    expect(() => firstText({ content: [] })).toThrow('No text content returned by model');
   });
 });
 

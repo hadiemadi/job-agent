@@ -5,11 +5,27 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 357/357 green (357 mocked pass; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `ec2a449`
+**Tests:** 361/361 green (361 mocked pass; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** pending push
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Fix ERR-HR-003 — thinking block skipped in firstText (user-reported via feedback)** —
+
+  Root cause: all agent/task files called `message.content[0].text` to get the model's
+  response. Newer models (Opus 4.8, Sonnet 5) sometimes prepend a `thinking` block before
+  the `text` block, making `content[0].type === 'thinking'` and `content[0].text === undefined`.
+  The `extractJSON` guard then threw "No text content returned by model" → ERR-HR-003.
+
+  Fix: new `firstText(response)` helper in `core/json.js` — finds the first block where
+  `type === 'text'`, skipping any leading thinking/tool_use blocks. All 23 call sites
+  across 8 files (`agents/recruiter.js`, `agents/coach.js`, `agents/cvWriter.js`,
+  `agents/extractor.js`, `agents/inputRouter.js`, `tasks/coverLetter.js`,
+  `tasks/interviewPrep.js`, `tasks/docxPlacement.js`) updated to use `firstText(message)`.
+
+  Tests (+4): returns text block; skips leading thinking block (regression test);
+  throws when no text block present; throws on empty content. 361/361 green.
 
 - **Build.txt item 4c — gap_memory read/relevance logic for Coach agent (commit 3/3)** —
 

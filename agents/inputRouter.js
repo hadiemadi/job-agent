@@ -1,5 +1,5 @@
 const { client, MODEL } = require('../core/claude');
-const { extractJSON } = require('../core/json');
+const { extractJSON, firstText } = require('../core/json');
 
 // Classifies a client's free-text comment (from the contact page's "Anything you'd like the
 // AI to know?" box) into the bucket it should influence:
@@ -29,7 +29,7 @@ Decide which bucket it belongs to:
 Return JSON only:
 { "bucket": "general|discipline|ambiguous" }` }]
   });
-  const raw = extractJSON(message.content[0].text);
+  const raw = extractJSON(firstText(message));
   const { bucket } = JSON.parse(raw);
   return { bucket: ['general', 'discipline', 'ambiguous'].includes(bucket) ? bucket : 'ambiguous', text: comment.trim() };
 }
