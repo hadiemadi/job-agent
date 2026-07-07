@@ -6,7 +6,7 @@ const {
   createUser, findUserByEmail, findUserById, hashPassword,
   listSavedCvs, deleteSavedCv, listConversationHistory, listCoachMemory,
   setUserPreference, getUserPreference, getLatestSavedCv,
-  getProfilePreferences,
+  getProfilePreferences, deleteUserAccount,
 } = require('../services/auth');
 const { listDisciplines } = require('../core/knowledge');
 const { sendError } = require('../core/respondError');
@@ -202,6 +202,22 @@ router.get('/auth/me', async (req, res) => {
     res.json({ user: { id: user.id, email: user.email } });
   } catch (err) {
     sendError(res, '/auth/me', 'ERR-AUTH-004', err);
+  }
+});
+
+// Hard-deletes the authenticated user's account and all associated data (saved_cvs,
+// coach_memory, conversation_history, user_preferences — cascade from users row).
+// Also purges the current session so the browser is immediately in a clean guest state.
+router.delete('/auth/account', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.userId) return sendError(res, '/auth/account', 'ERR-AUTH-007');
+    await deleteUserAccount(appSession.userId);
+    purgeSessionData();
+    logEvent('account_deleted', { route: '/auth/account', outcome: 'ok' });
+    res.json({ ok: true });
+  } catch (err) {
+    sendError(res, '/auth/account', 'ERR-AUTH-004', err);
   }
 });
 

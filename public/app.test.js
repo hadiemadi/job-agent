@@ -916,3 +916,37 @@ describe('applyProfilePrefill — Profile & Preferences DB prefill (Phase 2.5)',
     expect(document.getElementById('ci-name').value).toBe('');
   });
 });
+
+// ── deleteMyData — guest vs logged-in paths ───────────────────────────────────
+describe('deleteMyData', () => {
+  beforeEach(() => {
+    document.cookie = 'onboarded=1';
+    window.TRIAL_MODE = false;
+    window.confirm = jest.fn(() => true);
+    window.fetch = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+    // Suppress jsdom "not implemented: navigation" console noise from location.reload()
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => { console.error.mockRestore && console.error.mockRestore(); });
+
+  test('guest: calls POST /delete-my-data', async () => {
+    loadAppInDom();
+    try { await window.deleteMyData(); } catch (_) { /* location.reload throws in jsdom */ }
+    expect(window.fetch).toHaveBeenCalledWith('/delete-my-data', { method: 'POST' });
+  });
+
+  test('logged-in: calls DELETE /auth/account', async () => {
+    loadAppInDom();
+    window.showAuthUser({ id: 'usr-001', email: 'hadi@example.com' });
+    try { await window.deleteMyData(); } catch (_) { /* location.reload throws in jsdom */ }
+    expect(window.fetch).toHaveBeenCalledWith('/auth/account', { method: 'DELETE' });
+  });
+
+  test('guest: does nothing if user cancels confirm', async () => {
+    window.confirm = jest.fn(() => false);
+    loadAppInDom();
+    try { await window.deleteMyData(); } catch (_) {}
+    expect(window.fetch).not.toHaveBeenCalledWith('/delete-my-data', expect.anything());
+  });
+});

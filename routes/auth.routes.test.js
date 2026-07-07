@@ -20,6 +20,7 @@ jest.mock('../services/auth', () => ({
   getLatestSavedCv:           jest.fn(),
   saveProfilePreferences:     jest.fn(),
   getProfilePreferences:      jest.fn(),
+  deleteUserAccount:          jest.fn(),
 }));
 
 // Mock agents/inputRouter — classify() is called by POST /confirm-contact; without a mock
@@ -62,7 +63,7 @@ const {
   listSavedCvs, deleteSavedCv, listConversationHistory, saveConversationHistory,
   listCoachMemory, saveCoachMemory,
   setUserPreference, getUserPreference, getLatestSavedCv,
-  saveProfilePreferences, getProfilePreferences,
+  saveProfilePreferences, getProfilePreferences, deleteUserAccount,
 } = require('../services/auth');
 const { classify } = require('../agents/inputRouter');
 const { listDisciplines } = require('../core/knowledge');
@@ -91,6 +92,7 @@ beforeEach(() => {
   getLatestSavedCv.mockResolvedValue(null);
   saveProfilePreferences.mockResolvedValue(undefined);
   getProfilePreferences.mockResolvedValue(null);
+  deleteUserAccount.mockResolvedValue(undefined);
   classify.mockResolvedValue({ bucket: 'none', text: '' });
   listDisciplines.mockReturnValue([]);
   // Default: authenticate calls callback with null (not authenticated).
@@ -775,6 +777,37 @@ describe('Password hashing (real bcryptjs)', () => {
     // Both should still verify
     expect(await realAuth.verifyPassword('samepassword', h1)).toBe(true);
     expect(await realAuth.verifyPassword('samepassword', h2)).toBe(true);
+  });
+});
+
+// ── DELETE /auth/account ──────────────────────────────────────────────────────
+describe('DELETE /auth/account', () => {
+  test('returns 401 for a guest (no userId in session)', async () => {
+    const res = await request(app).delete('/auth/account');
+    expect(res.status).toBe(401);
+  });
+
+  test('calls deleteUserAccount and returns {ok:true} for a logged-in user', async () => {
+    // Simulate logged-in session: register first, then delete account.
+    findUserByEmail.mockResolvedValueOnce(null); // register: no existing user
+    createUser.mockResolvedValueOnce(MOCK_USER);
+    hashPassword.mockResolvedValueOnce('$2b$10$hashed');
+    await request(app).post('/auth/register').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    findUserById.mockResolvedValueOnce(MOCK_USER); // auth/me check if needed
+    deleteUserAccount.mockResolvedValueOnce(undefined);
+
+    const agent = request.agent(app);
+    // Register to get a session with userId
+    findUserByEmail.mockResolvedValueOnce(null);
+    createUser.mockResolvedValueOnce(MOCK_USER);
+    hashPassword.mockResolvedValueOnce('$2b$10$hashed');
+    await agent.post('/auth/register').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.delete('/auth/account');
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(deleteUserAccount).toHaveBeenCalledWith(MOCK_USER.id);
   });
 });
 

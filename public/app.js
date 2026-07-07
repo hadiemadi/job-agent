@@ -54,6 +54,7 @@ if (!getCookie(ONBOARD_COOKIE)) show('introPanel');
 const AUTH_MODAL_DISMISSED_KEY = 'jsk_auth_dismissed';
 
 let _authMode = 'login'; // 'login' | 'register'
+let _currentUserId = null; // set by showAuthUser(), cleared by logout()
 
 function dismissAuthModal() {
   hide('authModal');
@@ -108,6 +109,7 @@ async function submitAuth() {
 // Populate the header user area without a full page reload — called on successful login/register
 // and on page load when the session is already authenticated.
 function showAuthUser(user) {
+  _currentUserId = user.id;
   const userArea = el('headerUserArea');
   if (userArea) {
     userArea.innerHTML =
@@ -129,6 +131,7 @@ function showAuthUser(user) {
 }
 
 async function logout() {
+  _currentUserId = null;
   try { await fetch('/auth/logout', { method: 'POST' }); } catch (e) { /* best-effort */ }
   const userArea = el('headerUserArea');
   if (userArea) {
@@ -490,14 +493,18 @@ function updateGoBtnAvailability() {
 el('cvFile').addEventListener('change', updateGoBtnAvailability);
 updateGoBtnAvailability();
 
-// "Delete my data now" — wipes the server-side session (CV text, parsed data, HR/coach
-// history, generated output files) and reloads, which naturally resets every bit of UI
-// state back to the upload screen instead of needing to manually reset a dozen elements.
+// "Delete my data now" — two paths:
+//  • Guest: purges session only (CV text, HR/coach history, generated files).
+//  • Logged-in: hard-deletes the user account + all DB rows (saved_cvs, coach_memory,
+//    conversation_history, user_preferences — cascade from users row) AND purges session.
 async function deleteMyData() {
-  if (!confirm('This permanently deletes your uploaded CV, contact info, and any generated files from this session. Continue?')) return;
-  try {
-    await fetch('/delete-my-data', { method: 'POST' });
-  } catch (err) { /* best-effort — reload regardless so the UI still resets */ }
+  if (_currentUserId) {
+    if (!confirm('This permanently deletes your account and all saved data — CVs, coaching history, and preferences. This cannot be undone. Continue?')) return;
+    try { await fetch('/auth/account', { method: 'DELETE' }); } catch (err) { /* best-effort */ }
+  } else {
+    if (!confirm('This permanently deletes your uploaded CV, contact info, and any generated files from this session. Continue?')) return;
+    try { await fetch('/delete-my-data', { method: 'POST' }); } catch (err) { /* best-effort */ }
+  }
   location.reload();
 }
 

@@ -5,11 +5,43 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 332/332 green (324/324 mocked; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `f5238e7`
+**Tests:** 337/337 green (329/329 mocked; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `2a42e5e` (local ahead)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **GDPR / Privacy (#1 from build.txt)** —
+
+  **Uploaded CV auto-delete**: already implemented — `fse.remove(cvPath)` runs immediately
+  after the CV is read in `/upload-cv`, even on error.
+
+  **Generated output file auto-delete**: already implemented — `services/session.js` sweeps
+  every 30 min; output files older than 180 min (`OUTPUT_RETENTION_MINUTES`, configurable)
+  are deleted even if the session is still active; sessions idle >24 h have all output files
+  deleted and the session dropped.
+
+  **logEvent() PII audit**: confirmed clean — `ALLOWED_META_KEYS` allowlist in `core/logger.js`
+  strips any field not in the allowlist; `isSafePrimitive()` drops strings >120 chars or
+  matching an email pattern.
+
+  **Hard-delete user account** (new for this build):
+  - `deleteUserAccount(userId)` added to `services/auth.js` — single `DELETE FROM users WHERE
+    id = $1`; all child rows cascade (saved_cvs, user_preferences, conversation_history,
+    coach_memory).
+  - `DELETE /auth/account` route added to `routes/auth.routes.js` — 401 for guests; calls
+    `deleteUserAccount` then `purgeSessionData` so the browser is immediately in a clean
+    guest state; logs `account_deleted` event.
+  - `deleteMyData()` in `public/app.js` now branches: guests call `POST /delete-my-data`
+    (session-only purge, existing behavior); logged-in users call `DELETE /auth/account`
+    (hard DB delete + session purge), with a clearer confirm message.
+  - `_currentUserId` module-level var added; set by `showAuthUser()`, cleared by `logout()`.
+
+  **Tests added** (+5): `DELETE /auth/account` returns 401 for guest; returns 200 and calls
+  `deleteUserAccount` for logged-in user; guest `deleteMyData` calls `/delete-my-data`; 
+  logged-in `deleteMyData` calls `/auth/account`; cancel confirm does nothing.
+
+  Tests: 337/337.
 
 - **About modal** —
 

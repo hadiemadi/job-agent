@@ -188,6 +188,14 @@ async function getProfilePreferences(userId) {
   return getUserPreference(userId, 'profile_preferences');
 }
 
+// Hard-deletes the user row. All child tables (saved_cvs, user_preferences, conversation_history,
+// coach_memory) have ON DELETE CASCADE, so one DELETE clears the full account.
+async function deleteUserAccount(userId) {
+  const pool = getPool();
+  if (!pool) throw new Error('Database unavailable');
+  await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+}
+
 module.exports = {
   createUser, findUserByEmail, findUserByGoogleId, findUserById,
   hashPassword, verifyPassword,
@@ -197,4 +205,5 @@ module.exports = {
   listCoachMemory, saveCoachMemory,
   getLatestSavedCv,
   saveProfilePreferences, getProfilePreferences,
+  deleteUserAccount,
 };
