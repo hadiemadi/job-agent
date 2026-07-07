@@ -5,11 +5,74 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 361/361 green (361 mocked pass; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** pending push
+**Tests:** 367/367 green (367 mocked pass; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** pending push
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Build-batch item 4: Feedback storage confirmed + scripts/list-feedback.js** —
+
+  Confirmed `POST /feedback` already writes to the `feedback` Postgres table via
+  `routes/feedback.routes.js` (pool INSERT, fire-and-forget). The gap was no query tool —
+  now fixed: `scripts/list-feedback.js` queries the live DB and prints the 50 most recent
+  rows (supports `--limit N` and `--since YYYY-MM-DD`). Run:
+  `node scripts/list-feedback.js`
+
+- **Build-batch item 3: Data isolation audit — clean** —
+
+  Audited all DB reads for gap_memory, coach_memory, conversation_history, saved_cvs,
+  user_preferences. **Every read is `WHERE user_id = $1` — no cross-account leak paths.**
+
+  Discipline files (`knowledge/disciplines/*.json`) confirmed clean: they contain only
+  generalized field-level knowledge (skills/keywords/red_flags with confidence scores).
+  No PII, no CV text, no verbatim gap conversation content, no personal identifiers.
+  Files are global-shared by design (all users of a given field benefit from accumulated
+  knowledge). Input Router pins only the SKILL TEXT from a user comment (not identity).
+  Researcher is still a no-op stub, so files currently only carry the `updated` timestamp
+  with empty arrays — no real data yet.
+
+- **Build-batch item 2: "Tailor my CV" button gating** —
+
+  Button disabled until all 3 conditions are simultaneously met:
+  1. CV file chosen (`cvFile.files[0]` truthy)
+  2. Job description non-empty (`jobText.value.trim()` truthy)
+  3. Consent checkbox ticked (`consentCheck.checked`)
+
+  `updateGoBtnAvailability()` now checks all 3 and sets a context-specific `title`
+  tooltip explaining which condition is missing. Wired to `change`/`input` listeners on
+  all three inputs so the button enables/disables live without reload.
+
+  Tests (+6): 0/3 → disabled; 1/3 (file only) → disabled; 2/3 (file+job) → disabled;
+  3/3 → enabled; removing job text re-disables; unchecking consent re-disables.
+  367/367 green.
+
+- **Build-batch item 1: 3-column layout restored (regression fix)** —
+
+  Root cause confirmed via Playwright: CSS class `.col-side { display:none }` was applied
+  at the class level, but `index.html` had `style="display:none;"` as inline styles on
+  `#colLeft` and `#colRight`. Inline styles override CSS class rules (even with higher
+  specificity). `_showThreeCols` was setting `colLeft.style.display = ''` which unsets
+  the inline style — but since the CSS class rule still has `display:none`, the column
+  remained hidden.
+
+  Fix:
+  - Removed `style="display:none;"` from `#colLeft` and `#colRight` in `index.html`
+    (the `.col-side { display:none }` CSS class handles the default hidden state).
+  - Added `.main-layout.three-col .col-side { display:block; }` to CSS — side columns
+    are now revealed by CSS class, not by JS inline-style manipulation.
+  - Added `.main-layout.three-col .col-center { grid-column:2; }` — pins the center
+    card to column 2 regardless of side-col render order (previously auto-placed to
+    column 1 when both side cols were `display:none`).
+  - Removed `colLeft.style.display`/`colRight.style.display` manipulation from
+    `_showThreeCols()` — CSS class alone drives visibility now.
+  - Updated `showContactCard()` and `confirmContact()` to detect logged-in state via
+    `mainLayout.classList.contains('three-col')` instead of the stale inline-style check.
+  - Responsive: `@media (max-width:900px)` resets `grid-column:1` on `col-center` so
+    it collapses correctly on mobile.
+
+  Verified with Playwright at 1280px: colLeftWidth=257, centerWidth=514, colRightWidth=257.
+  Screenshot confirmed true 3-column layout.
 
 - **Fix ERR-HR-003 — thinking block skipped in firstText (user-reported via feedback)** —
 

@@ -108,12 +108,11 @@ async function submitAuth() {
 
 // Show or hide the 3-column layout (Preferences | inputCard | Advanced options).
 // Called from showAuthUser (true) and logout (false).
+// Side columns and col-center placement are controlled by CSS (.main-layout.three-col rules)
+// — do NOT set inline display styles here, they would fight the CSS class and win incorrectly.
 function _showThreeCols(on) {
-  const colLeft = el('colLeft'), colRight = el('colRight'), mainLayout = el('mainLayout');
+  const mainLayout = el('mainLayout');
   const container = document.querySelector('.container');
-  const disp = on ? '' : 'none';
-  if (colLeft) colLeft.style.display = disp;
-  if (colRight) colRight.style.display = disp;
   if (mainLayout) mainLayout.classList.toggle('three-col', on);
   if (container) container.classList.toggle('three-col', on);
 }
@@ -533,17 +532,25 @@ async function loadPrefillData() {
   if (jt) jt.addEventListener('input', updateCostEstimate);
 })();
 
-// ── Prevents the ERR-HR-001/ERR-CV-001 nudge from firing in the first place (build.txt) — the
-// button starts disabled (see index.html) and only enables once a CV file is actually chosen,
-// with a tooltip explaining why while disabled. The validation popup stays as a rare fallback
-// (e.g. session/cookie loss between steps) rather than the normal path.
+// Button gating: all 3 conditions must be met before "Tailor my CV" enables.
+// 1. CV file chosen   2. Job description non-empty   3. Consent checkbox ticked
+// Called from change/input listeners on each of the three inputs, and once on load.
 function updateGoBtnAvailability() {
-  const hasFile = !!(el('cvFile').files && el('cvFile').files[0]);
+  const hasFile    = !!(el('cvFile') && el('cvFile').files && el('cvFile').files[0]);
+  const hasJob     = !!(el('jobText') && el('jobText').value.trim());
+  const hasConsent = !!(el('consentCheck') && el('consentCheck').checked);
   const btn = el('goBtn');
-  btn.disabled = !hasFile;
-  btn.title = hasFile ? '' : 'Upload your CV first.';
+  if (!btn) return;
+  const ready = hasFile && hasJob && hasConsent;
+  btn.disabled = !ready;
+  btn.title = ready ? '' :
+    !hasFile    ? 'Upload your CV first.' :
+    !hasJob     ? 'Paste the job description first.' :
+                  'Tick the consent checkbox first.';
 }
 el('cvFile').addEventListener('change', updateGoBtnAvailability);
+el('jobText').addEventListener('input', updateGoBtnAvailability);
+el('consentCheck').addEventListener('change', updateGoBtnAvailability);
 updateGoBtnAvailability();
 
 // "Delete my data now" — two paths:
@@ -897,7 +904,7 @@ async function go() {
 function showContactCard() {
   const prefsSectionEl = el('ci-prefs-section');
   if (prefsSectionEl) {
-    const sideActive = !!(el('colLeft') && el('colLeft').style.display !== 'none');
+    const sideActive = !!(el('mainLayout') && el('mainLayout').classList.contains('three-col'));
     prefsSectionEl.style.display = sideActive ? 'none' : '';
   }
   show('contactCard');
@@ -905,9 +912,9 @@ function showContactCard() {
 
 // Saves confirmed contact to server, then continues with job + HR steps
 async function confirmContact() {
-  // When the 3-column side panels are visible (#colLeft/#colRight — logged-in users), read
-  // Preferences and Advanced from the side-* elements instead of the modal.
-  const usePanel = !!(el('colLeft') && el('colLeft').style.display !== 'none');
+  // When the 3-column layout is active (logged-in users), read Preferences and Advanced
+  // from the side-* elements; otherwise read from the modal ci-* elements.
+  const usePanel = !!(el('mainLayout') && el('mainLayout').classList.contains('three-col'));
   const gapSeverities = usePanel
     ? ['major', 'mild', 'minor'].filter(s => el('side-sev-' + s) && el('side-sev-' + s).checked)
     : ['major', 'mild', 'minor'].filter(s => el('ci-sev-' + s).checked);
