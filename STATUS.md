@@ -5,11 +5,25 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 348/348 green (340/340 mocked; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `61d4f03` (local ahead)
+**Tests:** 350/350 green (342/342 mocked; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `61d4f03` (local ahead)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Fix batch (1/4): Write-path test coverage** —
+
+  Confirmed `saveCv` (and the other fire-and-forget DB writes) are called correctly.
+  Root cause of "empty My Data": write paths are structurally sound — they are guarded by
+  `if (appSession.userId)`, so they only fire for authenticated users. Empty data for a
+  guest session is correct behavior, not a bug.
+
+  Test coverage added in `test.ui.js`: `services/auth` is now fully mocked (no real DB
+  needed). New describe block "Write paths — saveCv fires for logged-in users" (2 tests):
+  - `saveCv` called once with `userId` + `label` after `/rewrite` for a logged-in session.
+  - `saveCv` NOT called for a guest session.
+
+  Tests: 350/350 green (+2 mocked).
 
 - **Bug fix: ERR-JOB-007 on /fetch-job** —
 

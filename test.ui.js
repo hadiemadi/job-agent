@@ -68,6 +68,31 @@ jest.mock('fs-extra', () => ({
 }));
 jest.mock('pizzip', () => jest.fn().mockImplementation(() => ({})));
 
+// services/auth is mocked to prevent real DB calls during tests.
+// All write functions (saveCv, saveCoachMemory, saveConversationHistory) are
+// captured as jest spies so write-path tests can assert they are called correctly.
+jest.mock('./services/auth', () => ({
+  createUser:               jest.fn().mockResolvedValue({ id: 'test-user-42', email: 'writer@test.com', created_at: new Date().toISOString() }),
+  findUserByEmail:          jest.fn().mockResolvedValue(null),
+  findUserByGoogleId:       jest.fn().mockResolvedValue(null),
+  findUserById:             jest.fn().mockResolvedValue(null),
+  hashPassword:             jest.fn().mockResolvedValue('hashed-pw'),
+  verifyPassword:           jest.fn().mockResolvedValue(true),
+  setUserPreference:        jest.fn().mockResolvedValue(undefined),
+  getUserPreference:        jest.fn().mockResolvedValue(null),
+  saveCv:                   jest.fn().mockResolvedValue(undefined),
+  listSavedCvs:             jest.fn().mockResolvedValue([]),
+  deleteSavedCv:            jest.fn().mockResolvedValue(true),
+  listConversationHistory:  jest.fn().mockResolvedValue([]),
+  saveConversationHistory:  jest.fn().mockResolvedValue(undefined),
+  listCoachMemory:          jest.fn().mockResolvedValue([]),
+  saveCoachMemory:          jest.fn().mockResolvedValue(undefined),
+  getLatestSavedCv:         jest.fn().mockResolvedValue(null),
+  saveProfilePreferences:   jest.fn().mockResolvedValue(undefined),
+  getProfilePreferences:    jest.fn().mockResolvedValue(null),
+  deleteUserAccount:        jest.fn().mockResolvedValue(undefined),
+}));
+
 // ── Test fixtures ──────────────────────────────────────────────────────────────
 
 const MOCK_CV_DATA = {
@@ -120,6 +145,7 @@ const { readCV }        = require('./src/cv');
 const { scrapeJobPage } = require('./src/scraper');
 const { generateWordCV, generateWordCVAlt } = require('./src/wordExport');
 const { generateWordFromTemplate } = require('./src/wordTemplateExport');
+const { saveCv } = require('./services/auth');
 const fse               = require('fs-extra');
 const request           = require('supertest');
 const app               = require('./server');
@@ -1102,5 +1128,49 @@ describe('GET /output/:file — session-scoped access only', () => {
     const res = await someone.get('/output/..%2f..%2fserver.js');
     expect(res.status).not.toBe(200);
     expect(res.text || '').not.toMatch(/require\(/);
+  });
+});
+
+// ── 11. Write paths — saveCv fires for logged-in users (regression) ─────────────
+// These tests confirm that the fire-and-forget DB write in /rewrite fires when a user
+// is authenticated (appSession.userId set) and stays silent for guest sessions.
+// services/auth is fully mocked (see top of file), so no real DB connection is needed.
+
+describe('Write paths — saveCv fires for logged-in users', () => {
+  const authAgent = request.agent(app);
+
+  beforeAll(async () => {
+    // Seed the session: upload CV, register (sets appSession.userId), run HR review.
+    const uploadRes = await authAgent.post('/upload-cv').attach('cv', 'cv.pdf');
+    await waitForJobWith(authAgent, uploadRes.body.jobId);
+    // /auth/register calls mocked createUser → returns { id: 'test-user-42' } and sets userId.
+    await authAgent.post('/auth/register').send({ email: 'writer@test.com', password: 'pass1234' });
+    const reviewRes = await authAgent.post('/review-cv').send({ job: MOCK_JOB });
+    await waitForJobWith(authAgent, reviewRes.body.jobId);
+  });
+
+  test('saveCv is called once after /rewrite for a logged-in user, with userId and label', async () => {
+    saveCv.mockClear();
+    const rewriteRes = await authAgent.post('/rewrite').send({ job: MOCK_JOB });
+    expect(rewriteRes.status).toBe(200);
+    const job = await waitForJobWith(authAgent, rewriteRes.body.jobId);
+    expect(job.status).toBe('done');
+    expect(saveCv).toHaveBeenCalledTimes(1);
+    expect(saveCv).toHaveBeenCalledWith(
+      'test-user-42',
+      expect.objectContaining({ label: expect.any(String) })
+    );
+  });
+
+  test('saveCv is NOT called for a guest session (no userId)', async () => {
+    saveCv.mockClear();
+    const guestAgent = request.agent(app);
+    await uploadCVFor(guestAgent);
+    const reviewRes = await guestAgent.post('/review-cv').send({ job: MOCK_JOB });
+    await waitForJobWith(guestAgent, reviewRes.body.jobId);
+    const rewriteRes = await guestAgent.post('/rewrite').send({ job: MOCK_JOB });
+    const job = await waitForJobWith(guestAgent, rewriteRes.body.jobId);
+    expect(job.status).toBe('done');
+    expect(saveCv).not.toHaveBeenCalled();
   });
 });
