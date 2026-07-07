@@ -210,6 +210,15 @@ describe('agents/cvWriter', () => {
     expect(result.revisedText).toBe('Led RF integration.');
     expect(result.changed).toBe(true);
   });
+  test('applyConcernChange retries once when Claude returns prose instead of JSON', async () => {
+    client.messages.create
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: 'Sure, I would suggest rewording this to...' }] })
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: JSON.stringify({ revised_text: 'Led a cross-functional RF integration program.', changed: true }) }] });
+    const result = await cvWriter.applyConcernChange('cv text', { job_title: 'TPM' }, 'Led RF integration.', 'RF integration', [], {});
+    expect(result.revisedText).toBe('Led a cross-functional RF integration program.');
+    expect(result.changed).toBe(true);
+    expect(client.messages.create).toHaveBeenCalledTimes(2);
+  });
   test('rewriteCVWithChanges treats an unanswered gap (no status field) the same as an explicit skip — never "left undecided", never invented', async () => {
     mockTextResponse(JSON.stringify({
       cv: { name: 'Jane Doe', summary: 'Senior TPM.', experience: [], education: [] },

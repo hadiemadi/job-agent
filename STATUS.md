@@ -3,13 +3,48 @@
 > Single source of truth for project state. Kept current automatically by Claude
 > Code (see CLAUDE.md). Update the date whenever it changes.
 
-**Last updated:** 2026-07-07
+**Last updated:** 2026-07-08
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 372/372 green · **origin/main HEAD:** pending push
+**Tests:** 389/389 green · **origin/main HEAD:** pending push
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **ERR-CV-004 + systemic model-response fragility audit — 4 commits** —
+
+  Full audit of every `client.messages.create` call site. 9 call sites were missing retry-once
+  protection; the critical `chatWithCoach` had `response.content[0].text` (crashes on models
+  that prepend a thinking block). All fixed. Tests: 389/389 (+17 regression tests).
+
+  | Call site | File | firstText | JSON repair | Retry | Status after |
+  |---|---|---|---|---|---|
+  | `parseCVStructure` | cvWriter.js | ✅ | ✅ | ✅ | **FIXED** (was ❌) |
+  | `rewriteCVWithChanges` | cvWriter.js | ✅ | ✅ | ✅ | SAFE (fixed prev batch) |
+  | `adjustLanguageLevel` | cvWriter.js | ✅ | ✅ | ✅ | SAFE (via createJsonCompletion) |
+  | `applyConcernChange` | cvWriter.js | ✅ | ✅ | ✅ | **FIXED** (was ❌) |
+  | `reviewCV` | recruiter.js | ✅ | ✅ | ✅ | SAFE (fixed prev batch) |
+  | `analyzeJobFit` | recruiter.js | ✅ | ✅ | — | OK (try/catch returns []) |
+  | `refineWithHR` | recruiter.js | ✅ | ✅ | ✅ | **FIXED** (was ❌) |
+  | `chatWithHRExpert` | recruiter.js | ✅ | N/A prose | — | OK (prose) |
+  | `draftFromSidebarDiscussion` | recruiter.js | ✅ | ✅ | ✅ | **FIXED** (was ❌) |
+  | `researchCvConventions` | recruiter.js | filter | N/A prose | — | OK (web_search+prose) |
+  | `reviewTailoredCV` | recruiter.js | ✅ | ✅ | ✅ | **FIXED** (was ❌) |
+  | `analyzeAndSuggestRoles` | coach.js | ✅ | ✅ | — | OK (try/catch returns null) |
+  | `matchRolesToMarket` | coach.js | ✅ | ✅ | — | OK (try/catch returns []) |
+  | `buildCareerPath` | coach.js | ✅ | ✅ | — | OK (try/catch returns null) |
+  | `analyzeGaps` | coach.js | ✅ | ✅ | ✅ | **FIXED** (was ❌) |
+  | `chatWithCoach` | coach.js | ✅ | N/A prose | — | **FIXED** (was content[0].text) |
+  | `extractJobTitles` | extractor.js | ✅ | N/A plain | — | OK (plain text) |
+  | `parseJobFromText` | extractor.js | ✅ | ✅ | ✅ | SAFE (fixed prev batch) |
+  | `detectField` | extractor.js | ✅ | ✅ | — | OK (failure = no field, graceful) |
+  | `classify` | inputRouter.js | ✅ | ✅ | — | OK (returns 'ambiguous') |
+  | `generateCoverLetter` | coverLetter.js | ✅ | ✅ | ✅ | **FIXED** (was ❌) |
+  | `generateInterviewQuestions` | interviewPrep.js | ✅ | ✅ | ✅ | **FIXED** (was ❌) |
+  | `planDocxPlacement` | docxPlacement.js | ✅ | ✅ | ✅ | **FIXED** (was ❌) |
+  | `createJsonCompletion` | claude.js | ✅ | ✅ | ✅ | SAFE |
+
+  Commit breakdown: parseCVStructure (4613135) · coach.js (d23cd65) · recruiter.js (5c649bd) · tasks+applyConcernChange (646882e).
 
 - **Build-batch §1: Layout restructure — history cards to left column, model picker to right column** —
 
@@ -837,16 +872,14 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 
 ## ▶️ Suggested next action
 
-**All build.txt items shipped — push `main`:**
-- §1: Layout restructure (history → left col, model picker → right col) ✅
-- §2: Widen center column (max-width 1280px, 3fr grid) ✅
-- §3: ERR-HR-003 robust JSON repair + retry ✅
-- §4: ERR-JOB-007 empty-text guard + retry ✅
+**All fragility-audit items shipped — push `main`:**
+- ERR-CV-004: parseCVStructure retry ✅
+- coach.js: chatWithCoach thinking-block fix + analyzeGaps retry ✅
+- recruiter.js: refineWithHR + draftFromSidebarDiscussion + reviewTailoredCV retry ✅
+- tasks + applyConcernChange: all 4 task call sites hardened ✅
 
-**Smoke-test on the live site after push:**
-1. Login → verify 3-column layout with history buttons in left col, model picker in right col.
-2. Test HR review on a real job — no ERR-HR-003 when model returns prose first time.
-3. Paste a job URL → verify /fetch-job handles edge cases without ERR-JOB-007.
+**All 24 Claude API call sites now have firstText() + JSON repair where applicable.**
+**9 sites gained retry-once (up from 3). 0 call sites left fragile.**
 
 **Remaining backlog** is either Mode B (market/scrape — complex, blocked on
 `agents/researcher.js` live search) or infrastructure (GDPR, PayPal).

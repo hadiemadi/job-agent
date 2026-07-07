@@ -26,13 +26,21 @@ Return JSON only:
 { "cover_letter": "full cover letter text, with paragraphs separated by a blank line" }`;
 
   const messages = [...thread, { role: 'user', content: userMessage }];
-  const message = await client.messages.create({
-    model: MODEL,
-    max_tokens: 1200,
-    system: hrSystemPrompt(cvText, job, preferences),
-    messages,
-  });
-  const raw = extractJSON(firstText(message));
+  let message, raw;
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const msgs = attempt === 0 ? messages : [
+      ...messages,
+      { role: 'assistant', content: firstText(message) },
+      { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
+    ];
+    message = await client.messages.create({
+      model: MODEL,
+      max_tokens: 1200,
+      system: hrSystemPrompt(cvText, job, preferences),
+      messages: msgs,
+    });
+    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) throw e; }
+  }
   const { cover_letter } = JSON.parse(raw);
   const updatedThread = [...messages, { role: 'assistant', content: firstText(message) }];
 
