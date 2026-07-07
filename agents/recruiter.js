@@ -255,13 +255,21 @@ or isn't well-supported. rationale is the one-clause reason for that lean — a 
 clause, never a full sentence with subordinate clauses, never a paragraph.`;
 
   const messages = [...thread, { role: 'user', content: userMessage }];
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 400,
-    system: hrSystemPrompt(cvText, job, preferences),
-    messages,
-  });
-  const raw = extractJSON(firstText(response));
+  let response, raw;
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const msgs = attempt === 0 ? messages : [
+      ...messages,
+      { role: 'assistant', content: firstText(response) },
+      { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
+    ];
+    response = await client.messages.create({
+      model: MODEL,
+      max_tokens: 400,
+      system: hrSystemPrompt(cvText, job, preferences),
+      messages: msgs,
+    });
+    try { raw = extractJSON(firstText(response)); break; } catch (e) { if (attempt === 1) throw e; }
+  }
   const result = JSON.parse(raw);
   return { result, thread: [...messages, { role: 'assistant', content: firstText(response) }] };
 }
@@ -314,13 +322,22 @@ Return JSON only:
 Set "added" to false (and leave the other fields as empty strings) if nothing concrete emerged —
 do not invent a statement just to have something to return.`;
 
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 400,
-    system: hrSystemPrompt(cvText, job, preferences),
-    messages: [{ role: 'user', content: userMessage }],
-  });
-  const raw = extractJSON(firstText(response));
+  const baseMessages = [{ role: 'user', content: userMessage }];
+  let response, raw;
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const msgs = attempt === 0 ? baseMessages : [
+      ...baseMessages,
+      { role: 'assistant', content: firstText(response) },
+      { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
+    ];
+    response = await client.messages.create({
+      model: MODEL,
+      max_tokens: 400,
+      system: hrSystemPrompt(cvText, job, preferences),
+      messages: msgs,
+    });
+    try { raw = extractJSON(firstText(response)); break; } catch (e) { if (attempt === 1) throw e; }
+  }
   const result = JSON.parse(raw);
   return result.added ? { description: result.description, rationale: result.rationale, targetSection: result.targetSection || null } : null;
 }
@@ -386,13 +403,22 @@ Go through the checklist one item at a time. Return JSON only:
   "required_edits": [""]
 }`;
 
-  const message = await client.messages.create({
-    model: MODEL,
-    max_tokens: 2500,
-    system: preReleaseReviewPrompt(),
-    messages: [{ role: 'user', content: userMessage }],
-  });
-  const raw = extractJSON(firstText(message));
+  const baseMessages = [{ role: 'user', content: userMessage }];
+  let message, raw;
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const msgs = attempt === 0 ? baseMessages : [
+      ...baseMessages,
+      { role: 'assistant', content: firstText(message) },
+      { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
+    ];
+    message = await client.messages.create({
+      model: MODEL,
+      max_tokens: 2500,
+      system: preReleaseReviewPrompt(),
+      messages: msgs,
+    });
+    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) throw e; }
+  }
   return JSON.parse(raw);
 }
 

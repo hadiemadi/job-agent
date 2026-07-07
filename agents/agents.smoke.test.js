@@ -151,6 +151,30 @@ describe('agents/recruiter', () => {
     expect(result.verdict).toBe('SHIP');
     expect(result.required_edits).toEqual([]);
   });
+  test('refineWithHR retries once when Claude returns prose instead of JSON', async () => {
+    client.messages.create
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: 'Sure, here is my HR assessment in plain English...' }] })
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: JSON.stringify({ refined_description: 'Led RF integration program.', rationale: 'Evidenced in CV', lean: 'add', targetSection: 'Experience' }) }] });
+    const result = await recruiter.refineWithHR('cv text', { job_title: 'TPM' }, {}, { description: 'RF integration' }, null, [], {});
+    expect(result.result.lean).toBe('add');
+    expect(client.messages.create).toHaveBeenCalledTimes(2);
+  });
+  test('draftFromSidebarDiscussion retries once when Claude returns prose instead of JSON', async () => {
+    client.messages.create
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: 'Here is my assessment in plain English...' }] })
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: JSON.stringify({ added: true, description: 'Led a cross-functional team of 8', rationale: 'Confirmed in sidebar', targetSection: 'Experience' }) }] });
+    const result = await recruiter.draftFromSidebarDiscussion('cv text', { job_title: 'TPM' }, [{ role: 'user', text: 'I led 8 people.' }], {});
+    expect(result.description).toBe('Led a cross-functional team of 8');
+    expect(client.messages.create).toHaveBeenCalledTimes(2);
+  });
+  test('reviewTailoredCV retries once when Claude returns prose instead of JSON', async () => {
+    client.messages.create
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: 'Here is my review in plain English...' }] })
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: JSON.stringify({ checks: [], verdict: 'SHIP', required_edits: [] }) }] });
+    const result = await recruiter.reviewTailoredCV({ tailoredCv: { summary: 'Senior TPM.' }, job: { job_title: 'TPM', employer_name: 'Acme' }, sourceCvText: 'cv text' });
+    expect(result.verdict).toBe('SHIP');
+    expect(client.messages.create).toHaveBeenCalledTimes(2);
+  });
   test('reviewCV and reviewTailoredCV do not pass temperature to the Claude API (regression: ERR-HR-003 on models that reject temperature)', async () => {
     mockTextResponse(JSON.stringify({ overall_match: 'Strong', strengths: [], recommended_sections: [], section_rationale: '', auto_changes: [] }));
     await recruiter.reviewCV('cv text', { job_title: 'TPM' }, [], {});
