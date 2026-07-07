@@ -3,7 +3,7 @@
 // logging silently no-ops (never throws, never blocks) when DATABASE_URL isn't set — the exact
 // situation in this test environment (no .env DATABASE_URL), and the required failure mode in
 // production if Render's Postgres is ever unreachable.
-const { sanitizeMeta, logEvent, logError, hashSessionId } = require('./logger');
+const { sanitizeMeta, logEvent, logError, logDiagnostic, hashSessionId } = require('./logger');
 
 describe('sanitizeMeta', () => {
   test('strips CV text, job-description body, names, and emails entirely', () => {
@@ -65,7 +65,7 @@ describe('hashSessionId', () => {
   });
 });
 
-describe('logEvent / logError — no-op when DATABASE_URL is unset', () => {
+describe('logEvent / logError / logDiagnostic — no-op when DATABASE_URL is unset', () => {
   // This test file's environment never sets DATABASE_URL (see .env / .env.example) — exactly
   // the production scenario this must degrade gracefully under, per the task's "logging must
   // NO-OP silently... a logging/DB failure must NEVER crash a request" requirement.
@@ -75,5 +75,13 @@ describe('logEvent / logError — no-op when DATABASE_URL is unset', () => {
 
   test('logError resolves without throwing even with PII-shaped ctx (which sanitizeMeta would strip anyway)', async () => {
     await expect(logError('ERR-CV-002', '/upload-cv', { cvText: 'should never be persisted' })).resolves.toBeUndefined();
+  });
+
+  test('logDiagnostic resolves without throwing and performs no DB write', async () => {
+    await expect(logDiagnostic('cvWriter.parseCVStructure', { outcome: 'retry_triggered', attempt: 0, excerpt: 'Sure, here is the JSON...' })).resolves.toBeUndefined();
+  });
+
+  test('logDiagnostic resolves even when data contains booleans, numbers, and nested objects', async () => {
+    await expect(logDiagnostic('/rewrite.pre_call', { hasCvText: true, cvTextLen: 5432, confirmedGapsCount: 2, timeSinceHrReviewMs: 14230 })).resolves.toBeUndefined();
   });
 });

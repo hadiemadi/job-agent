@@ -1,6 +1,7 @@
 const { client, MODEL } = require('../core/claude');
 const { extractJSON, firstText } = require('../core/json');
 const { hrSystemPrompt } = require('../agents/recruiter');
+const { logDiagnostic } = require('../core/logger');
 
 // NOTE: this is the AI placement-PLANNING task (decides where content goes). The separate
 // src/docxPlacement.js (XML paragraph extraction, splicing the plan into a .docx) is a
@@ -65,7 +66,16 @@ ${JSON.stringify(fields, null, 2)}`;
       system: hrSystemPrompt(cvText, job, preferences),
       messages: msgs,
     });
-    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) throw e; }
+    try {
+      raw = extractJSON(firstText(message));
+      if (attempt === 1) logDiagnostic('tasks.planDocxPlacement', { outcome: 'retry_succeeded' });
+      break;
+    } catch (e) {
+      let excerpt = '[no-text-block]';
+      try { excerpt = (firstText(message) || '').slice(0, 200); } catch (_) {}
+      logDiagnostic('tasks.planDocxPlacement', { outcome: attempt === 0 ? 'retry_triggered' : 'both_failed', attempt, excerpt });
+      if (attempt === 1) throw e;
+    }
   }
   const plan = JSON.parse(raw);
   return { plan, thread: [...messages, { role: 'assistant', content: firstText(message) }] };

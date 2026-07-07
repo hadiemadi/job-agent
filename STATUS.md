@@ -5,11 +5,35 @@
 
 **Last updated:** 2026-07-08
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 389/389 green · **origin/main HEAD:** 55f8a7c
+**Tests:** 391/391 green · **origin/main HEAD:** (pending push)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Diagnostic logging — isolate ERR-CV-004 / ERR-HR-005 root causes** —
+
+  Added a `diagnostic_log` Postgres table and `logDiagnostic(label, data)` fire-and-forget
+  function (bypasses `ALLOWED_META_KEYS` intentionally — stores structured operational data,
+  not free-text PII). Instrumented all 13 retry loops (including `createJsonCompletion`) to
+  emit `retry_triggered`, `retry_succeeded`, or `both_failed` diagnostics with a 200-char
+  excerpt of the raw model response. Added route-level pre-call diagnostics at `/rewrite` and
+  `/hr/refine` capturing input state flags (boolean/length only, no CV content) and timing
+  since the previous step (`hrReviewCompletedAt` / `cvUploadCompletedAt` timestamps added to
+  `appSession.stepTimestamps`).
+
+  **Files changed:**
+  - `core/db.js` — `DIAGNOSTIC_LOG_TABLE_SQL` + index, `ensureTables`
+  - `core/logger.js` — `logDiagnostic(label, data)` added, exported
+  - `core/claude.js` — `createJsonCompletion` instrumented with retry diagnostic
+  - `services/session.js` — `stepTimestamps: {}` added to session shape
+  - `routes/cv.routes.js` — stamps `cvUploadCompletedAt`; `/rewrite` pre-call diagnostic
+  - `routes/hr.routes.js` — stamps `hrReviewCompletedAt`; `/hr/refine` pre-call diagnostic
+  - `agents/cvWriter.js`, `agents/recruiter.js`, `agents/coach.js`, `agents/extractor.js` — retry loops instrumented
+  - `tasks/coverLetter.js`, `tasks/interviewPrep.js`, `tasks/docxPlacement.js` — retry loops instrumented
+  - `core/logger.test.js` — 2 new `logDiagnostic` no-op tests
+
+  Tests: 391/391 (+2). No behavior change — diagnostics only.
 
 - **ERR-CV-004 + systemic model-response fragility audit — 4 commits** —
 
@@ -872,14 +896,25 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 
 ## ▶️ Suggested next action
 
-**All fragility-audit items shipped — push `main`:**
-- ERR-CV-004: parseCVStructure retry ✅
-- coach.js: chatWithCoach thinking-block fix + analyzeGaps retry ✅
-- recruiter.js: refineWithHR + draftFromSidebarDiscussion + reviewTailoredCV retry ✅
-- tasks + applyConcernChange: all 4 task call sites hardened ✅
+**Diagnostic logging shipped — push `main` then monitor production logs:**
 
-**All 24 Claude API call sites now have firstText() + JSON repair where applicable.**
-**9 sites gained retry-once (up from 3). 0 call sites left fragile.**
+To read diagnostic data from the live Render DB:
+```sql
+SELECT ts, label, data_json FROM diagnostic_log ORDER BY ts DESC LIMIT 50;
+-- Filter by error type:
+SELECT * FROM diagnostic_log WHERE data_json->>'outcome' = 'both_failed' ORDER BY ts DESC;
+-- Correlate with errors table:
+SELECT d.ts, d.label, d.data_json, e.error_code FROM diagnostic_log d
+  JOIN errors e ON d.session_id_hash = e.session_id_hash AND e.ts BETWEEN d.ts - interval '30s' AND d.ts + interval '30s'
+  WHERE d.data_json->>'outcome' IN ('retry_triggered', 'both_failed')
+  ORDER BY d.ts DESC;
+```
+
+**What to look for in the logs:**
+- `both_failed` → genuine model fragility (retry didn't help)
+- `retry_triggered` → first-attempt issue; if followed by no `both_failed` → race or transient
+- `/rewrite.pre_call` with `hasHrReview: false` → race condition (rewrite called before review completed)
+- `timeSinceHrReviewMs: null` → step timestamps not set (shouldn't happen after this commit)
 
 **Remaining backlog** is either Mode B (market/scrape — complex, blocked on
 `agents/researcher.js` live search) or infrastructure (GDPR, PayPal).

@@ -13,7 +13,7 @@ const { tailorCvWithReview } = require('../services/workflows');
 const { createJob, updateJob, getJob } = require('../services/jobQueue');
 const { pollLimiter } = require('../services/ratelimit');
 const { sendError } = require('../core/respondError');
-const { logEvent } = require('../core/logger');
+const { logEvent, logDiagnostic } = require('../core/logger');
 
 // Shared by /rewrite and /regenerate-cv (#29/#31) — derives the gap-sourced inputs to the CV
 // writer from the server-side gap store, instead of trusting a client-submitted list. Only a
@@ -67,6 +67,7 @@ router.post('/upload-cv', upload.single('cv'), async (req, res) => {
         appSession.cvPath = null;
         appSession.cvData = cvData;
         await updateJob(jobId, { status: 'done', current_step: '', result: { cvData } });
+        appSession.stepTimestamps = { ...(appSession.stepTimestamps || {}), cvUploadCompletedAt: Date.now() };
         logEvent('cv_uploaded', { route: '/upload-cv', outcome: 'ok' });
       } catch (err) {
         await fse.remove(cvPath).catch(() => {});
@@ -163,6 +164,19 @@ router.post('/rewrite', async (req, res) => {
       gapDiscussions,
     };
 
+    // Diagnostic: capture input state at /rewrite call time to isolate ERR-CV-004 root causes.
+    logDiagnostic('/rewrite.pre_call', {
+      hasCvText: !!cvText && cvText.length > 0,
+      cvTextLen: cvText ? cvText.length : 0,
+      hasJob: !!job,
+      hasHrReview: !!(appSession.hrReview),
+      hasRecommendedSections: !!(recommendedSections && recommendedSections.length),
+      hasConfirmedContact: !!(appSession.confirmedContact),
+      confirmedGapsCount: confirmedChanges.length,
+      totalGapsCount: gapDiscussions.length,
+      timeSinceHrReviewMs: appSession.stepTimestamps?.hrReviewCompletedAt
+        ? Date.now() - appSession.stepTimestamps.hrReviewCompletedAt : null,
+    });
     const jobId = await createJob();
     // Capture the session ID so the background task can re-establish the ALS context —
     // registerOutputFile() inside the pipeline uses als.getStore() to name the output file,

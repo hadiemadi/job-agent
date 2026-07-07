@@ -136,6 +136,18 @@ const FEEDBACK_TABLE_SQL = `CREATE TABLE IF NOT EXISTS feedback (
   contact_email TEXT
 )`;
 
+// Richer failure-context table for isolating root causes of ERR-*-0XX model-call failures.
+// Unlike events/errors (ALLOWED_META_KEYS allowlist), this stores structured operational data:
+// input state flags (booleans/lengths), timing between pipeline steps, retry outcomes, and
+// a short excerpt from the model's raw response on failure — all non-personal, non-CV content.
+const DIAGNOSTIC_LOG_TABLE_SQL = `CREATE TABLE IF NOT EXISTS diagnostic_log (
+  id        SERIAL      PRIMARY KEY,
+  ts        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  session_id_hash TEXT,
+  label     TEXT        NOT NULL,
+  data_json JSONB
+)`;
+
 function buildPool(useSsl) {
   const config = { connectionString: process.env.DATABASE_URL };
   if (useSsl) config.ssl = { rejectUnauthorized: false };
@@ -162,6 +174,8 @@ async function ensureTables(p) {
   await p.query(GAP_MEMORY_TABLE_SQL);
   await p.query(`CREATE INDEX IF NOT EXISTS gap_memory_user_id_idx ON gap_memory(user_id)`);
   await p.query(FEEDBACK_TABLE_SQL);
+  await p.query(DIAGNOSTIC_LOG_TABLE_SQL);
+  await p.query(`CREATE INDEX IF NOT EXISTS diagnostic_log_label_idx ON diagnostic_log(label)`);
 }
 
 // Returns the shared pool, creating + bootstrapping it on first call. Returns null (and warns

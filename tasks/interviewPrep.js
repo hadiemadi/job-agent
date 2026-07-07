@@ -1,6 +1,7 @@
 const { client, MODEL } = require('../core/claude');
 const { extractJSON, firstText } = require('../core/json');
 const { hrSystemPrompt, stealthWritingDirective } = require('../agents/recruiter');
+const { logDiagnostic } = require('../core/logger');
 
 // Interview prep — generated only on explicit sidebar button press. Both answer proposals per
 // question must be grounded strictly in what's already in the tailored CV; the HR persona
@@ -45,7 +46,16 @@ Return exactly 10 items in "questions".`;
       system: hrSystemPrompt(cvText, job, preferences),
       messages: msgs,
     });
-    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) throw e; }
+    try {
+      raw = extractJSON(firstText(message));
+      if (attempt === 1) logDiagnostic('tasks.generateInterviewQuestions', { outcome: 'retry_succeeded' });
+      break;
+    } catch (e) {
+      let excerpt = '[no-text-block]';
+      try { excerpt = (firstText(message) || '').slice(0, 200); } catch (_) {}
+      logDiagnostic('tasks.generateInterviewQuestions', { outcome: attempt === 0 ? 'retry_triggered' : 'both_failed', attempt, excerpt });
+      if (attempt === 1) throw e;
+    }
   }
   const { questions } = JSON.parse(raw);
   const updatedThread = [...messages, { role: 'assistant', content: firstText(message) }];

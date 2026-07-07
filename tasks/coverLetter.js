@@ -1,6 +1,7 @@
 const { client, MODEL } = require('../core/claude');
 const { extractJSON, firstText } = require('../core/json');
 const { hrSystemPrompt, stealthWritingDirective } = require('../agents/recruiter');
+const { logDiagnostic } = require('../core/logger');
 
 // Cover letter — written by the same HR persona, only on explicit client request (button
 // press on the tailored CV page). Tone/wording must mirror the LATEST tailored CV exactly,
@@ -39,7 +40,16 @@ Return JSON only:
       system: hrSystemPrompt(cvText, job, preferences),
       messages: msgs,
     });
-    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) throw e; }
+    try {
+      raw = extractJSON(firstText(message));
+      if (attempt === 1) logDiagnostic('tasks.generateCoverLetter', { outcome: 'retry_succeeded' });
+      break;
+    } catch (e) {
+      let excerpt = '[no-text-block]';
+      try { excerpt = (firstText(message) || '').slice(0, 200); } catch (_) {}
+      logDiagnostic('tasks.generateCoverLetter', { outcome: attempt === 0 ? 'retry_triggered' : 'both_failed', attempt, excerpt });
+      if (attempt === 1) throw e;
+    }
   }
   const { cover_letter } = JSON.parse(raw);
   const updatedThread = [...messages, { role: 'assistant', content: firstText(message) }];

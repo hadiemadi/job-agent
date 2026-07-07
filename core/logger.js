@@ -77,4 +77,22 @@ async function logError(errorCode, route, ctx) {
   }
 }
 
-module.exports = { logEvent, logError, sanitizeMeta, hashSessionId };
+// Richer diagnostic logging for isolating ERR-*-0XX model-call root causes.
+// Bypasses the ALLOWED_META_KEYS allowlist intentionally — diagnostic data is structured
+// operational data (booleans, counts, timing, short response excerpts), not free-text PII.
+// Same fire-and-forget guarantee: a DB failure never throws, never blocks a request.
+async function logDiagnostic(label, data) {
+  try {
+    const pool = getPool();
+    if (!pool) return;
+    const sessionIdHash = hashSessionId(als.getStore());
+    await pool.query(
+      'INSERT INTO diagnostic_log (session_id_hash, label, data_json) VALUES ($1, $2, $3)',
+      [sessionIdHash, String(label).slice(0, 100), JSON.stringify(data)]
+    );
+  } catch (err) {
+    console.warn('[logger] logDiagnostic failed (non-fatal):', err.message);
+  }
+}
+
+module.exports = { logEvent, logError, logDiagnostic, sanitizeMeta, hashSessionId };

@@ -2,7 +2,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { extractJSON, firstText } = require('./json');
 const { addSessionSpend, getSession } = require('../services/session');
 const { taggedError } = require('./errorCodes');
-const { logEvent } = require('./logger');
+const { logEvent, logDiagnostic } = require('./logger');
 
 // The one Anthropic client + model constant for the whole app — both src/ai.js and
 // src/coach.js used to instantiate their own copy of this; centralizing it here means a
@@ -103,9 +103,14 @@ async function createJsonCompletion(params) {
   let messages = params.messages;
   let response = await client.messages.create({ ...params, messages });
   let text = firstText(response);
+  let retried = false;
   try {
     extractJSON(text);
   } catch (err) {
+    retried = true;
+    let excerpt = '';
+    try { excerpt = (text || '').slice(0, 200); } catch (_) {}
+    logDiagnostic('core.createJsonCompletion', { outcome: 'retry_triggered', excerpt }); // fire-and-forget
     messages = [
       ...messages,
       { role: 'assistant', content: text },
@@ -114,7 +119,18 @@ async function createJsonCompletion(params) {
     response = await client.messages.create({ ...params, messages });
     text = firstText(response);
   }
-  return { text, messages, raw: extractJSON(text) };
+  try {
+    const raw = extractJSON(text);
+    if (retried) logDiagnostic('core.createJsonCompletion', { outcome: 'retry_succeeded' }); // fire-and-forget
+    return { text, messages, raw };
+  } catch (e) {
+    if (retried) {
+      let excerpt = '';
+      try { excerpt = (text || '').slice(0, 200); } catch (_) {}
+      logDiagnostic('core.createJsonCompletion', { outcome: 'both_failed', excerpt }); // fire-and-forget
+    }
+    throw e;
+  }
 }
 
 // Exposes the in-memory daily spend so callers (startup log, /cost endpoint, tests) can

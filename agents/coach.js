@@ -1,5 +1,6 @@
 const { client, MODEL } = require('../core/claude');
 const { extractJSON, firstText } = require('../core/json');
+const { logDiagnostic } = require('../core/logger');
 const { loadCore } = require('../core/knowledge');
 const { preferencesBlock } = require('../core/preferences');
 const { fieldBlock } = require('./recruiter');
@@ -179,7 +180,16 @@ with very few genuine gaps, return fewer items rather than inventing weak ones.`
           { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
         ];
     message = await client.messages.create({ model: MODEL, max_tokens: 4000, messages: msgs });
-    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) return []; }
+    try {
+      raw = extractJSON(firstText(message));
+      if (attempt === 1) logDiagnostic('coach.analyzeGaps', { outcome: 'retry_succeeded' });
+      break;
+    } catch (e) {
+      let excerpt = '[no-text-block]';
+      try { excerpt = (firstText(message) || '').slice(0, 200); } catch (_) {}
+      logDiagnostic('coach.analyzeGaps', { outcome: attempt === 0 ? 'retry_triggered' : 'both_failed', attempt, excerpt });
+      if (attempt === 1) return [];
+    }
   }
   try {
     const parsed = JSON.parse(raw);

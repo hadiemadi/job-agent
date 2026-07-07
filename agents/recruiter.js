@@ -1,5 +1,6 @@
 const { client, MODEL } = require('../core/claude');
 const { extractJSON, firstText } = require('../core/json');
+const { logDiagnostic } = require('../core/logger');
 const { loadCore, loadDiscipline, saveDiscipline } = require('../core/knowledge');
 const { preferencesBlock } = require('../core/preferences');
 const { detectField } = require('./extractor');
@@ -179,7 +180,16 @@ Return JSON only:
       system: hrSystemPrompt(cvText, job, preferences, field, disciplineStore),
       messages: msgs,
     });
-    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) throw e; }
+    try {
+      raw = extractJSON(firstText(message));
+      if (attempt === 1) logDiagnostic('recruiter.reviewCV', { outcome: 'retry_succeeded' });
+      break;
+    } catch (e) {
+      let excerpt = '[no-text-block]';
+      try { excerpt = (firstText(message) || '').slice(0, 200); } catch (_) {}
+      logDiagnostic('recruiter.reviewCV', { outcome: attempt === 0 ? 'retry_triggered' : 'both_failed', attempt, excerpt });
+      if (attempt === 1) throw e;
+    }
   }
   const review = JSON.parse(raw);
   return { review, field, thread: [...messages, { role: 'assistant', content: firstText(message) }] };
@@ -268,7 +278,16 @@ clause, never a full sentence with subordinate clauses, never a paragraph.`;
       system: hrSystemPrompt(cvText, job, preferences),
       messages: msgs,
     });
-    try { raw = extractJSON(firstText(response)); break; } catch (e) { if (attempt === 1) throw e; }
+    try {
+      raw = extractJSON(firstText(response));
+      if (attempt === 1) logDiagnostic('recruiter.refineWithHR', { outcome: 'retry_succeeded' });
+      break;
+    } catch (e) {
+      let excerpt = '[no-text-block]';
+      try { excerpt = (firstText(response) || '').slice(0, 200); } catch (_) {}
+      logDiagnostic('recruiter.refineWithHR', { outcome: attempt === 0 ? 'retry_triggered' : 'both_failed', attempt, excerpt });
+      if (attempt === 1) throw e;
+    }
   }
   const result = JSON.parse(raw);
   return { result, thread: [...messages, { role: 'assistant', content: firstText(response) }] };
@@ -336,7 +355,16 @@ do not invent a statement just to have something to return.`;
       system: hrSystemPrompt(cvText, job, preferences),
       messages: msgs,
     });
-    try { raw = extractJSON(firstText(response)); break; } catch (e) { if (attempt === 1) throw e; }
+    try {
+      raw = extractJSON(firstText(response));
+      if (attempt === 1) logDiagnostic('recruiter.draftFromSidebarDiscussion', { outcome: 'retry_succeeded' });
+      break;
+    } catch (e) {
+      let excerpt = '[no-text-block]';
+      try { excerpt = (firstText(response) || '').slice(0, 200); } catch (_) {}
+      logDiagnostic('recruiter.draftFromSidebarDiscussion', { outcome: attempt === 0 ? 'retry_triggered' : 'both_failed', attempt, excerpt });
+      if (attempt === 1) throw e;
+    }
   }
   const result = JSON.parse(raw);
   return result.added ? { description: result.description, rationale: result.rationale, targetSection: result.targetSection || null } : null;
@@ -417,7 +445,16 @@ Go through the checklist one item at a time. Return JSON only:
       system: preReleaseReviewPrompt(),
       messages: msgs,
     });
-    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) throw e; }
+    try {
+      raw = extractJSON(firstText(message));
+      if (attempt === 1) logDiagnostic('recruiter.reviewTailoredCV', { outcome: 'retry_succeeded' });
+      break;
+    } catch (e) {
+      let excerpt = '[no-text-block]';
+      try { excerpt = (firstText(message) || '').slice(0, 200); } catch (_) {}
+      logDiagnostic('recruiter.reviewTailoredCV', { outcome: attempt === 0 ? 'retry_triggered' : 'both_failed', attempt, excerpt });
+      if (attempt === 1) throw e;
+    }
   }
   return JSON.parse(raw);
 }

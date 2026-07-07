@@ -8,7 +8,7 @@ const { getSession, als } = require('../services/session');
 const { setGaps, getGap, proposeStatement, setUserDecision, buildSharedGapContext } = require('../services/gapStore');
 const { createJob, updateJob } = require('../services/jobQueue');
 const { sendError } = require('../core/respondError');
-const { logEvent } = require('../core/logger');
+const { logEvent, logDiagnostic } = require('../core/logger');
 const { saveProfilePreferences, getProfilePreferences, saveConversationHistory, upsertGapMemory } = require('../services/auth');
 
 // Builds the profile-preferences snapshot from the current session state — used by both the
@@ -113,6 +113,7 @@ router.post('/review-cv', async (req, res) => {
           },
         });
 
+        appSession.stepTimestamps = { ...(appSession.stepTimestamps || {}), hrReviewCompletedAt: Date.now() };
         logEvent('hr_review_run', { route: '/review-cv', outcome: 'ok' });
 
         // Safety upsert: keep profile preferences in sync with whatever the user confirmed this
@@ -214,6 +215,17 @@ router.post('/hr/refine', async (req, res) => {
     const lastCoachTurn = [...(gap.coachConversation || [])].reverse().find(m => m.role === 'assistant');
     const coachFinalStatement = lastCoachTurn ? lastCoachTurn.content : null;
     const sharedContext = buildSharedGapContext(gapId);
+    // Diagnostic: capture input state at /hr/refine call time to isolate ERR-HR-005 root causes.
+    logDiagnostic('/hr/refine.pre_call', {
+      hasCvText: !!appSession.cvText,
+      hasCurrentJob: !!(appSession.currentJob),
+      hasHrReview: !!(appSession.hrReview),
+      gapPresent: !!gap,
+      gapHasDescription: !!(gap && gap.description),
+      coachStatementPresent: !!coachFinalStatement,
+      timeSinceHrReviewMs: appSession.stepTimestamps?.hrReviewCompletedAt
+        ? Date.now() - appSession.stepTimestamps.hrReviewCompletedAt : null,
+    });
     const { result, thread } = await refineWithHR(
       appSession.cvText, appSession.currentJob, appSession.hrReview,
       gap, coachFinalStatement, appSession.hrThread, appSession.clientPreferences, sharedContext

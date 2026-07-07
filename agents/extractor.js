@@ -1,5 +1,6 @@
 const { client, MODEL } = require('../core/claude');
 const { extractJSON, firstText } = require('../core/json');
+const { logDiagnostic } = require('../core/logger');
 
 async function extractJobTitles(cvText) {
   const message = await client.messages.create({
@@ -38,7 +39,16 @@ ${text}`;
           { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
         ];
     message = await client.messages.create({ model: MODEL, max_tokens: 1000, messages: msgs });
-    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) throw e; }
+    try {
+      raw = extractJSON(firstText(message));
+      if (attempt === 1) logDiagnostic('extractor.parseJobFromText', { outcome: 'retry_succeeded' });
+      break;
+    } catch (e) {
+      let excerpt = '[no-text-block]';
+      try { excerpt = (firstText(message) || '').slice(0, 200); } catch (_) {}
+      logDiagnostic('extractor.parseJobFromText', { outcome: attempt === 0 ? 'retry_triggered' : 'both_failed', attempt, excerpt });
+      if (attempt === 1) throw e;
+    }
   }
   const parsed = JSON.parse(raw);
   return {

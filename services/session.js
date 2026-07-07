@@ -47,6 +47,9 @@ function createSession() {
     // /auth/register, and /auth/google/callback; cleared by /auth/logout.
     userId: null,
     lastSeen: Date.now(),
+    // Pipeline step completion timestamps — used by diagnostic logging to compute timing
+    // between steps (e.g. how long between hrReviewCompletedAt and the next /rewrite call).
+    stepTimestamps: {},
   };
 }
 

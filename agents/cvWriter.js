@@ -2,6 +2,7 @@ const fse = require('fs-extra');
 const { generateExecutiveTemplate } = require('../render/cvHtml');
 const { client, MODEL, createJsonCompletion } = require('../core/claude');
 const { extractJSON, firstText } = require('../core/json');
+const { logDiagnostic } = require('../core/logger');
 const { loadCore } = require('../core/knowledge');
 const { registerOutputFile, getSessionSpend } = require('../services/session');
 const { hrSystemPrompt, stealthWritingDirective, EVIDENCE_HIERARCHY } = require('./recruiter');
@@ -131,7 +132,16 @@ Return ONLY the JSON, no explanation.`;
           { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
         ];
     message = await client.messages.create({ model: MODEL, max_tokens: 4000, messages: msgs });
-    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) throw e; }
+    try {
+      raw = extractJSON(firstText(message));
+      if (attempt === 1) logDiagnostic('cvWriter.parseCVStructure', { outcome: 'retry_succeeded' });
+      break;
+    } catch (e) {
+      let excerpt = '[no-text-block]';
+      try { excerpt = (firstText(message) || '').slice(0, 200); } catch (_) {}
+      logDiagnostic('cvWriter.parseCVStructure', { outcome: attempt === 0 ? 'retry_triggered' : 'both_failed', attempt, excerpt });
+      if (attempt === 1) throw e;
+    }
   }
   const cv = cleanBulletPrefixes(JSON.parse(raw));
   if (cv.linkedin) cv.linkedin = normalizeLinkedin(cv.linkedin);
@@ -336,8 +346,14 @@ IMPORTANT: skills and key_qualifications must be flat arrays of plain strings on
     try {
       raw = extractJSON(firstText(message));
       if (!JSON.parse(raw).cv) throw new Error('Model response JSON missing required .cv field');
+      if (attempt === 1) logDiagnostic('cvWriter.rewriteCVWithChanges', { outcome: 'retry_succeeded' });
       break;
-    } catch (e) { if (attempt === 1) throw e; }
+    } catch (e) {
+      let excerpt = '[no-text-block]';
+      try { excerpt = (firstText(message) || '').slice(0, 200); } catch (_) {}
+      logDiagnostic('cvWriter.rewriteCVWithChanges', { outcome: attempt === 0 ? 'retry_triggered' : 'both_failed', attempt, excerpt });
+      if (attempt === 1) throw e;
+    }
   }
   const result = JSON.parse(raw);
   const updatedThread = [...messages, { role: 'assistant', content: firstText(message) }];
@@ -470,7 +486,16 @@ Return JSON only:
       system: writerSystemPrompt(cvText, job, preferences),
       messages: msgs,
     });
-    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) throw e; }
+    try {
+      raw = extractJSON(firstText(message));
+      if (attempt === 1) logDiagnostic('cvWriter.applyConcernChange', { outcome: 'retry_succeeded' });
+      break;
+    } catch (e) {
+      let excerpt = '[no-text-block]';
+      try { excerpt = (firstText(message) || '').slice(0, 200); } catch (_) {}
+      logDiagnostic('cvWriter.applyConcernChange', { outcome: attempt === 0 ? 'retry_triggered' : 'both_failed', attempt, excerpt });
+      if (attempt === 1) throw e;
+    }
   }
   const { revised_text, changed } = JSON.parse(raw);
   const updatedThread = [...messages, { role: 'assistant', content: firstText(message) }];
