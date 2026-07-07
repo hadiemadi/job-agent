@@ -11,6 +11,18 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **Build.txt item 3 — Stripe live E2E test result** —
+
+  Tested against live Render site `jobseeker-rpzr.onrender.com`:
+  - `POST /donate { amount: 3 }` → HTTP 200, valid Stripe test-mode checkout URL
+    (`cs_test_...` prefix confirms test key is active on Render).
+  - Stripe checkout URL returned HTTP 200 — session is live on Stripe's infrastructure.
+  - `POST /donate { amount: 2 }` → HTTP 400 "Amount must be 1, 3, or 5 (USD)." ✅
+  - No webhook needed or configured — payment completion doesn't unlock anything (by design;
+    see donate.routes.js STATUS note). Card entry on Stripe's hosted page requires browser
+    interaction and was not automated (Stripe's JS-heavy page cannot be driven by curl).
+  - STRIPE_SECRET_KEY is active on Render (backend creates sessions without 503 error).
+
 - **Build.txt item 2 — Donation amounts confirmed $1/$3/$5 (no code change)** —
 
   Build.txt noted "$2" was present; code already correct from a prior session:
