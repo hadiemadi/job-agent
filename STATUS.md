@@ -5,11 +5,37 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 327/327 green (319/319 mocked; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `a605459`
+**Tests:** 332/332 green (324/324 mocked; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `2339a07` (pre-push; local ahead by several commits)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Feedback button on error dialog** —
+
+  Replaced the "Copy" button in the technical error dialog with a "Send feedback" flow.
+  Clicking "Send feedback" reveals an inline textarea (max 120 chars, placeholder: "no personal
+  info please") + Submit/Cancel. On submit, `POST /feedback` calls `logEvent('user_feedback',
+  {code, route, user_note})` — `user_note` passes through `sanitizeMeta`'s allowlist (email
+  patterns and values >120 chars are silently dropped, so no raw PII reaches the DB). The
+  `user_note` key was added to `core/logger.js`'s `ALLOWED_META_KEYS`.
+
+  **Discipline learning loop verified** (no code change): `loadOrRefreshDiscipline()` in
+  `agents/recruiter.js` fires on every HR review, calls `isStale()`, and if stale writes/stamps
+  a discipline JSON file. The Researcher is deliberately a no-op stub — discipline stores ARE
+  written on first review but only contain the `updated` timestamp (empty skills/keywords/
+  red_flags) until the Researcher is upgraded from stub to live web search.
+
+  **New files:** `routes/feedback.routes.js`
+  **Files changed:** `core/logger.js`, `server.js`, `public/app.js`, `public/style.css`,
+  `public/app.test.js`, `core/logger.test.js`, `routes/auth.routes.test.js`
+
+  **Tests added** (+5): `user_note` in allowlist passes clean text, drops email-containing note,
+  drops >120-char note; `POST /feedback` returns `{ok:true}` with note; returns `{ok:true}`
+  with empty body; Send feedback button exists + feedback form hidden by default; clicking Send
+  feedback reveals textarea.
+
+  Tests: 332/332.
 
 - **Cosmetic backlog — #32, #33, toggle redesign**
 
@@ -375,17 +401,15 @@
 **Ready (small/cosmetic):**
 - ~~**#32** — Tailored-CV toolbar tooltips~~ ✅ shipped
 - ~~**#33** — Error popup on standalone Tailored-CV page~~ ✅ shipped
+- ~~**Feedback button**~~ ✅ shipped — "Send feedback" on error dialog, logs to events
 - **About modal** — `about-modal-v2.html` referenced in CLAUDE.md but file not found; needs
   rebuild or confirmation it was never committed. Wire button + modal + script into
   `index.html` / `public/app.js` once the file exists.
-- **Feedback button** — on the real-error dialog, replace "Copy" with "Send feedback":
-  store `{code, route, timestamp, user_note}` to `events`. ⚠️ user_note is free text →
-  PII risk; needs "no PII please" hint + GDPR delete path.
 
-**Verify (already designed, not a from-scratch build):**
-- **Discipline learning loop** — Researcher + Curator. Only one discipline file exists
-  (`rf-hardware-engineering-technical-program-management.json`). Confirm whether the loop
-  fires per search and writes/updates discipline files, or is built-but-dormant.
+**Verified (built, working as designed):**
+- ~~**Discipline learning loop**~~ ✅ verified — `loadOrRefreshDiscipline()` fires on every
+  HR review; discipline JSON files ARE written on first review (stamped with `updated` date,
+  empty skills until Researcher stub is upgraded to live web search).
 
 **Parked (external deps):** **#19** PayPal (Business acct + GDPR).
 

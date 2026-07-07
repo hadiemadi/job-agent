@@ -607,21 +607,45 @@ function showTechnicalErrorDialog(data, route) {
         '<div class="err-popup-code" id="errPopupCode"></div>' +
         '<div class="err-popup-time" id="errPopupTime"></div>' +
         '<div class="err-popup-blob" id="errPopupBlob"></div>' +
-        '<div class="err-popup-note">You can copy the technical details above and send them to support — they contain no personal data, just a code, the page, and a timestamp.</div>' +
+        '<div class="err-popup-feedback" id="errPopupFeedback" style="display:none;">' +
+          '<textarea class="err-popup-note-input" id="errPopupNoteInput" rows="2" maxlength="120" placeholder="Briefly describe what you were doing (no personal info please)…"></textarea>' +
+          '<div class="err-popup-feedback-actions">' +
+            '<button class="btn btn-ghost btn-sm" id="errPopupFeedbackCancelBtn" type="button">Cancel</button>' +
+            '<button class="btn btn-blue btn-sm" id="errPopupFeedbackSubmitBtn" type="button">Submit</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="err-popup-sent" id="errPopupSent" style="display:none;">Feedback sent — thank you!</div>' +
         '<div class="err-popup-actions">' +
-          '<span class="err-popup-copy-status" id="errPopupCopyStatus" style="display:none;">Copied</span>' +
-          '<button class="btn btn-ghost btn-sm" id="errPopupCopyBtn" type="button">Copy</button>' +
+          '<button class="btn btn-ghost btn-sm" id="errPopupFeedbackBtn" type="button">Send feedback</button>' +
           '<button class="btn btn-blue btn-sm" id="errPopupCloseBtn" type="button">Close</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(overlay);
-    el('errPopupCloseBtn').addEventListener('click', () => hide('errPopupOverlay'));
-    el('errPopupCopyBtn').addEventListener('click', async () => {
+    el('errPopupCloseBtn').addEventListener('click', () => {
+      hide('errPopupOverlay');
+      hide('errPopupFeedback');
+      hide('errPopupSent');
+    });
+    el('errPopupFeedbackBtn').addEventListener('click', () => {
+      el('errPopupNoteInput').value = '';
+      hide('errPopupSent');
+      show('errPopupFeedback');
+    });
+    el('errPopupFeedbackCancelBtn').addEventListener('click', () => {
+      hide('errPopupFeedback');
+    });
+    el('errPopupFeedbackSubmitBtn').addEventListener('click', async () => {
+      const note = (el('errPopupNoteInput').value || '').trim();
+      const currentCode = el('errPopupCode').textContent;
       try {
-        await navigator.clipboard.writeText(el('errPopupBlob').textContent);
-        show('errPopupCopyStatus');
-        setTimeout(() => hide('errPopupCopyStatus'), 2000);
-      } catch (e) { /* clipboard API unavailable — the blob is still selectable/copyable by hand */ }
+        await fetch('/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: currentCode, route: route || '', note }),
+        });
+      } catch (_) { /* fire-and-forget — network failure must not surface as another error */ }
+      hide('errPopupFeedback');
+      show('errPopupSent');
     });
   }
 
@@ -629,7 +653,8 @@ function showTechnicalErrorDialog(data, route) {
   el('errPopupCode').textContent = code;
   el('errPopupTime').textContent = timestamp;
   el('errPopupBlob').textContent = blob;
-  hide('errPopupCopyStatus');
+  hide('errPopupFeedback');
+  hide('errPopupSent');
   show('errPopupOverlay');
 }
 

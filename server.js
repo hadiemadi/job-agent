@@ -13,6 +13,7 @@ const jobsRoutes = require('./routes/jobs.routes');
 const hrRoutes = require('./routes/hr.routes');
 const coachRoutes = require('./routes/coach.routes');
 const authRoutes = require('./routes/auth.routes');
+const feedbackRoutes = require('./routes/feedback.routes');
 const { sendError } = require('./core/respondError');
 const { logError } = require('./core/logger');
 const { TRIAL_MODE } = require('./core/config');
@@ -112,6 +113,9 @@ app.get('/output/:file', (req, res) => {
 
 // Auth routes — no aiLimiter (they don't call Anthropic). Mounted before the AI routes.
 app.use(authRoutes);
+
+// Feedback route — no aiLimiter (just a logEvent write).
+app.use(feedbackRoutes);
 
 // Stricter cap for the AI- and job-search-heavy routers, mounted ONCE ahead of all four —
 // mounting it separately in front of each router would re-run (and re-count) it on every

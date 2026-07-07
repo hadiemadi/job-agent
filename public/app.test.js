@@ -207,7 +207,7 @@ describe('showValidationNudge / showErrorPopup — trial-mode code caption', () 
     expect(countEl.textContent).toBe('');
   });
 
-  test('the real-error technical dialog is unchanged either way — full code/route/timestamp block', () => {
+  test('the real-error technical dialog shows code + blob regardless of TRIAL_MODE', () => {
     window.TRIAL_MODE = true;
     loadAppInDom();
     window.showErrorPopup(
@@ -215,7 +215,7 @@ describe('showValidationNudge / showErrorPopup — trial-mode code caption', () 
       '/review-cv'
     );
     expect(document.getElementById('errPopupCode').textContent).toBe('ERR-HR-003');
-    expect(document.getElementById('errPopupOverlay').innerHTML).toContain('send them to support');
+    expect(document.getElementById('errPopupBlob').textContent).toContain('ERR-HR-003');
 
     window.TRIAL_MODE = false;
     window.showErrorPopup(
@@ -223,6 +223,29 @@ describe('showValidationNudge / showErrorPopup — trial-mode code caption', () 
       '/review-cv'
     );
     expect(document.getElementById('errPopupCode').textContent).toBe('ERR-HR-003');
+  });
+
+  test('real-error dialog has Send feedback button; feedback form hidden by default', () => {
+    loadAppInDom();
+    window.showErrorPopup(
+      { error_code: 'ERR-CV-002', error: 'Upload failed.', kind: 'error' },
+      '/upload-cv'
+    );
+    const feedbackBtn = document.getElementById('errPopupFeedbackBtn');
+    expect(feedbackBtn).not.toBeNull();
+    expect(feedbackBtn.textContent).toBe('Send feedback');
+    expect(document.getElementById('errPopupFeedback').style.display).toBe('none');
+  });
+
+  test('clicking Send feedback reveals note textarea', () => {
+    loadAppInDom();
+    window.showErrorPopup(
+      { error_code: 'ERR-CV-002', error: 'Upload failed.', kind: 'error' },
+      '/upload-cv'
+    );
+    document.getElementById('errPopupFeedbackBtn').click();
+    expect(document.getElementById('errPopupFeedback').style.display).not.toBe('none');
+    expect(document.getElementById('errPopupNoteInput')).not.toBeNull();
   });
 });
 

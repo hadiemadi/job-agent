@@ -777,3 +777,20 @@ describe('Password hashing (real bcryptjs)', () => {
     expect(await realAuth.verifyPassword('samepassword', h2)).toBe(true);
   });
 });
+
+// ── POST /feedback ────────────────────────────────────────────────────────────
+describe('POST /feedback', () => {
+  test('returns {ok:true} and accepts a note', async () => {
+    const res = await request(app)
+      .post('/feedback')
+      .send({ code: 'ERR-HR-003', route: '/review-cv', note: 'I was testing the HR review' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  test('returns {ok:true} with no body (empty feedback)', async () => {
+    const res = await request(app).post('/feedback').send({});
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+});
