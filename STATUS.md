@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 357/357 green (357 mocked pass; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** pending push
+**Tests:** 357/357 green (357 mocked pass; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `ec2a449`
 
 ---
 
