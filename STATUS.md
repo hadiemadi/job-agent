@@ -11,6 +11,13 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **Build.txt item 2 — Donation amounts confirmed $1/$3/$5 (no code change)** —
+
+  Build.txt noted "$2" was present; code already correct from a prior session:
+  `VALID_AMOUNTS = new Set([1, 3, 5])` in `routes/donate.routes.js`, buttons `donate(1)`,
+  `donate(3)`, `donate(5)` in `render/cvHtml.js`, `test.each([1, 3, 5])` in test. No change
+  needed. `test('rejects amount 2', ...)` is a valid rejection test, not a stale $2 reference.
+
 - **Build.txt item 1 — True 3-column layout for logged-in users** —
 
   First-page layout restructured: for logged-in users the main area is a CSS grid with
