@@ -955,3 +955,54 @@ describe('deleteMyData', () => {
     expect(window.fetch).not.toHaveBeenCalledWith('/delete-my-data', expect.anything());
   });
 });
+
+describe('updateGoBtnAvailability — 3-condition button gating', () => {
+  beforeEach(() => { loadAppInDom(); });
+
+  function setFile() {
+    const cvFile = document.getElementById('cvFile');
+    Object.defineProperty(cvFile, 'files', { value: [new File(['x'], 'cv.pdf')], configurable: true });
+    cvFile.dispatchEvent(new Event('change'));
+  }
+  function setJobText(val = 'Software Engineer role at Acme') {
+    const jt = document.getElementById('jobText');
+    jt.value = val;
+    jt.dispatchEvent(new Event('input'));
+  }
+  function setConsent(checked = true) {
+    const cb = document.getElementById('consentCheck');
+    cb.checked = checked;
+    cb.dispatchEvent(new Event('change'));
+  }
+
+  test('0/3 conditions: button disabled on load', () => {
+    expect(document.getElementById('goBtn').disabled).toBe(true);
+  });
+
+  test('1/3 — CV only: still disabled', () => {
+    setFile();
+    expect(document.getElementById('goBtn').disabled).toBe(true);
+  });
+
+  test('2/3 — CV + job text: still disabled', () => {
+    setFile(); setJobText();
+    expect(document.getElementById('goBtn').disabled).toBe(true);
+  });
+
+  test('3/3 — all conditions met: button enabled', () => {
+    setFile(); setJobText(); setConsent();
+    expect(document.getElementById('goBtn').disabled).toBe(false);
+  });
+
+  test('removing job text after all conditions re-disables button', () => {
+    setFile(); setJobText(); setConsent();
+    setJobText('   '); // whitespace-only counts as empty
+    expect(document.getElementById('goBtn').disabled).toBe(true);
+  });
+
+  test('unchecking consent after all conditions re-disables button', () => {
+    setFile(); setJobText(); setConsent(true);
+    setConsent(false);
+    expect(document.getElementById('goBtn').disabled).toBe(true);
+  });
+});
