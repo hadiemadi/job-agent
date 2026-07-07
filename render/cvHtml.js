@@ -159,7 +159,22 @@ ${CV_CSS}
   .tb-link { font-size: 11px; color: rgba(255,255,255,0.55); text-decoration: underline; cursor: pointer; display: block; }
   .tb-link:hover { color: white; }
   .tb-status { font-size: 11px; color: rgba(255,255,255,0.55); }
-  .tb-cost { margin-top: auto; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.12); font-size: 11px; color: rgba(255,255,255,0.4); }
+  .tb-cost { padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.12); font-size: 11px; color: rgba(255,255,255,0.4); }
+  .tb-donate-wrap { margin-top: auto; display: flex; flex-direction: column; gap: 6px; }
+  .tb-donate { background: none; border: 1px solid rgba(255,255,255,0.22); color: rgba(255,255,255,0.7); border-radius: var(--radius-sm); padding: 6px 10px; font-size: 11px; font-family: inherit; cursor: pointer; text-align: center; }
+  .tb-donate:hover { border-color: rgba(255,255,255,0.5); color: white; }
+
+  /* ── Donate popup ─────────────────────────────────── */
+  .donate-overlay { position: fixed; inset: 0; background: rgba(20,20,18,0.55); z-index: 10050; display: none; align-items: center; justify-content: center; font-family: var(--font-ui); }
+  .donate-overlay.open { display: flex; }
+  .donate-box { background: var(--surface); width: 300px; border-radius: var(--radius-md); box-shadow: 0 16px 48px rgba(0,0,0,0.28); padding: 24px; display: flex; flex-direction: column; gap: 14px; }
+  .donate-title { font-size: 15px; font-weight: 600; color: var(--ink); }
+  .donate-sub { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+  .donate-amounts { display: flex; gap: 8px; }
+  .donate-amt { flex: 1; border: 1px solid var(--border); background: none; border-radius: var(--radius-sm); padding: 10px 0; font-size: 14px; font-weight: 600; color: var(--accent); font-family: inherit; cursor: pointer; }
+  .donate-amt:hover { background: var(--accent); color: white; border-color: var(--accent); }
+  .donate-cancel { font-size: 12px; color: var(--muted); text-decoration: underline; cursor: pointer; text-align: center; background: none; border: none; font-family: inherit; }
+  .donate-cancel:hover { color: var(--ink); }
 
   /* ── Tooltips on toolbar actions ─────────────────────── */
   /* Plain CSS, no JS: shows on mouse hover AND keyboard focus (:focus-visible, with :focus as
@@ -302,7 +317,23 @@ ${CV_CSS}
     <span class="tb-status" id="templateStatus"></span>
     <button class="tb-btn tb-save" id="hrToggleBtn" onclick="toggleHrSidebar()" data-tooltip="Shows or hides the HR Expert chat panel — select any text in the CV to start a discussion about it.">Hide HR Expert</button>
   </div>
-  <div class="tb-cost" title="Total Anthropic API cost for this session's CV — not the global daily budget, not other users' usage">AI cost for this CV: $${Number(aiSpendUsd || 0).toFixed(2)}</div>
+  <div class="tb-donate-wrap">
+    <div class="tb-cost" title="Total Anthropic API cost for this session's CV — not the global daily budget, not other users' usage">AI cost for this CV: $${Number(aiSpendUsd || 0).toFixed(2)}</div>
+    <button class="tb-donate" onclick="openDonate()">Buy me a coffee ☕</button>
+  </div>
+</div>
+
+<div class="donate-overlay" id="donateOverlay">
+  <div class="donate-box">
+    <div class="donate-title">Support Job Agent</div>
+    <div class="donate-sub">This service is free. If it helped you, a small donation keeps it running.</div>
+    <div class="donate-amounts">
+      <button class="donate-amt" onclick="donate(1)">$1</button>
+      <button class="donate-amt" onclick="donate(3)">$3</button>
+      <button class="donate-amt" onclick="donate(5)">$5</button>
+    </div>
+    <button class="donate-cancel" onclick="closeDonate()">No thanks</button>
+  </div>
 </div>
 
 <div class="hr-sidebar" id="hrSidebar">
@@ -914,6 +945,27 @@ ${pageHtml}
     });
     messages.appendChild(bubble);
     messages.scrollTop = messages.scrollHeight;
+  }
+
+  // ── Donation popup ───────────────────────────────────────────────────────────
+  function openDonate() { document.getElementById('donateOverlay').classList.add('open'); }
+  function closeDonate() { document.getElementById('donateOverlay').classList.remove('open'); }
+  async function donate(amount) {
+    closeDonate();
+    setBusy(true, 'Redirecting to payment…');
+    try {
+      const res = await fetch('/donate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount }),
+      });
+      const data = await res.json();
+      if (!data.url) throw new Error(data.error || 'Payment setup failed');
+      window.location.href = data.url;
+    } catch (err) {
+      setBusy(false);
+      showCvPageError('Could not start payment: ' + err.message);
+    }
   }
 
   // Sidebar should never start empty — open with the HR expert explaining what just changed

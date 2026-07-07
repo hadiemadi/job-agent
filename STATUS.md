@@ -5,11 +5,35 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 336/336 green (328/328 mocked; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `2a42e5e` (local ahead)
+**Tests:** 346/346 green (338/338 mocked; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `639a22a` (local ahead)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Donation button (Phase 3)** —
+
+  Donate button ("Buy me a coffee ☕") added to the bottom of the tailored CV toolbar, below
+  the AI cost display. Click opens a lightweight popup with $1 / $3 / $5 options. Selecting
+  an amount calls `POST /donate`, which creates a Stripe Checkout session and redirects the
+  browser to Stripe's hosted payment page. No account or login required.
+
+  Backend: `routes/donate.routes.js` — validates amount ∈ {1,3,5}, creates a one-time
+  Stripe Checkout session (`mode:'payment'`), logs `donation_initiated` via `logEvent()`
+  (amount only, no PII). Returns 503 when `STRIPE_SECRET_KEY` is not set (graceful
+  no-op — app still boots). No webhook needed (nothing unlocks on payment).
+
+  Frontend: CSS (`.tb-donate-wrap`, `.tb-donate`, `.donate-overlay`, `.donate-amt`) and JS
+  (`openDonate()`, `closeDonate()`, `donate(amount)`) all self-contained in `render/cvHtml.js`.
+
+  Env vars required on Render: `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` — documented
+  in `.env.example`.
+
+  Note: paid CV tailoring (paywall, backlog item #19) is postponed. This donation button
+  is separate and unrelated to CV access — the service remains free.
+
+  Tests: 10 new tests in `routes/donate.routes.test.js` (invalid amounts rejected, valid
+  amounts return Stripe URL, no-login, 503 when unconfigured). Total: 346/346.
 
 - **UI layout cleanup (#7 from build.txt)** —
 
