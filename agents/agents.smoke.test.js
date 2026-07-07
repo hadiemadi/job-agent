@@ -250,4 +250,31 @@ describe('agents/coach', () => {
       expect(params).not.toHaveProperty('temperature');
     });
   });
+  test('analyzeGaps retries once when Claude returns prose and returns [] after two failures', async () => {
+    client.messages.create
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: 'Sure, here are the gaps in plain English...' }] })
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: JSON.stringify({ gaps: [{ description: 'PMP Certification', rationale: 'required', severity: 'major' }] }) }] });
+    const gaps = await coach.analyzeGaps('cv text', { job_title: 'TPM', employer_name: 'Acme' });
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0].description).toBe('PMP Certification');
+    expect(client.messages.create).toHaveBeenCalledTimes(2);
+  });
+  test('analyzeGaps gracefully returns [] when both retry attempts fail to produce JSON', async () => {
+    client.messages.create
+      .mockResolvedValue({ content: [{ type: 'text', text: 'Still prose on the second try too.' }] });
+    const gaps = await coach.analyzeGaps('cv text', { job_title: 'TPM', employer_name: 'Acme' });
+    expect(gaps).toEqual([]);
+    expect(client.messages.create).toHaveBeenCalledTimes(2);
+  });
+  test('chatWithCoach uses firstText() — skips thinking blocks — regression: content[0].text crash on newer models', async () => {
+    // Simulate a model response where content[0] is a thinking block, not text
+    client.messages.create.mockResolvedValue({
+      content: [
+        { type: 'thinking', thinking: 'internal reasoning...' },
+        { type: 'text', text: 'You have strong experience in RF systems.' },
+      ],
+    });
+    const { reply } = await coach.chatWithCoach('cv text', { job_title: 'TPM', employer_name: 'Acme' }, { confirm_changes: [] }, [], 'Tell me about my RF background', null, {}, null, null, null);
+    expect(reply).toBe('You have strong experience in RF systems.');
+  });
 });

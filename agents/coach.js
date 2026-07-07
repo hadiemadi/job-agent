@@ -138,12 +138,7 @@ Return JSON only:
 // about" (selectTopGaps below) — collapsing both into one judgment call was what made the
 // HR review's gap count swing wildly between runs.
 async function analyzeGaps(cvText, job) {
-  const message = await client.messages.create({
-    model: MODEL,
-    max_tokens: 4000,
-    messages: [{
-      role: 'user',
-      content: `${CAREER_COACH_PERSONA}
+  const userMessage = `${CAREER_COACH_PERSONA}
 
 Compare this candidate's CV against the target job description in detail. Identify up to 20
 distinct gaps — anything the job description calls for (required or preferred) that the CV does
@@ -173,12 +168,20 @@ Return JSON only:
   ]
 }
 List up to 20 gaps, ranked most to least severe. If the CV is an exceptionally strong match
-with very few genuine gaps, return fewer items rather than inventing weak ones.`
-    }]
-  });
-
+with very few genuine gaps, return fewer items rather than inventing weak ones.`;
+  let message, raw;
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const msgs = attempt === 0
+      ? [{ role: 'user', content: userMessage }]
+      : [
+          { role: 'user', content: userMessage },
+          { role: 'assistant', content: firstText(message) },
+          { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
+        ];
+    message = await client.messages.create({ model: MODEL, max_tokens: 4000, messages: msgs });
+    try { raw = extractJSON(firstText(message)); break; } catch (e) { if (attempt === 1) return []; }
+  }
   try {
-    const raw = extractJSON(firstText(message));
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed.gaps) ? parsed.gaps : [];
   } catch (e) {
@@ -256,7 +259,7 @@ KEEP THIS SHORT — this is a quick check on one specific gap, not an open-ended
     system: systemPrompt,
     messages,
   });
-  const reply = response.content[0].text;
+  const reply = firstText(response);
   return { reply, history: [...messages, { role: 'assistant', content: reply }] };
 }
 
