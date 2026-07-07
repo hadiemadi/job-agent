@@ -2,22 +2,24 @@
 
 // Mock services/auth — all functions hit the DB which is not available in tests.
 jest.mock('../services/auth', () => ({
-  createUser:               jest.fn(),
-  findUserByEmail:          jest.fn(),
-  findUserByGoogleId:       jest.fn(),
-  findUserById:             jest.fn(),
-  hashPassword:             jest.fn(),
-  verifyPassword:           jest.fn(),
-  setUserPreference:        jest.fn(),
-  getUserPreference:        jest.fn(),
-  saveCv:                   jest.fn(),
-  listSavedCvs:             jest.fn(),
-  deleteSavedCv:            jest.fn(),
-  listConversationHistory:  jest.fn(),
-  listCoachMemory:          jest.fn(),
-  getLatestSavedCv:         jest.fn(),
-  saveProfilePreferences:   jest.fn(),
-  getProfilePreferences:    jest.fn(),
+  createUser:                 jest.fn(),
+  findUserByEmail:            jest.fn(),
+  findUserByGoogleId:         jest.fn(),
+  findUserById:               jest.fn(),
+  hashPassword:               jest.fn(),
+  verifyPassword:             jest.fn(),
+  setUserPreference:          jest.fn(),
+  getUserPreference:          jest.fn(),
+  saveCv:                     jest.fn(),
+  listSavedCvs:               jest.fn(),
+  deleteSavedCv:              jest.fn(),
+  listConversationHistory:    jest.fn(),
+  saveConversationHistory:    jest.fn(),
+  listCoachMemory:            jest.fn(),
+  saveCoachMemory:            jest.fn(),
+  getLatestSavedCv:           jest.fn(),
+  saveProfilePreferences:     jest.fn(),
+  getProfilePreferences:      jest.fn(),
 }));
 
 // Mock agents/inputRouter — classify() is called by POST /confirm-contact; without a mock
@@ -57,7 +59,8 @@ const request = require('supertest');
 const app     = require('../server');
 const {
   createUser, findUserByEmail, findUserById, hashPassword, verifyPassword,
-  listSavedCvs, deleteSavedCv, listConversationHistory, listCoachMemory,
+  listSavedCvs, deleteSavedCv, listConversationHistory, saveConversationHistory,
+  listCoachMemory, saveCoachMemory,
   setUserPreference, getUserPreference, getLatestSavedCv,
   saveProfilePreferences, getProfilePreferences,
 } = require('../services/auth');
@@ -80,7 +83,9 @@ beforeEach(() => {
   listSavedCvs.mockResolvedValue([]);
   deleteSavedCv.mockResolvedValue(true);
   listConversationHistory.mockResolvedValue([]);
+  saveConversationHistory.mockResolvedValue(undefined);
   listCoachMemory.mockResolvedValue([]);
+  saveCoachMemory.mockResolvedValue(undefined);
   setUserPreference.mockResolvedValue(undefined);
   getUserPreference.mockResolvedValue(null);
   getLatestSavedCv.mockResolvedValue(null);
@@ -418,6 +423,30 @@ describe('GET /auth/my-data', () => {
     expect(res.status).toBe(200);
     expect(res.body.savedCvs).toHaveLength(1);
     expect(res.body.savedCvs[0]).toMatchObject({ id: 'cv-100', label: 'Senior TPM at Apple' });
+  });
+
+  test('returns coachMemory and conversationHistory after conversations are saved (item 4)', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    findUserById.mockResolvedValue(MOCK_USER);
+    listCoachMemory.mockResolvedValue([{
+      id: 'cm-200', gap_topic: 'technical track', digest_summary: 'Director of Engineering fits your profile',
+      created_at: new Date().toISOString(),
+    }]);
+    listConversationHistory.mockResolvedValue([{
+      id: 'ch-200', agent: 'hr', gap_topic: null,
+      digest_summary: 'The RF section is strong; add measurable outcomes',
+      created_at: new Date().toISOString(),
+    }]);
+
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+
+    const res = await agent.get('/auth/my-data');
+    expect(res.status).toBe(200);
+    expect(res.body.coachMemory).toHaveLength(1);
+    expect(res.body.coachMemory[0]).toMatchObject({ id: 'cm-200', gap_topic: 'technical track' });
+    expect(res.body.conversationHistory).toHaveLength(1);
+    expect(res.body.conversationHistory[0]).toMatchObject({ id: 'ch-200', agent: 'hr' });
   });
 });
 

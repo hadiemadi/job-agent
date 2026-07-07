@@ -133,6 +133,17 @@ async function listConversationHistory(userId) {
   return rows;
 }
 
+async function saveConversationHistory(userId, { agent, gapTopic, digestSummary, rawLog }) {
+  const pool = getPool();
+  if (!pool) throw new Error('Database unavailable');
+  const id = genId();
+  await pool.query(
+    `INSERT INTO conversation_history (id, user_id, agent, gap_topic, digest_summary, raw_log)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [id, userId, agent || 'hr', gapTopic || null, digestSummary || '', JSON.stringify(rawLog || null)]
+  );
+}
+
 async function listCoachMemory(userId) {
   const pool = getPool();
   if (!pool) return [];
@@ -141,6 +152,17 @@ async function listCoachMemory(userId) {
     [userId]
   );
   return rows;
+}
+
+async function saveCoachMemory(userId, { gapTopic, digestSummary, rawLog }) {
+  const pool = getPool();
+  if (!pool) throw new Error('Database unavailable');
+  const id = genId();
+  await pool.query(
+    `INSERT INTO coach_memory (id, user_id, gap_topic, digest_summary, raw_log)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [id, userId, gapTopic || 'general', digestSummary || '', JSON.stringify(rawLog || null)]
+  );
 }
 
 async function getLatestSavedCv(userId) {
@@ -171,7 +193,8 @@ module.exports = {
   hashPassword, verifyPassword,
   setUserPreference, getUserPreference,
   saveCv, listSavedCvs, deleteSavedCv,
-  listConversationHistory, listCoachMemory,
+  listConversationHistory, saveConversationHistory,
+  listCoachMemory, saveCoachMemory,
   getLatestSavedCv,
   saveProfilePreferences, getProfilePreferences,
 };

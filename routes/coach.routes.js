@@ -4,6 +4,7 @@ const { getSession } = require('../services/session');
 const { getGap, appendGapMessage, buildSharedGapContext } = require('../services/gapStore');
 const { loadDiscipline } = require('../core/knowledge');
 const { sendError } = require('../core/respondError');
+const { saveCoachMemory } = require('../services/auth');
 
 const router = express.Router();
 
@@ -30,6 +31,13 @@ router.post('/coach/discuss', async (req, res) => {
       appendGapMessage(gapId, 'user', message);
       appendGapMessage(gapId, 'assistant', reply);
     }
+    if (appSession.userId) {
+      saveCoachMemory(appSession.userId, {
+        gapTopic: gap?.description || 'coach',
+        digestSummary: reply.slice(0, 300),
+        rawLog: { message, reply },
+      }).catch(e => console.warn('[saveCoachMemory] write failed:', e.message));
+    }
     res.json({ reply });
   } catch (err) {
     sendError(res, '/coach/discuss', 'ERR-COACH-005', err);
@@ -46,6 +54,14 @@ router.post('/coach/analyze', async (req, res) => {
     if (!result) return sendError(res, '/coach/analyze', 'ERR-COACH-003');
     const rankedJobs = appSession.rankedJobs || [];
     const marketMatches = rankedJobs.length > 0 ? await matchRolesToMarket(result.suggested_roles, rankedJobs) : [];
+    if (appSession.userId) {
+      const topRole = (result.suggested_roles || [])[0];
+      saveCoachMemory(appSession.userId, {
+        gapTopic: direction,
+        digestSummary: topRole ? topRole.title : direction,
+        rawLog: { direction, suggestedRoles: result.suggested_roles },
+      }).catch(e => console.warn('[saveCoachMemory] write failed:', e.message));
+    }
     res.json({ profile: result.profile, suggestedRoles: result.suggested_roles, marketMatches });
   } catch (err) {
     sendError(res, '/coach/analyze', 'ERR-COACH-003', err);

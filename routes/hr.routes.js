@@ -9,7 +9,7 @@ const { setGaps, getGap, proposeStatement, setUserDecision, buildSharedGapContex
 const { createJob, updateJob } = require('../services/jobQueue');
 const { sendError } = require('../core/respondError');
 const { logEvent } = require('../core/logger');
-const { saveProfilePreferences, getProfilePreferences } = require('../services/auth');
+const { saveProfilePreferences, getProfilePreferences, saveConversationHistory } = require('../services/auth');
 
 // Builds the profile-preferences snapshot from the current session state — used by both the
 // confirm-contact save and the HR-completion safety upsert to guarantee they write the same shape.
@@ -273,6 +273,14 @@ router.post('/hr/chat', async (req, res) => {
     );
     appSession.hrThread = thread;
     appSession.hrDisplayHistory = [...appSession.hrDisplayHistory, { role: 'user', text: message }, { role: 'expert', text: reply }];
+    if (appSession.userId) {
+      saveConversationHistory(appSession.userId, {
+        agent: 'hr',
+        gapTopic: concern?.selectedText?.slice(0, 100) || null,
+        digestSummary: reply.slice(0, 300),
+        rawLog: { message, reply },
+      }).catch(e => console.warn('[saveConversationHistory] write failed:', e.message));
+    }
     res.json({ reply });
   } catch (err) {
     sendError(res, '/hr/chat', 'ERR-HR-007', err);

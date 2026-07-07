@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 326/326 green · **origin/main HEAD:** `04f60d0` (pending push after Item 2+4)
+**Tests:** 327/327 green · **origin/main HEAD:** `1533fc5` (pending push)
 
 ---
 
@@ -36,9 +36,15 @@
   **Files changed:** `core/knowledge.js`, `routes/auth.routes.js`, `routes/cv.routes.js`,
   `public/app.js`, `routes/auth.routes.test.js`.
 
-  **Item 4 (Coach & HR history) — in progress.** Write functions `saveCoachMemory` /
-  `saveConversationHistory` not yet added to `services/auth.js`; call sites in coach/HR routes
-  not yet wired.
+  **Item 4 — Coach & HR conversation history now saved:**
+  Added `saveCoachMemory(userId, {gapTopic, digestSummary, rawLog})` and
+  `saveConversationHistory(userId, {agent, gapTopic, digestSummary, rawLog})` to
+  `services/auth.js` (INSERT into `coach_memory` / `conversation_history`). Call sites:
+  `routes/coach.routes.js` fires `saveCoachMemory` after `/coach/discuss` and `/coach/analyze`
+  (logged-in users only, fire-and-forget); `routes/hr.routes.js` fires `saveConversationHistory`
+  after `/hr/chat` (logged-in users only, fire-and-forget). Test: `GET /auth/my-data` returns
+  non-empty `coachMemory` and `conversationHistory` when mocked data is present.
+  Tests: 327/327 (+1 test).
 
 - **Phase 2.5 — Profile & Preferences persistent storage** —
 
@@ -372,14 +378,12 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 
 ## ▶️ Suggested next action
 
-**Item 4 — Coach & HR conversation history:** Add `saveCoachMemory(userId, entry)` and
-`saveConversationHistory(userId, agent, entry)` to `services/auth.js`; call `saveCoachMemory`
-in `routes/coach.routes.js` after `/coach/discuss` and `/coach/analyze`; call
-`saveConversationHistory` in `routes/hr.routes.js` after `/hr/chat`. Logged-in users only.
-One test: `GET /auth/my-data` returns non-empty `coachMemory` / `conversationHistory`.
+**Push `main`** — all 4 My Data history items are fixed, 327/327 tests green.
 
-**After Item 4:** push `main`, then smoke-test the live site — login, My Data modal (all
-sections now populated), workspace panel.
+**Smoke-test on the live site after push:**
+Login → CV upload → HR review → `POST /coach/discuss` → `POST /hr/chat` → open My Data
+modal and verify all three sections ("Previous CV & job info", "Coach conversations",
+"Discipline & HR notes") now show real content instead of empty/None.
 
 **Set Render env vars for Google OAuth** (set via Render dashboard):
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`, `SESSION_SECRET`.
