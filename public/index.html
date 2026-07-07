@@ -283,6 +283,30 @@
   </div>
 </div>
 
+<footer class="app-footer">
+  <button class="link-btn footer-about-btn" onclick="openAbout()">About</button>
+</footer>
+
+<!-- ── About modal ──────────────────────────────────────────── -->
+<div class="modal-overlay" id="aboutModal" style="display:none;">
+  <div class="card modal-box about-modal">
+    <button class="auth-modal-close" onclick="closeAbout()" aria-label="Close">&times;</button>
+    <h2>Job Agent</h2>
+    <p class="about-tagline">AI-powered CV tailoring — find the right job and apply with a CV that speaks directly to it.</p>
+    <ul class="about-list">
+      <li>Upload your CV (PDF) and paste any job description</li>
+      <li>HR review identifies strengths, flags gaps, and suggests safe improvements</li>
+      <li>One-click tailored CV — edit in-browser, export to Word, apply</li>
+      <li>Career Coach advises on your next step across three tracks: Specialist, Generalist, and Leadership</li>
+    </ul>
+    <div class="about-meta">
+      <span>Powered by Claude AI</span>
+      <span class="about-sep">·</span>
+      <a class="about-link" href="https://github.com/hadiemadi/job-agent" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</div>
+
 <script src="/config.js"></script>
 <script src="/app.js"></script>
 

@@ -11,6 +11,13 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **About modal** —
+
+  New footer link ("About") + modal (max-width 420px) with: app name, tagline, 4-bullet
+  feature list, "Powered by Claude AI" + GitHub link. Pure front-end (`public/index.html`,
+  `public/app.js`, `public/style.css`). `openAbout()` / `closeAbout()` added alongside the
+  other modal helpers. No tests needed (pure presentation).
+
 - **Feedback button on error dialog** —
 
   Replaced the "Copy" button in the technical error dialog with a "Send feedback" flow.
@@ -402,9 +409,7 @@
 - ~~**#32** — Tailored-CV toolbar tooltips~~ ✅ shipped
 - ~~**#33** — Error popup on standalone Tailored-CV page~~ ✅ shipped
 - ~~**Feedback button**~~ ✅ shipped — "Send feedback" on error dialog, logs to events
-- **About modal** — `about-modal-v2.html` referenced in CLAUDE.md but file not found; needs
-  rebuild or confirmation it was never committed. Wire button + modal + script into
-  `index.html` / `public/app.js` once the file exists.
+- ~~**About modal**~~ ✅ shipped — footer link + modal with feature list + GitHub link
 
 **Verified (built, working as designed):**
 - ~~**Discipline learning loop**~~ ✅ verified — `loadOrRefreshDiscipline()` fires on every
@@ -427,13 +432,19 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 
 ## ▶️ Suggested next action
 
-**Push `main`** — cosmetic backlog (#32, #33, toggle) + My Data history fixes all shipped.
+**Push `main`** — feedback button + About modal + all prior cosmetic + My Data fixes are
+local-only (origin/main is still at `2339a07`).
 
 **Smoke-test on the live site after push:**
-Login → CV upload → HR review → `POST /coach/discuss` → `POST /hr/chat` → open My Data
-modal and verify all three sections ("Previous CV & job info", "Coach conversations",
-"Discipline & HR notes") now show real content instead of empty/None.
+1. Login → CV upload → HR review → `POST /coach/discuss` → `POST /hr/chat` → open My Data
+   modal and verify all three sections show real content.
+2. Trigger a real error → click "Send feedback" → enter a note → verify "Feedback sent" appears.
+3. Click "About" footer link → verify modal opens with feature list + GitHub link.
 
 **Set Render env vars for Google OAuth** (set via Render dashboard):
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`, `SESSION_SECRET`.
 Steps and generate-command are in the Phase 2 Part 1 section above.
+
+**Remaining backlog** is either Mode B (market/scrape — complex, blocked on
+`agents/researcher.js` live search) or infrastructure (GDPR, PayPal). All "Ready" and
+"Verify" items are now shipped/confirmed.

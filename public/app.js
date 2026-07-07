@@ -224,6 +224,9 @@ function closeMyData() {
   hide('myDataModal');
 }
 
+function openAbout() { show('aboutModal'); }
+function closeAbout() { hide('aboutModal'); }
+
 // section optional: undefined → all sections, 'cv' | 'coach' | 'discipline' → filtered view.
 function renderMyData(data, section) {
   const content = el('myDataContent');

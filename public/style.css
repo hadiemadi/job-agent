@@ -379,3 +379,18 @@ input[type="range"] { width:100%; cursor:pointer; accent-color:var(--accent); }
   .step { min-width:72px; padding:6px 2px; }
   .step-arrow { display:none; }
 }
+
+/* ── Footer ──────────────────────────────────────────────────────────────────── */
+.app-footer { text-align:center; padding:var(--space-5) var(--space-3) var(--space-8); }
+.footer-about-btn { font-size:12px; color:var(--muted); }
+.footer-about-btn:hover { color:var(--ink); }
+
+/* ── About modal ──────────────────────────────────────────────────────────────── */
+.about-modal { max-width:420px; }
+.about-tagline { font-size:14px; color:var(--ink); margin-bottom:var(--space-5); }
+.about-list { padding-left:var(--space-5); margin:0 0 var(--space-5); }
+.about-list li { font-size:13px; color:var(--ink); line-height:1.6; margin-bottom:var(--space-2); }
+.about-meta { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap; }
+.about-sep { color:var(--border); }
+.about-link { color:var(--accent); text-decoration:none; }
+.about-link:hover { text-decoration:underline; }
