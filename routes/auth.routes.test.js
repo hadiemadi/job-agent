@@ -813,10 +813,10 @@ describe('DELETE /auth/account', () => {
 
 // ── POST /feedback ────────────────────────────────────────────────────────────
 describe('POST /feedback', () => {
-  test('returns {ok:true} and accepts a note', async () => {
+  test('returns {ok:true} and accepts message + contact_email', async () => {
     const res = await request(app)
       .post('/feedback')
-      .send({ code: 'ERR-HR-003', route: '/review-cv', note: 'I was testing the HR review' });
+      .send({ code: 'ERR-HR-003', route: '/review-cv', message: 'I was testing the HR review', contact_email: 'user@example.com' });
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
   });

@@ -103,6 +103,20 @@ const COACH_MEMORY_TABLE_SQL = `CREATE TABLE IF NOT EXISTS coach_memory (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 )`;
 
+// User-submitted error feedback — message + optional contact email, linked to the session
+// that submitted it. No user_id FK: feedback can come from guests and must survive account
+// deletion (it's operational/bug data, not personal). GDPR: contact_email is optional and
+// the submitter is told "no personal data" — it is never displayed or used beyond support.
+const FEEDBACK_TABLE_SQL = `CREATE TABLE IF NOT EXISTS feedback (
+  id TEXT PRIMARY KEY,
+  ts TIMESTAMPTZ NOT NULL DEFAULT now(),
+  session_id_hash TEXT,
+  error_code TEXT,
+  route TEXT,
+  message TEXT NOT NULL DEFAULT '',
+  contact_email TEXT
+)`;
+
 function buildPool(useSsl) {
   const config = { connectionString: process.env.DATABASE_URL };
   if (useSsl) config.ssl = { rejectUnauthorized: false };
@@ -126,6 +140,7 @@ async function ensureTables(p) {
   await p.query(USER_PREFERENCES_TABLE_SQL);
   await p.query(CONVERSATION_HISTORY_TABLE_SQL);
   await p.query(COACH_MEMORY_TABLE_SQL);
+  await p.query(FEEDBACK_TABLE_SQL);
 }
 
 // Returns the shared pool, creating + bootstrapping it on first call. Returns null (and warns

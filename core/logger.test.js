@@ -36,13 +36,6 @@ describe('sanitizeMeta', () => {
     expect(sanitizeMeta(meta)).toEqual({});
   });
 
-  test('user_note is allowlisted — short clean text is kept, email-containing note is dropped', () => {
-    expect(sanitizeMeta({ user_note: 'I was testing the HR review flow' })).toEqual({ user_note: 'I was testing the HR review flow' });
-    // Note containing an email → isSafePrimitive returns false → field dropped
-    expect(sanitizeMeta({ user_note: 'please contact me@example.com' })).toEqual({});
-    // Note over 120 chars → dropped
-    expect(sanitizeMeta({ user_note: 'x'.repeat(121) })).toEqual({});
-  });
 
   test('drops non-primitive values (objects/arrays) even under an allowlisted key', () => {
     const meta = { route: { nested: 'object' } };

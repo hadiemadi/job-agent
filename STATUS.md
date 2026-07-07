@@ -5,11 +5,27 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 337/337 green (329/329 mocked; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `2a42e5e` (local ahead)
+**Tests:** 336/336 green (328/328 mocked; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `2a42e5e` (local ahead)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Feedback button rework (#2 from build.txt)** —
+
+  Error dialog now has both Copy and Send feedback buttons. "Send feedback" reveals an
+  inline form: message textarea (500 chars max) + optional contact email input. On submit,
+  `POST /feedback` writes one row to the new `feedback` table
+  (`id, ts, session_id_hash, error_code, route, message, contact_email`) — a dedicated table
+  separate from `events`, so feedback survives account deletion.
+  `routes/feedback.routes.js` rewritten to use direct pool insert; `core/logger.js` no
+  longer involved (removed `user_note` from `ALLOWED_META_KEYS`).
+  `feedback` table added to `core/db.js`'s `ensureTables`.
+
+  **Tests updated** (+0 net, adjusted): Copy button + Send feedback button both present;
+  form shows message textarea AND email input; POST /feedback accepts message + contact_email.
+
+  Tests: 336/336.
 
 - **GDPR / Privacy (#1 from build.txt)** —
 

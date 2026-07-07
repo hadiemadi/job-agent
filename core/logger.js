@@ -9,7 +9,7 @@ const { als } = require('../services/session');
 // CLAUDE.md's GDPR backlog item — this logger is operational/stats data only, never content.
 const ALLOWED_META_KEYS = new Set([
   'route', 'outcome', 'severity', 'count', 'durationMs', 'model', 'status', 'errName',
-  'code', 'kind', 'user_note',
+  'code', 'kind',
 ]);
 
 // A crude but cheap guard against accidentally-allowlisted free text: even an allowed key
