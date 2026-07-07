@@ -30,6 +30,16 @@ describe('extractJSON', () => {
     expect(() => extractJSON('no json here at all')).toThrow('No JSON found in model response');
   });
 
+  test('throws a clear error (not a TypeError) when called with undefined — regression for ERR-JOB-007', () => {
+    // Triggered when message.content[0].text is undefined (non-text block returned by Claude).
+    // Previously crashed as "Cannot read properties of undefined (reading 'replace')".
+    expect(() => extractJSON(undefined)).toThrow('No text content returned by model');
+  });
+
+  test('throws a clear error when called with null', () => {
+    expect(() => extractJSON(null)).toThrow('No text content returned by model');
+  });
+
   test('repairs an unescaped double-quote inside an array element (the "Expected \',\' or \']\'" bug)', () => {
     // Mimics the production failure: the model wrote a bullet point with an unescaped
     // quoted program name, breaking the string mid-array-element. extractJSON used to

@@ -5,11 +5,26 @@
 
 **Last updated:** 2026-07-07
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 346/346 green (338/338 mocked; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `639a22a` (local ahead)
+**Tests:** 348/348 green (340/340 mocked; 8 real-API tests in test.js are transiently flaky — known, pre-existing) · **origin/main HEAD:** `61d4f03` (local ahead)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Bug fix: ERR-JOB-007 on /fetch-job** —
+
+  `extractJSON` in `core/json.js` called `.replace()` on its `text` argument without
+  checking its type first. When Claude returns a non-text content block (e.g. a
+  `tool_use` block as `content[0]`), `message.content[0].text` is `undefined` and the
+  call crashed with "Cannot read properties of undefined (reading 'replace')" — surfaced
+  to the caller as `ERR-JOB-007`.
+
+  Fix: one-line type guard at the top of `extractJSON`:
+  `if (typeof text !== 'string') throw new Error('No text content returned by model');`
+  This converts the opaque TypeError into a clear, actionable error message.
+
+  Regression tests (2) added to `core/json.test.js`: `undefined` and `null` inputs
+  now throw the new clear error instead of crashing. Total: 348/348 green.
 
 - **Donation button (Phase 3)** —
 

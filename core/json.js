@@ -40,6 +40,7 @@ function sanitizeJsonControlChars(raw) {
 // trust JSON.parse(extractJSON(text)) to either succeed or throw a clear error, never to
 // throw the original confusing low-level JSON.parse position error.
 function extractJSON(text) {
+  if (typeof text !== 'string') throw new Error('No text content returned by model');
   text = text.replace(/```json|```/g, '').trim();
   const start = text.search(/[{[]/);
   if (start === -1) throw new Error('No JSON found in model response');
