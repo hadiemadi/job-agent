@@ -635,10 +635,10 @@ function showValidationNudge(data, route) {
   show('nudgePopupOverlay');
 }
 
-// The full, unchanged "Something went wrong" dialog for real failures — technical metadata
-// ONLY: code, route, timestamp. Never the candidate's CV text, job description body, name, or
-// email — those never reach this function in the first place, since the server only ever sends
-// back a code + a static catalog message (core/errorCodes.js).
+// The full "Something went wrong" dialog for real failures — technical metadata ONLY:
+// code, route, timestamp. Never the candidate's CV text, job description body, name, or
+// email — those never reach this function (server only sends back a code + catalog message).
+// Feedback is auto-captured on button click — no typing required.
 function showTechnicalErrorDialog(data, route) {
   const code = data.error_code;
   const message = data.error || 'Something unexpected went wrong.';
@@ -658,14 +658,6 @@ function showTechnicalErrorDialog(data, route) {
         '<div class="err-popup-code" id="errPopupCode"></div>' +
         '<div class="err-popup-time" id="errPopupTime"></div>' +
         '<div class="err-popup-blob" id="errPopupBlob"></div>' +
-        '<div class="err-popup-feedback" id="errPopupFeedback" style="display:none;">' +
-          '<textarea class="err-popup-note-input" id="errPopupMsgInput" rows="3" maxlength="500" placeholder="What were you doing when this happened? (optional — no personal data please)"></textarea>' +
-          '<input class="err-popup-email-input" id="errPopupEmailInput" type="email" maxlength="254" placeholder="Contact email (optional — only if you want a reply)" />' +
-          '<div class="err-popup-feedback-actions">' +
-            '<button class="btn btn-ghost btn-sm" id="errPopupFeedbackCancelBtn" type="button">Cancel</button>' +
-            '<button class="btn btn-blue btn-sm" id="errPopupFeedbackSubmitBtn" type="button">Send</button>' +
-          '</div>' +
-        '</div>' +
         '<div class="err-popup-sent" id="errPopupSent" style="display:none;">Feedback sent — thank you!</div>' +
         '<div class="err-popup-actions">' +
           '<span class="err-popup-copy-status" id="errPopupCopyStatus" style="display:none;">Copied</span>' +
@@ -677,7 +669,6 @@ function showTechnicalErrorDialog(data, route) {
     document.body.appendChild(overlay);
     el('errPopupCloseBtn').addEventListener('click', () => {
       hide('errPopupOverlay');
-      hide('errPopupFeedback');
       hide('errPopupSent');
     });
     el('errPopupCopyBtn').addEventListener('click', async () => {
@@ -687,25 +678,21 @@ function showTechnicalErrorDialog(data, route) {
         setTimeout(() => hide('errPopupCopyStatus'), 2000);
       } catch (_) { /* clipboard unavailable — blob is still selectable */ }
     });
-    el('errPopupFeedbackBtn').addEventListener('click', () => {
-      el('errPopupMsgInput').value = '';
-      el('errPopupEmailInput').value = '';
-      hide('errPopupSent');
-      show('errPopupFeedback');
-    });
-    el('errPopupFeedbackCancelBtn').addEventListener('click', () => hide('errPopupFeedback'));
-    el('errPopupFeedbackSubmitBtn').addEventListener('click', async () => {
-      const msg = (el('errPopupMsgInput').value || '').trim();
-      const email = (el('errPopupEmailInput').value || '').trim();
-      const currentCode = el('errPopupCode').textContent;
+    // Auto-capture: on click, immediately POST the error context — no form, no typing.
+    el('errPopupFeedbackBtn').addEventListener('click', async () => {
+      el('errPopupFeedbackBtn').disabled = true;
       try {
         await fetch('/feedback', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: currentCode, route: route || '', message: msg, contact_email: email || null }),
+          body: JSON.stringify({
+            code: el('errPopupCode').textContent,
+            route: route || '',
+            message: '',
+            contact_email: null,
+          }),
         });
       } catch (_) { /* fire-and-forget */ }
-      hide('errPopupFeedback');
       show('errPopupSent');
     });
   }
@@ -715,8 +702,8 @@ function showTechnicalErrorDialog(data, route) {
   el('errPopupTime').textContent = timestamp;
   el('errPopupBlob').textContent = blob;
   hide('errPopupCopyStatus');
-  hide('errPopupFeedback');
   hide('errPopupSent');
+  if (el('errPopupFeedbackBtn')) el('errPopupFeedbackBtn').disabled = false;
   show('errPopupOverlay');
 }
 

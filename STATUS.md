@@ -11,6 +11,19 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **Fix batch (4/4): Feedback auto-capture on error popup** —
+
+  "Send feedback" button on the error dialog no longer opens a textarea/email form.
+  On click it immediately POSTs `{ code, route, message: '', contact_email: null }` to
+  `/feedback` (fire-and-forget), then shows "Feedback sent — thank you!" in-place.
+  The button is disabled after clicking to prevent double-sends.
+
+  No typing required — the full error context (code, route, timestamp) is already shown
+  in the popup and is captured automatically.
+
+  Unused CSS removed: `.err-popup-feedback`, `.err-popup-note-input`,
+  `.err-popup-email-input`, `.err-popup-feedback-actions`. Tests: 350/350 green.
+
 - **Fix batch (3/4): Inline Preferences + Advanced options for logged-in users** —
 
   For logged-in users, "Preferences" and "Advanced options" are now always-visible labeled
