@@ -87,6 +87,13 @@ async function meteredCreate(params) {
       effectiveParams = { ...params, model: sess.clientPreferences.model };
     }
   } catch (e) { /* no session context — use params.model */ }
+  // Fable 5 always has thinking on — thinking tokens are drawn from max_tokens, so a call
+  // with a small budget (e.g. 400 or 2500) gets entirely consumed by thinking before any text
+  // output can be written, causing "No text content returned by model" on every attempt.
+  // Enforce a floor: any Fable 5 call with fewer than 4096 tokens gets boosted to 4096.
+  if (effectiveParams.model === 'claude-fable-5' && (effectiveParams.max_tokens || 0) < 4096) {
+    effectiveParams = { ...effectiveParams, max_tokens: 4096 };
+  }
   const response = await rawMessagesCreate(effectiveParams);
   recordUsage(response.usage, effectiveParams.model);
   return response;

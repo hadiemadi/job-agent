@@ -445,7 +445,7 @@ Go through the checklist one item at a time. Return JSON only:
         : baseMessages;
     message = await client.messages.create({
       model: MODEL,
-      max_tokens: 2500,
+      max_tokens: 8192, // full source CV + tailored CV JSON in context; Fable 5 thinking needs headroom
       system: preReleaseReviewPrompt(),
       messages: msgs,
     });

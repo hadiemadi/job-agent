@@ -11,6 +11,28 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **fix(ERR-CV-004b): Fable 5 thinking exhausts max_tokens before text output** —
+
+  Root cause identified via ERR-CV-004b / stage: initial_review: `reviewTailoredCV` used
+  `max_tokens: 2500`. Claude Fable 5 always has thinking ON — thinking tokens are drawn from
+  the same `max_tokens` budget, so the entire allocation was consumed by thinking before any
+  text output could be written, causing "No text content returned by model" on every attempt.
+
+  The same problem exists for all functions with small budgets when the user picks Fable 5 via
+  the model picker (`claude-fable-5` is an option in the logged-in model picker; the meteredCreate
+  per-session override applies the selected model to every API call in the flow).
+
+  **Fix (two parts):**
+  1. `core/claude.js` `meteredCreate`: enforces a minimum `max_tokens: 4096` when the resolved
+     model is `claude-fable-5`. Protects every current and future call site centrally — any
+     function with a small budget (e.g. `refineWithHR: 400`, `chatWithHRExpert: 900`) is
+     automatically covered when Fable 5 is selected.
+  2. `agents/recruiter.js` `reviewTailoredCV`: raised `max_tokens: 2500 → 8192` — it receives
+     the full source CV + tailored CV JSON in context and legitimately needs more budget
+     regardless of model/thinking.
+
+  Tests: 391/391. No behavior change on non-Fable-5 paths.
+
 - **feat(diagnostics): sub-error codes + console mirror for ERR-CV-004 pipeline** —
 
   Two changes to make the gap→tailor failure path self-describing without DB access:
