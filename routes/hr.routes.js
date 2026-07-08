@@ -9,7 +9,7 @@ const { setGaps, getGap, proposeStatement, setUserDecision, buildSharedGapContex
 const { createJob, updateJob } = require('../services/jobQueue');
 const { sendError } = require('../core/respondError');
 const { logEvent, logDiagnostic } = require('../core/logger');
-const { saveProfilePreferences, getProfilePreferences, saveConversationHistory, upsertGapMemory } = require('../services/auth');
+const { saveProfilePreferences, getProfilePreferences, saveConversationHistory, upsertGapMemory, listGapMemory } = require('../services/auth');
 
 // Builds the profile-preferences snapshot from the current session state — used by both the
 // confirm-contact save and the HR-completion safety upsert to guarantee they write the same shape.
@@ -25,6 +25,26 @@ function buildProfilePrefs(session) {
     extensiveSearch: !!p.extensiveSearch,
     refreshDiscipline: !!p.refreshDiscipline,
   };
+}
+
+// Fetches all gap_memory rows for a user and builds a context block of coach verdicts +
+// HR statements across every gap they have ever discussed. HR Expert is permitted to read
+// both fields. The block is appended to the shared context sent to chatWithHRExpert so the
+// sidebar agent stays consistent with prior judgments across sessions.
+async function buildGapMemoryBlock(userId) {
+  if (!userId) return '';
+  let rows;
+  try { rows = await listGapMemory(userId); } catch (_) { return ''; }
+  const lines = (rows || [])
+    .filter(r => r.coach_verdict || r.hr_statement)
+    .map(r => {
+      const parts = [`Gap: "${r.gap_slogan}"`];
+      if (r.coach_verdict) parts.push('Coach verdict: ' + String(r.coach_verdict).slice(0, 150));
+      if (r.hr_statement)  parts.push('HR statement: '  + String(r.hr_statement).slice(0, 150));
+      return parts.join('\n');
+    });
+  if (!lines.length) return '';
+  return 'PRIOR GAP HISTORY (from previous sessions with this candidate):\n' + lines.join('\n\n');
 }
 
 const router = express.Router();
@@ -312,9 +332,12 @@ router.post('/hr/chat', async (req, res) => {
       finalMessage = `[Discussing this CV excerpt: "${concern.selectedText}"]\n\n${message}` +
         (concern.isFirst ? '\n\n(This is the start of this discussion — first briefly quote or restate the excerpt above to confirm you understood what they\'re referring to, then respond to their point.)' : '');
     }
+    const sessionCtx = buildSharedGapContext(null);
+    const memCtx     = await buildGapMemoryBlock(appSession.userId);
+    const sharedCtx  = [sessionCtx, memCtx].filter(Boolean).join('\n\n');
     const { reply, thread } = await chatWithHRExpert(
       appSession.cvText, appSession.currentJob, appSession.hrThread, finalMessage, model, appSession.clientPreferences,
-      buildSharedGapContext(null)
+      sharedCtx
     );
     appSession.hrThread = thread;
     appSession.hrDisplayHistory = [...appSession.hrDisplayHistory, { role: 'user', text: message }, { role: 'expert', text: reply }];
@@ -350,3 +373,4 @@ router.post('/hr/apply-concern', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.buildGapMemoryBlock = buildGapMemoryBlock;

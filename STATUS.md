@@ -5,11 +5,23 @@
 
 **Last updated:** 2026-07-08
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 396/396 green · **origin/main HEAD:** (pending push)
+**Tests:** 401/401 green · **origin/main HEAD:** (pending push)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **feat(hr-expert): cross-session gap context — coach_verdict + hr_statement in /hr/chat** —
+  `POST /hr/chat` now fetches all `gap_memory` rows for the authenticated user via
+  `listGapMemory` and builds a `PRIOR GAP HISTORY` context block (coach_verdict + hr_statement
+  per gap). This is merged with the existing in-session `buildSharedGapContext` output and
+  passed to `chatWithHRExpert`, so the HR Expert sidebar on the Tailored CV page is aware of
+  prior judgments from earlier sessions — not just the current flow.
+  `chatWithHRExpert` and `refineWithHR` already share `hrSystemPrompt` — no divergence found.
+  `buildGapMemoryBlock` exported for unit testing.
+  Tests (+5 in `routes/hr.routes.test.js`): empty for guest (no userId); includes coach_verdict
+  + hr_statement across multiple gaps; filters empty-activity gaps; returns `''` on all-inactive;
+  returns `''` when listGapMemory throws. Tests: 401/401 green.
 
 - **fix(coach): Deep research turn cap corrected from 4 to 5** —
   `buildPriorGapBlock` (`agents/coach.js`): `turns.slice(-4)` → `turns.slice(-5)`.
