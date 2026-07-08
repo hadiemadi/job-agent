@@ -13,6 +13,8 @@
 
 - **fix(session): sid cookie changed to session cookie — closes all tabs resets to upload screen** (`services/session.js`) — Removed `maxAge` from the `sid` cookie so it expires when the browser closes. Reopening the site now always starts from the upload screen instead of resuming mid-flow.
 
+- **fix(cv-page): move data injection to type="application/json" scripts** (`render/cvHtml.js`) — Eliminates the U+2028/U+2029 SyntaxError root cause permanently: JOB_DATA and HR_DISPLAY_HISTORY now live in `<script type="application/json">` elements (immune to JS line-terminator rules); main script reads them with `JSON.parse`. Also fixes tooltip sticking after click by removing `:focus::after` from the tooltip CSS rule.
+
 - **fix(test-mode): skip write→review→revise loop** (`services/workflows.js`) — Root cause of "still slow in test mode": `tailorCvWithReview` runs up to 6 sequential calls. Fix: bail after the first write when `testMode` is true.
 
 - **feat(test-mode): Test mode speed cuts — token cap + skip classify + no web search** (`core/claude.js`, `routes/cv.routes.js`) — In test mode: all Claude calls capped at 600 output tokens (faster responses across the entire flow); `classify()` API call skipped on `/confirm-contact`; `extensiveSearch` forced off. Stacks on top of the Haiku + 3-gap cap already in place.

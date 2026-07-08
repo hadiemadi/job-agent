@@ -122,17 +122,11 @@ function generateExecutiveTemplate(cv, job, opts = {}) {
   const { hrDisplayHistory = [], aiSpendUsd = 0 } = opts;
   const pageHtml = renderCVPage(cv, job, { editable: true, showBadge: true });
 
-  // Escapes JSON for safe embedding in a <script> block.
-  // JSON.stringify does NOT escape U+2028/U+2029 (Unicode line/paragraph separators) —
-  // those are valid JSON but act as JS line terminators, producing a SyntaxError that
-  // silently breaks every onclick handler and event listener on the page.
-  const LSEP = String.fromCharCode(8232); // U+2028 LINE SEPARATOR
-  const PSEP = String.fromCharCode(8233); // U+2029 PARAGRAPH SEPARATOR
-  const safeEmbed = obj =>
-    JSON.stringify(obj)
-      .split(LSEP).join('\\u2028')
-      .split(PSEP).join('\\u2029')
-      .replace(/<\/script/gi, '<\\/script');
+  // Serialize data for <script type="application/json"> elements.
+  // U+2028/U+2029 are harmless inside type="application/json" scripts (parsed as data,
+  // not as JS). Only </script> needs escaping — the HTML parser closes any script element
+  // on that sequence regardless of type attribute.
+  const jsonData = obj => JSON.stringify(obj).replace(/<\/script/gi, '<\\/script');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -189,11 +183,10 @@ ${CV_CSS}
   .donate-cancel:hover { color: var(--ink); }
 
   /* ── Tooltips on toolbar actions ─────────────────────── */
-  /* Plain CSS, no JS: shows on mouse hover AND keyboard focus (:focus-visible, with :focus as
-     a fallback for browsers that don't support :focus-visible), so keyboard-only users get
-     the same explanation as mouse users. */
+  /* Plain CSS, no JS: shows on mouse hover and keyboard focus (:focus-visible only —
+     NOT :focus, which keeps the tooltip visible after a mouse click). */
   [data-tooltip] { position: relative; }
-  [data-tooltip]:hover::after, [data-tooltip]:focus::after, [data-tooltip]:focus-visible::after {
+  [data-tooltip]:hover::after, [data-tooltip]:focus-visible::after {
     content: attr(data-tooltip);
     position: absolute; left: 0; top: calc(100% + 4px); transform: none;
     margin-left: 0; z-index: 10030;
@@ -404,9 +397,12 @@ ${pageHtml}
   </div>
 </div>
 
+<script type="application/json" id="cv-job-data">${jsonData(job)}</script>
+<script type="application/json" id="cv-hr-history">${jsonData(hrDisplayHistory)}</script>
 <script>
-  const JOB_DATA = ${safeEmbed(job)};
-  const HR_DISPLAY_HISTORY = ${safeEmbed(hrDisplayHistory)};
+  // Data loaded from type="application/json" elements — immune to U+2028/U+2029 SyntaxErrors.
+  const JOB_DATA = JSON.parse(document.getElementById('cv-job-data').textContent);
+  const HR_DISPLAY_HISTORY = JSON.parse(document.getElementById('cv-hr-history').textContent);
 
   // Single-line fields (.sl): block Enter, just commit on blur instead
   document.querySelectorAll('.sl').forEach(el => {
