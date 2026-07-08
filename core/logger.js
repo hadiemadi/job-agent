@@ -1,7 +1,7 @@
 'use strict';
 const crypto = require('crypto');
 const { getPool } = require('./db');
-const { als } = require('../services/session');
+const { als, getTraceId } = require('../services/session');
 
 // GDPR-driven allowlist: only these meta keys are ever written to the events/errors tables.
 // Everything else (cv text, job-description body, names, emails, file contents, request
@@ -86,9 +86,11 @@ async function logDiagnostic(label, data) {
     const pool = getPool();
     if (!pool) return;
     const sessionIdHash = hashSessionId(als.getStore());
+    let traceId = null;
+    try { traceId = getTraceId(); } catch (_) {}
     await pool.query(
       'INSERT INTO diagnostic_log (session_id_hash, label, data_json) VALUES ($1, $2, $3)',
-      [sessionIdHash, String(label).slice(0, 100), JSON.stringify(data)]
+      [sessionIdHash, String(label).slice(0, 100), JSON.stringify({ traceId, ...data })]
     );
   } catch (err) {
     console.warn('[logger] logDiagnostic failed (non-fatal):', err.message);

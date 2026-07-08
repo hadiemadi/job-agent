@@ -32,6 +32,12 @@ const router = express.Router();
 router.post('/review-cv', async (req, res) => {
   try {
     const appSession = getSession();
+    logDiagnostic('/review-cv.session_check', {
+      hasCvText: !!(appSession && appSession.cvText),
+      hasCurrentJob: !!(appSession && appSession.currentJob),
+      hasHrReview: !!(appSession && appSession.hrReview),
+      hasStepTimestamps: !!(appSession && appSession.stepTimestamps && Object.keys(appSession.stepTimestamps).length > 0),
+    });
     if (!appSession.cvText) return sendError(res, '/review-cv', 'ERR-HR-001');
     const { job } = req.body;
     if (!job) return sendError(res, '/review-cv', 'ERR-HR-002');
@@ -206,6 +212,13 @@ router.post('/generate-interview-questions', async (req, res) => {
 router.post('/hr/refine', async (req, res) => {
   try {
     const appSession = getSession();
+    logDiagnostic('/hr/refine.session_check', {
+      hasCvText: !!(appSession && appSession.cvText),
+      hasCurrentJob: !!(appSession && appSession.currentJob),
+      hasHrReview: !!(appSession && appSession.hrReview),
+      hasStepTimestamps: !!(appSession && appSession.stepTimestamps && Object.keys(appSession.stepTimestamps).length > 0),
+      gapsCount: (appSession && appSession.gaps || []).length,
+    });
     if (!appSession.cvText) return sendError(res, '/hr/refine', 'ERR-HR-001');
     const { gapId } = req.body;
     const gap = getGap(gapId);

@@ -16,7 +16,7 @@ const authRoutes = require('./routes/auth.routes');
 const feedbackRoutes = require('./routes/feedback.routes');
 const donateRoutes  = require('./routes/donate.routes');
 const { sendError } = require('./core/respondError');
-const { logError } = require('./core/logger');
+const { logError, logDiagnostic } = require('./core/logger');
 const { TRIAL_MODE } = require('./core/config');
 
 // Process-level safety net — these fire OUTSIDE any request's try/catch (e.g. a bug in a
@@ -26,10 +26,22 @@ const { TRIAL_MODE } = require('./core/config');
 process.on('uncaughtException', (err) => {
   console.error('[uncaughtException]', err);
   logError('ERR-SYS-001', 'process', { errName: err && err.name });
+  logDiagnostic('process_crash', { // fire-and-forget — no behavior change
+    type: 'uncaughtException',
+    errName: err ? err.name : null,
+    excerpt: ((err && err.message) || '').slice(0, 200),
+    stack: ((err && err.stack) || '').slice(0, 400),
+  });
 });
 process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection]', reason);
   logError('ERR-SYS-001', 'process', { errName: reason && reason.name });
+  logDiagnostic('process_crash', { // fire-and-forget — no behavior change
+    type: 'unhandledRejection',
+    errName: reason instanceof Error ? reason.name : typeof reason,
+    excerpt: (reason instanceof Error ? reason.message : String(reason || '')).slice(0, 200),
+    stack: (reason instanceof Error ? (reason.stack || '') : '').slice(0, 400),
+  });
 });
 
 // Render's disk is ephemeral — these must exist fresh every boot, not just on first

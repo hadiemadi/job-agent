@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const path = require('path');
 const fse = require('fs-extra');
 const PizZip = require('pizzip');
@@ -68,6 +69,10 @@ router.post('/upload-cv', upload.single('cv'), async (req, res) => {
         appSession.cvData = cvData;
         await updateJob(jobId, { status: 'done', current_step: '', result: { cvData } });
         appSession.stepTimestamps = { ...(appSession.stepTimestamps || {}), cvUploadCompletedAt: Date.now() };
+        // Anchor a trace ID to this upload — auto-threaded into all subsequent logDiagnostic
+        // calls for this flow via logger.js's getTraceId(), so the full timeline of a single
+        // upload→HR review→tailor attempt can be pulled from diagnostic_log with one filter.
+        appSession.traceId = crypto.randomBytes(8).toString('hex');
         logEvent('cv_uploaded', { route: '/upload-cv', outcome: 'ok' });
       } catch (err) {
         await fse.remove(cvPath).catch(() => {});
@@ -142,6 +147,15 @@ router.post('/rewrite', async (req, res) => {
     const appSession = getSession();
     const { job } = req.body;
     const cvText = appSession.cvText;
+    // Integrity check BEFORE guards — fires even on the error paths, so we capture the
+    // session state at the moment of failure (not just on success paths).
+    logDiagnostic('/rewrite.session_check', {
+      hasCvText: !!appSession.cvText,
+      hasHrReview: !!(appSession.hrReview),
+      hasCurrentJob: !!(appSession.currentJob),
+      hasStepTimestamps: !!(appSession.stepTimestamps && Object.keys(appSession.stepTimestamps).length > 0),
+      gapsCount: (appSession.gaps || []).length,
+    });
     // Guard: cvText is null when the session expired during idle (laptop sleep/lock).
     // Fail fast here with a clean validation error instead of crashing inside
     // extractContactInfo() with "Cannot read properties of null (reading 'replace')".

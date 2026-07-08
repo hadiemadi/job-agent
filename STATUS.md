@@ -5,11 +5,45 @@
 
 **Last updated:** 2026-07-08
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 391/391 green · **origin/main HEAD:** (pending push)
+**Tests:** 391/391 green · **origin/main HEAD:** pending push
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Session crash/instability investigation — traceId + process crash detection + session_check** —
+
+  Task 2 of the ERR-CV-004/ERR-HR-005 root-cause investigation. Adds four observability layers
+  that let a single flow's full timeline be pulled from `diagnostic_log` by one filter, and
+  detect whether failures are caused by a process crash, a wiped session, or genuine model
+  fragility.
+
+  **What was added (no behavior change — diagnostics only):**
+
+  1. **`traceId` threading** — generated at CV upload (`crypto.randomBytes(8)`), stored as
+     `appSession.traceId`. `core/logger.js`'s `logDiagnostic` now auto-includes `traceId` in
+     every `data_json` entry (via new `getTraceId()` in `services/session.js` — side-effect-free,
+     does NOT call `getSession()` so no `lastSeen` mutation on diagnostic writes). Every step
+     in a single upload→HR review→tailor flow shares one `traceId` for easy correlation.
+
+  2. **Process crash detection** — `server.js`'s existing `uncaughtException` /
+     `unhandledRejection` handlers now ALSO call `logDiagnostic('process_crash', { type,
+     errName, excerpt, stack })` fire-and-forget. Previously only `logError` was called —
+     crashes not visible in `diagnostic_log` at all.
+
+  3. **Session_check diagnostics** — At the START of `/rewrite`, `/review-cv`, and
+     `/hr/refine` (before any early-return guards), a `*.session_check` diagnostic is logged
+     with `hasCvText`, `hasHrReview`, `hasCurrentJob`, `hasStepTimestamps`, and `gapsCount`.
+     Fires even on the error paths, so a wiped/empty session at the point of failure is visible.
+
+  **Files changed:**
+  - `services/session.js` — `traceId: null` in `createSession()`; new `getTraceId()` fn; exported
+  - `core/logger.js` — imports `getTraceId`; auto-includes `traceId` in `logDiagnostic` data_json
+  - `server.js` — imports `logDiagnostic`; adds `logDiagnostic('process_crash', …)` to both crash handlers
+  - `routes/cv.routes.js` — `crypto.randomBytes(8)` generates `appSession.traceId` at upload; `/rewrite.session_check` before guards
+  - `routes/hr.routes.js` — `/review-cv.session_check` + `/hr/refine.session_check` before guards
+
+  Tests: 391/391 (no new tests needed — all diagnostic paths are no-ops in the test environment where `DATABASE_URL` is unset, identical to existing `logDiagnostic` no-op behavior). No behavior change.
 
 - **Diagnostic logging — isolate ERR-CV-004 / ERR-HR-005 root causes** —
 
@@ -896,25 +930,58 @@ Once basic auth lands, set it from the session and queries can be scoped to real
 
 ## ▶️ Suggested next action
 
-**Diagnostic logging shipped — push `main` then monitor production logs:**
+**Investigation infrastructure landed — re-test ERR-CV-004/ERR-HR-005, then pull the trace:**
 
-To read diagnostic data from the live Render DB:
+1. **Trigger a failure** — rapid-click "Tailor my CV" right after HR review completes, and/or
+   hit `/hr/refine` while the previous result is fresh.
+
+2. **Pull the full trace** for that one attempt:
 ```sql
-SELECT ts, label, data_json FROM diagnostic_log ORDER BY ts DESC LIMIT 50;
--- Filter by error type:
-SELECT * FROM diagnostic_log WHERE data_json->>'outcome' = 'both_failed' ORDER BY ts DESC;
--- Correlate with errors table:
-SELECT d.ts, d.label, d.data_json, e.error_code FROM diagnostic_log d
-  JOIN errors e ON d.session_id_hash = e.session_id_hash AND e.ts BETWEEN d.ts - interval '30s' AND d.ts + interval '30s'
+-- Find the traceId of the failing flow (look at session_check rows near the error time):
+SELECT ts, label, data_json
+  FROM diagnostic_log
+  WHERE ts > now() - interval '30m'
+  ORDER BY ts DESC LIMIT 60;
+
+-- Once you have a traceId, pull the entire flow timeline:
+SELECT ts, label, data_json
+  FROM diagnostic_log
+  WHERE data_json->>'traceId' = '<paste-trace-id-here>'
+  ORDER BY ts;
+
+-- Look for wiped session (smoking gun: session_check with hasCvText: false):
+SELECT ts, label, data_json
+  FROM diagnostic_log
+  WHERE label LIKE '%.session_check'
+    AND (data_json->>'hasCvText')::boolean = false
+  ORDER BY ts DESC LIMIT 20;
+
+-- Look for process crashes (Render restart or OOM kill):
+SELECT ts, data_json FROM diagnostic_log
+  WHERE label = 'process_crash' ORDER BY ts DESC LIMIT 10;
+
+-- Correlate both_failed with session state at the same time:
+SELECT d.ts, d.label, d.data_json, e.error_code
+  FROM diagnostic_log d
+  JOIN errors e ON d.session_id_hash = e.session_id_hash
+    AND e.ts BETWEEN d.ts - interval '60s' AND d.ts + interval '60s'
   WHERE d.data_json->>'outcome' IN ('retry_triggered', 'both_failed')
   ORDER BY d.ts DESC;
 ```
 
-**What to look for in the logs:**
-- `both_failed` → genuine model fragility (retry didn't help)
-- `retry_triggered` → first-attempt issue; if followed by no `both_failed` → race or transient
-- `/rewrite.pre_call` with `hasHrReview: false` → race condition (rewrite called before review completed)
-- `timeSinceHrReviewMs: null` → step timestamps not set (shouldn't happen after this commit)
+3. **Render dashboard check** — in Render Dashboard → Logs, filter around 2026-07-07T22:14
+   and 22:19 for any service restart, OOM kill, or deploy event. A restart wipes in-memory
+   sessions (no `process_crash` row would exist — the session_check rows would show
+   `hasCvText: false` on the next request after the restart).
+
+**What each diagnostic label tells you:**
+| label | Meaning if suspicious |
+|---|---|
+| `*.session_check hasCvText: false` | Session wiped — server restart is the likely cause |
+| `process_crash` | Node crashed mid-request — check `type`, `excerpt`, `stack` |
+| `*.session_check hasHrReview: false` at `/rewrite` | Race — CV write called before HR review finished |
+| `both_failed` | Model returned non-JSON twice — genuine fragility, retry didn't help |
+| `retry_triggered` but no `both_failed` | First attempt failed, retry rescued — transient |
 
 **Remaining backlog** is either Mode B (market/scrape — complex, blocked on
 `agents/researcher.js` live search) or infrastructure (GDPR, PayPal).

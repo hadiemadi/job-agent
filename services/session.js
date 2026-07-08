@@ -50,6 +50,10 @@ function createSession() {
     // Pipeline step completion timestamps — used by diagnostic logging to compute timing
     // between steps (e.g. how long between hrReviewCompletedAt and the next /rewrite call).
     stepTimestamps: {},
+    // Unique identifier generated at CV upload — auto-threaded into every logDiagnostic call
+    // for this flow (via core/logger.js's getTraceId()) so a full flow's diagnostic timeline
+    // can be pulled from diagnostic_log by a single WHERE data_json->>'traceId' = '...' query.
+    traceId: null,
   };
 }
 
@@ -69,6 +73,14 @@ function setSession(next) {
   next.lastSeen = Date.now();
   sessions.set(sid, next);
   return next;
+}
+
+// Side-effect-free traceId reader for core/logger.js's logDiagnostic. Does NOT call
+// getSession() to avoid updating lastSeen on every diagnostic write.
+function getTraceId() {
+  const sid = als.getStore();
+  const session = sid ? sessions.get(sid) : null;
+  return session ? (session.traceId || null) : null;
 }
 
 // ── Session-scoped output files (CVs, cover letters, comparisons — anything written to
@@ -229,5 +241,5 @@ if (sweepInterval.unref) sweepInterval.unref();
 module.exports = {
   getSession, setSession, als, sessionMiddleware, requestScope, createSession,
   registerOutputFile, isOwnedOutputFile, getOutputDownloadName, purgeSessionData,
-  addSessionSpend, getSessionSpend,
+  addSessionSpend, getSessionSpend, getTraceId,
 };
