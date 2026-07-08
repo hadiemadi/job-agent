@@ -5,31 +5,27 @@
 
 **Last updated:** 2026-07-08
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 391/391 green · **origin/main HEAD:** pending push
+**Tests:** 391/391 green · **origin/main HEAD:** 50e9e53
 
 ---
 
 ## ✅ Recently shipped (on `main`)
 
-- **fix(ERR-CV-004b): Fable 5 thinking exhausts max_tokens before text output** —
+- **fix(ERR-CV-004b): model-aware thinking overhead in meteredCreate** —
 
-  Root cause identified via ERR-CV-004b / stage: initial_review: `reviewTailoredCV` used
-  `max_tokens: 2500`. Claude Fable 5 always has thinking ON — thinking tokens are drawn from
-  the same `max_tokens` budget, so the entire allocation was consumed by thinking before any
-  text output could be written, causing "No text content returned by model" on every attempt.
+  Root cause: Fable 5 always has thinking ON; thinking tokens draw from the same `max_tokens`
+  pool as text output. Functions with small budgets (e.g. `refineWithHR: 400`) had their entire
+  allocation consumed by thinking before any text was written → "No text content returned by
+  model" on every attempt, including retries.
 
-  The same problem exists for all functions with small budgets when the user picks Fable 5 via
-  the model picker (`claude-fable-5` is an option in the logged-in model picker; the meteredCreate
-  per-session override applies the selected model to every API call in the flow).
+  **Fix:** `meteredCreate` now adds a per-model `THINKING_OVERHEAD` on top of whatever
+  `max_tokens` the function requested. Each function's value means "I need this many OUTPUT
+  tokens"; `meteredCreate` ensures the thinking model gets that plus its overhead:
 
-  **Fix (two parts):**
-  1. `core/claude.js` `meteredCreate`: enforces a minimum `max_tokens: 4096` when the resolved
-     model is `claude-fable-5`. Protects every current and future call site centrally — any
-     function with a small budget (e.g. `refineWithHR: 400`, `chatWithHRExpert: 900`) is
-     automatically covered when Fable 5 is selected.
-  2. `agents/recruiter.js` `reviewTailoredCV`: raised `max_tokens: 2500 → 8192` — it receives
-     the full source CV + tailored CV JSON in context and legitimately needs more budget
-     regardless of model/thinking.
+  - Fable 5: `+4000` thinking overhead applied centrally to every call
+  - Other models (Opus 4.8, Sonnet 5, Haiku 4.5): `+0` — no overhead, no behavior change
+
+  `reviewTailoredCV` also raised 2500 → 8192 (full source CV + tailored CV JSON in context).
 
   Tests: 391/391. No behavior change on non-Fable-5 paths.
 

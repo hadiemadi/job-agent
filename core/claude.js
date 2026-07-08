@@ -87,12 +87,15 @@ async function meteredCreate(params) {
       effectiveParams = { ...params, model: sess.clientPreferences.model };
     }
   } catch (e) { /* no session context — use params.model */ }
-  // Fable 5 always has thinking on — thinking tokens are drawn from max_tokens, so a call
-  // with a small budget (e.g. 400 or 2500) gets entirely consumed by thinking before any text
-  // output can be written, causing "No text content returned by model" on every attempt.
-  // Enforce a floor: any Fable 5 call with fewer than 4096 tokens gets boosted to 4096.
-  if (effectiveParams.model === 'claude-fable-5' && (effectiveParams.max_tokens || 0) < 4096) {
-    effectiveParams = { ...effectiveParams, max_tokens: 4096 };
+  // Thinking models draw their thinking budget from the same max_tokens pool as text output.
+  // Each function's max_tokens expresses how many tokens it wants for OUTPUT — we add the
+  // model's thinking overhead on top so the output budget is always fully available.
+  // Fable 5: thinking is always on, typically 2000-5000 tokens depending on task complexity.
+  // Other models (Opus 4.8, Sonnet 5): thinking is off unless explicitly requested — no overhead.
+  const THINKING_OVERHEAD = { 'claude-fable-5': 4000 };
+  const overhead = THINKING_OVERHEAD[effectiveParams.model] || 0;
+  if (overhead > 0) {
+    effectiveParams = { ...effectiveParams, max_tokens: (effectiveParams.max_tokens || 1024) + overhead };
   }
   const response = await rawMessagesCreate(effectiveParams);
   recordUsage(response.usage, effectiveParams.model);
