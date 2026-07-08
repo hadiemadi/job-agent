@@ -274,9 +274,18 @@ input[type="range"] { width:100%; cursor:pointer; accent-color:var(--accent); }
 .chat-bubble.user { background:var(--accent); color:white; align-self:flex-end; border-bottom-right-radius:3px; }
 .chat-bubble.coach { background:var(--surface); border:1px solid var(--border); color:#222; align-self:flex-start; border-bottom-left-radius:3px; }
 .chat-bubble.hr-msg { background:#E6F1FB; border:1px solid var(--accent); color:var(--accent-dark); align-self:flex-start; border-bottom-left-radius:3px; }
-.chat-input-row { display:flex; gap:8px; align-items:flex-end; }
+.chat-input-row { display:flex; gap:6px; align-items:flex-end; }
 .chat-input-row textarea { flex:1; resize:none; height:56px; }
 .chat-footer { display:flex; justify-content:flex-end; margin-top:8px; }
+
+/* Mic button — hidden unless browser supports Web Speech API (.voice-supported on body) */
+.btn-mic { display:none; width:30px; height:30px; min-width:30px; padding:0; border:none;
+  border-radius:50%; background:rgba(32,32,30,0.1); cursor:pointer; align-items:center;
+  justify-content:center; color:var(--muted); transition:background 0.15s, color 0.15s; flex-shrink:0; }
+.btn-mic:hover { background:rgba(32,32,30,0.18); color:var(--ink); }
+.btn-mic.recording { background:#fef2f2; color:#dc2626; animation:mic-pulse 1s ease-in-out infinite; }
+.voice-supported .btn-mic { display:inline-flex; }
+@keyframes mic-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(220,38,38,0.4); } 50% { box-shadow:0 0 0 6px rgba(220,38,38,0); } }
 
 /* Comparison result card */
 .result-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }

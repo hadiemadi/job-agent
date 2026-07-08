@@ -11,6 +11,22 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **feat(ui): voice-to-text — mic button in Coach chat and HR Expert sidebar** —
+  Web Speech API (`SpeechRecognition` / `webkitSpeechRecognition`) wired into both chat
+  inputs. Mic button appears only when the browser supports the API (feature-detected at
+  startup via body class `.voice-supported`). Click to start → recording state (pulsing red
+  indicator) → transcript populates the textarea (never auto-sent — user reviews first) →
+  silence timeout or second click stops. Inline error shown for mic-denied / no-speech.
+  - Coach chat (`public/app.js`): `toggleCoachVoice(i)` global function; one mic button per
+    gap card (`#coach-mic-N`). Error shown in the card's existing `#chat-status-N` element.
+  - HR Expert sidebar (`render/cvHtml.js`): `toggleHrVoice()` global; `#hrMicBtn` between
+    textarea and Send. Inline error injected above the input row.
+  - CSS (`.btn-mic`, `.recording`, `@keyframes mic-pulse`) in both `public/style.css` and
+    inline in `render/cvHtml.js` (standalone page has no shared stylesheet).
+  - `public/index.html`: one-line inline script adds `voice-supported` to `body` when SR
+    is available — CSS rule `.voice-supported .btn-mic` shows the buttons.
+  No backend changes. Tests: 401/401 green.
+
 - **feat(hr-expert): cross-session gap context — coach_verdict + hr_statement in /hr/chat** —
   `POST /hr/chat` now fetches all `gap_memory` rows for the authenticated user via
   `listGapMemory` and builds a `PRIOR GAP HISTORY` context block (coach_verdict + hr_statement

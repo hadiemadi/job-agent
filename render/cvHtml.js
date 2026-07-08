@@ -227,6 +227,13 @@ ${CV_CSS}
   .hr-sb-input-row textarea { flex: 1; resize: none; height: 44px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; }
   .hr-sb-send { border: none; background: var(--accent); color: white; border-radius: var(--radius-sm); padding: 0 14px; cursor: pointer; font-size: 13px; }
   .hr-sb-send:disabled { background: #bbb; cursor: not-allowed; }
+  /* Mic button — mirrors public/style.css but self-contained since this is a standalone page */
+  .btn-mic { display:none; width:30px; height:30px; min-width:30px; padding:0; border:none;
+    border-radius:50%; background:rgba(32,32,30,0.1); cursor:pointer; align-items:center;
+    justify-content:center; color:#555; transition:background 0.15s, color 0.15s; flex-shrink:0; }
+  .btn-mic:hover { background:rgba(32,32,30,0.18); color:#111; }
+  .btn-mic.recording { background:#fef2f2; color:#dc2626; animation:mic-pulse 1s ease-in-out infinite; }
+  @keyframes mic-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,0.4);}50%{box-shadow:0 0 0 6px rgba(220,38,38,0);} }
 
   /* ── CV selection → HR concern ───────────────────────── */
   /* Highlighted text stays marked from the moment it's raised until the discussion resolves
@@ -357,6 +364,7 @@ ${CV_CSS}
   </div>
   <div class="hr-sb-input-row">
     <textarea id="hrSbInput" placeholder="Ask about your CV, this job, or your edits…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendHrMessage();}"></textarea>
+    <button class="hr-mic btn-mic" id="hrMicBtn" onclick="toggleHrVoice()" title="Voice input" aria-label="Voice input" style="display:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
     <button class="hr-sb-send" id="hrSbSend" onclick="sendHrMessage()">Send</button>
   </div>
 </div>
@@ -976,6 +984,36 @@ ${pageHtml}
 
   // Sidebar should never start empty — open with the HR expert explaining what just changed
   (HR_DISPLAY_HISTORY || []).forEach(m => addHrBubble(m.role, m.text));
+
+  // Voice-to-text for the HR Expert sidebar (Web Speech API).
+  // Mic button is rendered with style="display:none"; shown here if browser supports SR.
+  (function initHrVoice() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const btn = document.getElementById('hrMicBtn');
+    if (!SR || !btn) return;
+    btn.style.display = '';
+    let rec = null;
+    window.toggleHrVoice = function toggleHrVoice() {
+      if (rec) { rec.stop(); return; }
+      const input = document.getElementById('hrSbInput');
+      if (!input) return;
+      rec = new SR();
+      rec.continuous = false; rec.interimResults = true; rec.lang = 'en-US';
+      rec.onstart = function() { btn.classList.add('recording'); btn.setAttribute('aria-label', 'Recording — click to stop'); };
+      rec.onresult = function(e) { input.value = Array.from(e.results).map(function(r){return r[0].transcript;}).join(''); };
+      rec.onerror = function(e) {
+        btn.classList.remove('recording'); btn.setAttribute('aria-label', 'Voice input'); rec = null;
+        var msg = e.error === 'not-allowed' ? 'Mic access denied.' : 'No speech detected.';
+        var errEl = document.createElement('div');
+        errEl.style.cssText = 'font-size:11px;color:#dc2626;padding:4px 16px;';
+        errEl.textContent = msg;
+        var row = btn.closest('.hr-sb-input-row');
+        if (row) { row.insertAdjacentElement('beforebegin', errEl); setTimeout(function(){errEl.remove();}, 3000); }
+      };
+      rec.onend = function() { btn.classList.remove('recording'); btn.setAttribute('aria-label', 'Voice input'); rec = null; };
+      rec.start();
+    };
+  }());
 
   async function sendHrMessage() {
     const input = document.getElementById('hrSbInput');
