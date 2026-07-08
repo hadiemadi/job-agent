@@ -27,6 +27,10 @@ async function tailorCvWithReview({
     );
   } catch (err) { err.code = 'ERR-CV-004a'; err.stage = 'initial_draft'; throw err; }
 
+  // Test mode: skip the review+revision loop entirely — avoids up to 5 extra API calls.
+  // A truncated 600-token CV would always fail the reviewer's check, triggering all 3 passes.
+  if (preferences && preferences.testMode) return { ...writerResult, review: null };
+
   let review;
   try {
     review = await reviewTailoredCV({ tailoredCv: writerResult.cvData, job, sourceCvText: cvText });

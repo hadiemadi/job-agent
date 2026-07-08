@@ -13,6 +13,8 @@
 
 - **fix(session): sid cookie changed to session cookie — closes all tabs resets to upload screen** (`services/session.js`) — Removed `maxAge` from the `sid` cookie so it expires when the browser closes. Reopening the site now always starts from the upload screen instead of resuming mid-flow.
 
+- **fix(test-mode): skip write→review→revise loop** (`services/workflows.js`) — Root cause of "still slow in test mode": `tailorCvWithReview` runs up to 6 sequential calls. Fix: bail after the first write when `testMode` is true.
+
 - **feat(test-mode): Test mode speed cuts — token cap + skip classify + no web search** (`core/claude.js`, `routes/cv.routes.js`) — In test mode: all Claude calls capped at 600 output tokens (faster responses across the entire flow); `classify()` API call skipped on `/confirm-contact`; `extensiveSearch` forced off. Stacks on top of the Haiku + 3-gap cap already in place.
 
 - **feat(test-mode): Test mode checkbox in Advanced options** —
