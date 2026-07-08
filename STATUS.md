@@ -11,6 +11,14 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **feat(coach): Deep research mode + Coach verdict format** —
+  1. "Live web research" checkbox renamed to **"Deep research mode"** in both Advanced panels (sidebar + contact modal). Hover tooltip added explaining it covers two things: live web research for CV conventions AND full Coach conversation history from prior sessions.
+  2. `buildPriorGapBlock` (`agents/coach.js`) now accepts `extensive` flag. Default (off): injects only `coach_verdict` + `hr_statement` + `user_decision` from prior sessions — faster, fewer tokens. Deep research mode on: also includes last 4 conversation turns.
+  3. `chatWithCoach` reads `preferences.extensiveSearch` and passes it as the `extensive` flag — no route changes needed.
+  4. Coach inline system prompt: verdict responses now open with a brief echo of the candidate's key input, then judgment, then advice. Follow-up questions remain 1-2 sentences only.
+  5. `knowledge/coach-core.md` updated with the same verdict-format instruction.
+  6. Pure-CSS `data-tooltip` support added to `public/style.css`.
+
 - **fix(cv-page): SyntaxError in showCvPageError/showCvPageInfo kills all JS** (`render/cvHtml.js`) —
   `\'` inside a backtick template literal is consumed (backslash stripped), so the generated
   HTML's `<script>` block received bare unescaped `'` characters inside single-quoted strings.

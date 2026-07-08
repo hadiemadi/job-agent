@@ -422,3 +422,16 @@ input[type="range"] { width:100%; cursor:pointer; accent-color:var(--accent); }
 .about-sep { color:var(--border); }
 .about-link { color:var(--accent); text-decoration:none; }
 .about-link:hover { text-decoration:underline; }
+
+/* ── Inline tooltips (data-tooltip attribute) ────────────────────────────────── */
+[data-tooltip] { position:relative; cursor:help; }
+[data-tooltip]::after {
+  content:attr(data-tooltip);
+  position:absolute; left:0; top:calc(100% + 6px);
+  background:#1f2937; color:#f9fafb;
+  font-size:11px; line-height:1.45; font-weight:400;
+  padding:6px 10px; border-radius:5px;
+  white-space:normal; width:240px; pointer-events:none;
+  opacity:0; z-index:200; transition:opacity 0.12s;
+}
+[data-tooltip]:hover::after { opacity:1; }
