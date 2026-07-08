@@ -11,6 +11,29 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **fix(cv-page): remove HR model picker, fix tooltips, null-safe HR history** (`render/cvHtml.js`) —
+
+  Five regressions on the Tailored CV page fixed:
+
+  1. **HR sidebar model picker removed** — `<select class="hr-sb-model" id="hrModelChoice">` and its 3
+     options (Sonnet 4.6 / Opus 4.8 / Haiku 4.5) removed from the sidebar header. Model is already
+     chosen on the Preferences page and applied session-wide via `meteredCreate`; no per-chat override needed.
+     `sendHrMessage()` updated to not send `model` in the request body (server uses session model).
+     `setBusy()` selector updated from `.hr-sb-model` to `.hr-sb-send` (disables the Send button instead).
+     CSS `.hr-sb-model` rule removed.
+
+  2. **HR chat null safety** — `HR_DISPLAY_HISTORY.forEach(...)` → `(HR_DISPLAY_HISTORY || []).forEach(...)`.
+     If the injected value is `null` instead of `[]`, the `forEach` no longer throws a `TypeError`
+     that could silently leave the chat empty.
+
+  3. **Tooltip CSS repositioned** — Tooltip `::after` was at `left: 100%; top: 50%` (to the right of each
+     button). The toolbar has `overflow-y: auto` which forces `overflow-x: auto`, clipping anything past
+     the 230px right edge — so all tooltips were invisible. Changed to `left: 0; top: calc(100% + 4px)`
+     (below the button, full button width). Now visible for all buttons except the donate button at the
+     very bottom of the sidebar (acceptable tradeoff vs. all buttons being invisible).
+
+  No behavior change on success paths. Tests: 391/391 (no route changes).
+
 - **feat(diagnostics): deploy version in all error dialogs** (`d16a526`) —
   `RENDER_GIT_COMMIT` served as `/version.js` → `window.APP_VERSION`; every error blob
   now includes `version: d16a526` so the exact deployed commit is always known when

@@ -183,13 +183,13 @@ ${CV_CSS}
   [data-tooltip] { position: relative; }
   [data-tooltip]:hover::after, [data-tooltip]:focus::after, [data-tooltip]:focus-visible::after {
     content: attr(data-tooltip);
-    position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
-    margin-left: 10px; z-index: 10030;
-    width: 210px; background: #111; color: #fff; font-size: 11.5px; line-height: 1.45;
-    font-weight: 400; font-family: var(--font-ui); padding: 7px 10px; border-radius: 6px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.35); pointer-events: none; white-space: normal;
+    position: absolute; left: 0; top: calc(100% + 4px); transform: none;
+    margin-left: 0; z-index: 10030;
+    width: 100%; background: rgba(10,10,8,0.92); color: #fff; font-size: 11px; line-height: 1.45;
+    font-weight: 400; font-family: var(--font-ui); padding: 6px 9px; border-radius: 5px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.45); pointer-events: none; white-space: normal;
   }
-  .tb-btn:disabled, .tb-select:disabled, .hr-sb-model:disabled { opacity: 0.45; cursor: not-allowed; }
+  .tb-btn:disabled, .tb-select:disabled, .hr-sb-send:disabled { opacity: 0.45; cursor: not-allowed; }
   .tb-row { display: flex; gap: 6px; align-items: center; }
   .tb-row .tb-select { flex: 1; min-width: 0; }
   .tb-go { width: auto; flex-shrink: 0; padding: 8px 12px; text-align: center; }
@@ -208,7 +208,6 @@ ${CV_CSS}
   .hr-sidebar.collapsed { transform: translateX(100%); }
   .hr-sb-header { padding: 56px 16px 12px; border-bottom: 1px solid #eee; display: flex; flex-direction: column; gap: 8px; }
   .hr-sb-title { font-size: 13px; font-weight: 600; color: var(--ink); }
-  .hr-sb-model { padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; font-family: inherit; }
   .hr-sb-messages { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
   .hr-sb-bubble { padding: 10px 13px; border-radius: 10px; font-size: 13.5px; line-height: 1.6; max-width: 90%; word-wrap: break-word; }
   .hr-sb-bubble p { margin: 0 0 8px; }
@@ -339,11 +338,6 @@ ${CV_CSS}
 <div class="hr-sidebar" id="hrSidebar">
   <div class="hr-sb-header">
     <span class="hr-sb-title">Ask your HR Expert</span>
-    <select class="hr-sb-model" id="hrModelChoice">
-      <option value="claude-sonnet-4-6" selected>Sonnet 4.6</option>
-      <option value="claude-opus-4-8">Opus 4.8</option>
-      <option value="claude-haiku-4-5">Haiku 4.5</option>
-    </select>
   </div>
   <div class="hr-sb-messages" id="hrSbMessages"></div>
   <div class="concern-banner" id="concernBanner" style="display:none;">
@@ -492,7 +486,7 @@ ${pageHtml}
     } else {
       overlay.classList.remove('open');
     }
-    document.querySelectorAll('.tb-btn, .tb-select, .hr-sb-model').forEach(function(b) {
+    document.querySelectorAll('.tb-btn, .tb-select, .hr-sb-send').forEach(function(b) {
       b.disabled = on;
     });
   }
@@ -969,20 +963,19 @@ ${pageHtml}
   }
 
   // Sidebar should never start empty — open with the HR expert explaining what just changed
-  HR_DISPLAY_HISTORY.forEach(m => addHrBubble(m.role, m.text));
+  (HR_DISPLAY_HISTORY || []).forEach(m => addHrBubble(m.role, m.text));
 
   async function sendHrMessage() {
     const input = document.getElementById('hrSbInput');
     const sendBtn = document.getElementById('hrSbSend');
     const message = input.value.trim();
     if (!message) return;
-    const model = document.getElementById('hrModelChoice').value;
     addHrBubble('user', message);
     input.value = '';
     sendBtn.disabled = true;
     setBusy(true, '', { overlay: false }); // chat bubble itself signals "in progress" — no popup needed
     try {
-      const body = { message, model };
+      const body = { message };
       if (activeConcern) {
         body.concern = { selectedText: activeConcern.selectedText, isFirst: !activeConcern.firstMessageSent };
         activeConcern.firstMessageSent = true;
