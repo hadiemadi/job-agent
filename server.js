@@ -64,6 +64,14 @@ app.get('/config.js', (req, res) => {
   res.type('application/javascript').send(`window.TRIAL_MODE = ${JSON.stringify(TRIAL_MODE)};`);
 });
 
+// Render sets RENDER_GIT_COMMIT automatically; locally it falls back to 'dev'.
+// Served as a synchronous <script> tag (same pattern as /config.js) so it's always
+// available before any error dialog fires — no fetch, no race condition.
+const APP_VERSION = (process.env.RENDER_GIT_COMMIT || 'dev').slice(0, 7);
+app.get('/version.js', (req, res) => {
+  res.type('application/javascript').send(`window.APP_VERSION = ${JSON.stringify(APP_VERSION)};`);
+});
+
 app.use(cookieParser());
 app.use(sessionMiddleware);
 // Passport: initialize only (no session serialization — we use our own session store in

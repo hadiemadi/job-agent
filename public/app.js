@@ -658,6 +658,7 @@ function showTechnicalErrorDialog(data, route) {
   const blobLines = [`error_code: ${code}`, `route: ${route || 'unknown'}`, `timestamp: ${timestamp}`];
   if (data.stage) blobLines.push(`stage: ${data.stage}`);
   if (data.traceId) blobLines.push(`traceId: ${data.traceId}`);
+  if (window.APP_VERSION) blobLines.push(`version: ${window.APP_VERSION}`);
   const blob = blobLines.join('\n');
 
   let overlay = el('errPopupOverlay');
