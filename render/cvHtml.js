@@ -441,7 +441,7 @@ ${pageHtml}
           '<div style="font-weight:600;font-size:15px;color:#b91c1c;margin-bottom:8px;">Something went wrong</div>' +
           '<div id="cvErrMsg" style="font-size:13.5px;color:#374151;line-height:1.5;margin-bottom:16px;"></div>' +
           '<div style="text-align:right;">' +
-            '<button onclick="document.getElementById(\'cvErrOverlay\').style.display=\'none\'" ' +
+            '<button onclick="document.getElementById(\\'cvErrOverlay\\').style.display=\\'none\\'" ' +
               'style="background:#185FA5;color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:13px;cursor:pointer;">Close</button>' +
           '</div>' +
         '</div>';
@@ -461,7 +461,7 @@ ${pageHtml}
         '<div style="background:#fff;border-radius:10px;padding:22px 28px;max-width:400px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.18);font-family:var(--font-ui);">' +
           '<div id="cvInfoMsg" style="font-size:13.5px;color:#374151;line-height:1.5;margin-bottom:16px;"></div>' +
           '<div style="text-align:right;">' +
-            '<button onclick="document.getElementById(\'cvInfoOverlay\').style.display=\'none\'" ' +
+            '<button onclick="document.getElementById(\\'cvInfoOverlay\\').style.display=\\'none\\'" ' +
               'style="background:#185FA5;color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:13px;cursor:pointer;">OK</button>' +
           '</div>' +
         '</div>';

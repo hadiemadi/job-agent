@@ -11,6 +11,16 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **fix(cv-page): SyntaxError in showCvPageError/showCvPageInfo kills all JS** (`render/cvHtml.js`) —
+  `\'` inside a backtick template literal is consumed (backslash stripped), so the generated
+  HTML's `<script>` block received bare unescaped `'` characters inside single-quoted strings.
+  Browser JS parser saw a string-terminating `'` at `document.getElementById('cvErrOverlay')`
+  → SyntaxError at parse time → entire script block failed → every function undefined → all
+  buttons dead simultaneously. Fix: `\'` → `\\'` at lines 444 and 464 (8 occurrences total).
+  The `\\` in the template literal outputs `\` → generated HTML has valid `\'` escapes.
+  **After Render deploys: regenerate a fresh Tailored CV to get an HTML file built from the
+  fixed template. Old files in `output/` cannot be patched retroactively.**
+
 - **feat(ui): deploy version chip on all pages** — A small `vX1Y2Z3W` badge (7-char commit hash) now appears top-right on every page. Main page: `#versionChip` in `.header-actions`, populated by an inline script after `/version.js` loads. Tailored CV page: `#tb-version` at the top of the left toolbar, populated from the same `window.APP_VERSION` (CV page now loads `/version.js` in `<head>`). Lets you instantly confirm whether the latest deploy is running. `APP_VERSION` falls back to `'dev'` when `RENDER_GIT_COMMIT` is not set (local dev).
 
 - **fix(session): sid cookie changed to session cookie — closes all tabs resets to upload screen** (`services/session.js`) — Removed `maxAge` from the `sid` cookie so it expires when the browser closes. Reopening the site now always starts from the upload screen instead of resuming mid-flow.
