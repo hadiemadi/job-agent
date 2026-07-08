@@ -5,11 +5,23 @@
 
 **Last updated:** 2026-07-08
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 391/391 green · **origin/main HEAD:** (pending push — version badge)
+**Tests:** 396/396 green · **origin/main HEAD:** (pending push)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **fix(security): gap_memory field isolation — Coach reads only allowed fields** —
+  `findGapMemoryBySlogan` (`services/auth.js`) changed from `SELECT *` to
+  `SELECT gap_slogan, coach_conversation, coach_verdict` — `hr_statement` and `user_decision`
+  are now structurally absent from the query result, so they can never reach the Coach prompt
+  even if a future code change accidentally references them. `buildPriorGapBlock`
+  (`agents/coach.js`) had its `hr_statement` and `user_decision` references removed to match.
+  `buildPriorGapBlock` is now exported for testing.
+  Regression tests (+5 in `agents/coach.test.js`): default mode outputs verdict only (no
+  hr_statement, no user_decision, no conversation turns); extensive mode adds turns but still
+  no hr_statement/user_decision; empty-verdict object returns `''`; restricted-column shape
+  assertion. Tests: 396/396 green.
 
 - **feat(coach): Deep research mode + Coach verdict format** —
   1. "Live web research" checkbox renamed to **"Deep research mode"** in both Advanced panels (sidebar + contact modal). Hover tooltip added explaining it covers two things: live web research for CV conventions AND full Coach conversation history from prior sessions.

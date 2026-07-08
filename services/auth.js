@@ -220,7 +220,7 @@ async function findGapMemoryBySlogan(userId, gapSlogan) {
   const pool = getPool();
   if (!pool) return null;
   const { rows } = await pool.query(
-    'SELECT * FROM gap_memory WHERE user_id = $1 AND gap_slogan = $2',
+    'SELECT gap_slogan, coach_conversation, coach_verdict FROM gap_memory WHERE user_id = $1 AND gap_slogan = $2',
     [userId, gapSlogan]
   );
   return rows[0] || null;

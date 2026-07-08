@@ -230,8 +230,6 @@ function buildPriorGapBlock(prior, extensive = false) {
     }
   }
   if (prior.coach_verdict) parts.push('Coach\'s last verdict: ' + String(prior.coach_verdict).slice(0, 200));
-  if (prior.hr_statement) parts.push('HR\'s previous statement: ' + String(prior.hr_statement).slice(0, 200));
-  if (prior.user_decision) parts.push('Candidate\'s prior decision: ' + prior.user_decision);
   if (!parts.length) return '';
   return `PRIOR HISTORY FOR THIS GAP (from a previous session with this candidate):
 ${parts.join('\n')}
@@ -281,5 +279,5 @@ KEEP THIS SHORT — this is a quick check on one specific gap, not an open-ended
 
 module.exports = {
   analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps,
-  chatWithCoach, CAREER_COACH_PERSONA,
+  chatWithCoach, CAREER_COACH_PERSONA, buildPriorGapBlock,
 };
