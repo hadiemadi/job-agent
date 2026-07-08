@@ -174,13 +174,14 @@ function purgeSessionData() {
 // then narrows that scope down from the placeholder requestScope() establishes to the
 // real per-browser sid, via als.enterWith().
 const SID_COOKIE = 'sid';
-const SID_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function sessionMiddleware(req, res, next) {
   let sid = req.cookies && req.cookies[SID_COOKIE];
   if (!sid) {
     sid = crypto.randomUUID();
-    res.cookie(SID_COOKIE, sid, { httpOnly: true, sameSite: 'lax', maxAge: SID_MAX_AGE_MS });
+    // Session cookie (no maxAge/expires) — browser discards it when all windows are closed,
+    // so reopening the site always starts fresh from the upload screen.
+    res.cookie(SID_COOKIE, sid, { httpOnly: true, sameSite: 'lax' });
   }
   als.enterWith(sid);
   // A request body delivered over a real socket (as opposed to an in-process test client)

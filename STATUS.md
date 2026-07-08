@@ -11,6 +11,8 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **fix(session): sid cookie changed to session cookie — closes all tabs resets to upload screen** (`services/session.js`) — Removed `maxAge` from the `sid` cookie so it expires when the browser closes. Reopening the site now always starts from the upload screen instead of resuming mid-flow.
+
 - **feat(test-mode): Test mode checkbox in Advanced options** —
   Toggle on the right-column panel (Haiku · 3 gaps max). When checked:
   - Forces `claude-haiku-4-5` for ALL Claude API calls (overrides the model picker)
