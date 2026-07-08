@@ -172,13 +172,13 @@ List up to 20 gaps, ranked most to least severe. If the CV is an exceptionally s
 with very few genuine gaps, return fewer items rather than inventing weak ones.`;
   let message, raw;
   for (let attempt = 0; attempt <= 1; attempt++) {
+    let prevText = null;
+    if (attempt > 0) { try { prevText = firstText(message); } catch (_) {} }
     const msgs = attempt === 0
       ? [{ role: 'user', content: userMessage }]
-      : [
-          { role: 'user', content: userMessage },
-          { role: 'assistant', content: firstText(message) },
-          { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
-        ];
+      : prevText !== null
+        ? [{ role: 'user', content: userMessage }, { role: 'assistant', content: prevText }, { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' }]
+        : [{ role: 'user', content: userMessage }];
     message = await client.messages.create({ model: MODEL, max_tokens: 4000, messages: msgs });
     try {
       raw = extractJSON(firstText(message));

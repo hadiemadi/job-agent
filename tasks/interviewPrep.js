@@ -35,11 +35,12 @@ Return exactly 10 items in "questions".`;
   const messages = [...thread, { role: 'user', content: userMessage }];
   let message, raw;
   for (let attempt = 0; attempt <= 1; attempt++) {
-    const msgs = attempt === 0 ? messages : [
-      ...messages,
-      { role: 'assistant', content: firstText(message) },
-      { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
-    ];
+    let prevText = null;
+    if (attempt > 0) { try { prevText = firstText(message); } catch (_) {} }
+    const msgs = attempt === 0 ? messages
+      : prevText !== null
+        ? [...messages, { role: 'assistant', content: prevText }, { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' }]
+        : messages;
     message = await client.messages.create({
       model: MODEL,
       max_tokens: 4000,

@@ -169,11 +169,12 @@ Return JSON only:
   const messages = [...thread, { role: 'user', content: userMessage }];
   let message, raw;
   for (let attempt = 0; attempt <= 1; attempt++) {
-    const msgs = attempt === 0 ? messages : [
-      ...messages,
-      { role: 'assistant', content: firstText(message) },
-      { role: 'user', content: 'Your previous reply did not contain valid JSON. Reply again with ONLY the JSON object.' },
-    ];
+    let prevText = null;
+    if (attempt > 0) { try { prevText = firstText(message); } catch (_) {} }
+    const msgs = attempt === 0 ? messages
+      : prevText !== null
+        ? [...messages, { role: 'assistant', content: prevText }, { role: 'user', content: 'Your previous reply did not contain valid JSON. Reply again with ONLY the JSON object.' }]
+        : messages;
     message = await client.messages.create({
       model: MODEL,
       max_tokens: 3000,
@@ -267,11 +268,12 @@ clause, never a full sentence with subordinate clauses, never a paragraph.`;
   const messages = [...thread, { role: 'user', content: userMessage }];
   let response, raw;
   for (let attempt = 0; attempt <= 1; attempt++) {
-    const msgs = attempt === 0 ? messages : [
-      ...messages,
-      { role: 'assistant', content: firstText(response) },
-      { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
-    ];
+    let prevText = null;
+    if (attempt > 0) { try { prevText = firstText(response); } catch (_) {} }
+    const msgs = attempt === 0 ? messages
+      : prevText !== null
+        ? [...messages, { role: 'assistant', content: prevText }, { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' }]
+        : messages;
     response = await client.messages.create({
       model: MODEL,
       max_tokens: 400,
@@ -344,11 +346,12 @@ do not invent a statement just to have something to return.`;
   const baseMessages = [{ role: 'user', content: userMessage }];
   let response, raw;
   for (let attempt = 0; attempt <= 1; attempt++) {
-    const msgs = attempt === 0 ? baseMessages : [
-      ...baseMessages,
-      { role: 'assistant', content: firstText(response) },
-      { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
-    ];
+    let prevText = null;
+    if (attempt > 0) { try { prevText = firstText(response); } catch (_) {} }
+    const msgs = attempt === 0 ? baseMessages
+      : prevText !== null
+        ? [...baseMessages, { role: 'assistant', content: prevText }, { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' }]
+        : baseMessages;
     response = await client.messages.create({
       model: MODEL,
       max_tokens: 400,
@@ -434,11 +437,12 @@ Go through the checklist one item at a time. Return JSON only:
   const baseMessages = [{ role: 'user', content: userMessage }];
   let message, raw;
   for (let attempt = 0; attempt <= 1; attempt++) {
-    const msgs = attempt === 0 ? baseMessages : [
-      ...baseMessages,
-      { role: 'assistant', content: firstText(message) },
-      { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
-    ];
+    let prevText = null;
+    if (attempt > 0) { try { prevText = firstText(message); } catch (_) {} }
+    const msgs = attempt === 0 ? baseMessages
+      : prevText !== null
+        ? [...baseMessages, { role: 'assistant', content: prevText }, { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' }]
+        : baseMessages;
     message = await client.messages.create({
       model: MODEL,
       max_tokens: 2500,

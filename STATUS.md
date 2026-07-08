@@ -11,6 +11,31 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **fix(ERR-CV-004): safe retry construction when model returns no text block** —
+
+  Root cause: every retry loop constructs its attempt-1 message array with
+  `{ role: 'assistant', content: firstText(message) }` **outside** the try/catch. When attempt 0
+  returns no text block (model returned only thinking blocks — happens with Fable 5 where thinking
+  is always on, or when `max_tokens` is consumed before the text block starts), `firstText` throws
+  here, before the API retry is ever attempted. The catch block is never reached; the error
+  propagates immediately as "No text content returned by model" (ERR-CV-004).
+
+  **Fix:** Added `let prevText = null; if (attempt > 0) { try { prevText = firstText(X); } catch (_) {} }`
+  before each retry `msgs` construction. When `prevText` is null (no text block), the fallback omits the
+  broken assistant turn and re-sends the original messages (giving the model a second attempt with
+  sampling variance). When `prevText` is valid, correction-turn behavior is unchanged.
+
+  Also: `rewriteCVWithChanges` `max_tokens` raised 4096 → 8192 so Fable 5's thinking budget
+  doesn't consume the entire output window on long/detailed CVs.
+
+  **Files changed (11 call sites across 8 files):**
+  `core/claude.js` (createJsonCompletion), `agents/cvWriter.js` (parseCVStructure, rewriteCVWithChanges,
+  applyConcernChange), `agents/recruiter.js` (reviewCV, refineWithHR, draftFromSidebarDiscussion,
+  reviewTailoredCV), `agents/coach.js` (analyzeGaps), `agents/extractor.js` (parseJobFromText),
+  `tasks/coverLetter.js`, `tasks/interviewPrep.js`, `tasks/docxPlacement.js`.
+
+  Tests: 391/391. No behavior change on normal paths.
+
 - **Session crash/instability investigation — traceId + process crash detection + session_check** —
 
   Task 2 of the ERR-CV-004/ERR-HR-005 root-cause investigation. Adds four observability layers

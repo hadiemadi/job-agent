@@ -31,13 +31,13 @@ ${text}`;
   // Retry once if the model returns prose instead of JSON (ERR-JOB-007 root cause).
   let message, raw;
   for (let attempt = 0; attempt <= 1; attempt++) {
+    let prevText = null;
+    if (attempt > 0) { try { prevText = firstText(message); } catch (_) {} }
     const msgs = attempt === 0
       ? [{ role: 'user', content: userContent }]
-      : [
-          { role: 'user', content: userContent },
-          { role: 'assistant', content: firstText(message) },
-          { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
-        ];
+      : prevText !== null
+        ? [{ role: 'user', content: userContent }, { role: 'assistant', content: prevText }, { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' }]
+        : [{ role: 'user', content: userContent }];
     message = await client.messages.create({ model: MODEL, max_tokens: 1000, messages: msgs });
     try {
       raw = extractJSON(firstText(message));

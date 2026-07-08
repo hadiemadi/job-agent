@@ -124,13 +124,13 @@ ${cvText}
 Return ONLY the JSON, no explanation.`;
   let message, raw;
   for (let attempt = 0; attempt <= 1; attempt++) {
+    let prevText = null;
+    if (attempt > 0) { try { prevText = firstText(message); } catch (_) {} }
     const msgs = attempt === 0
       ? [{ role: 'user', content: userMessage }]
-      : [
-          { role: 'user', content: userMessage },
-          { role: 'assistant', content: firstText(message) },
-          { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
-        ];
+      : prevText !== null
+        ? [{ role: 'user', content: userMessage }, { role: 'assistant', content: prevText }, { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' }]
+        : [{ role: 'user', content: userMessage }];
     message = await client.messages.create({ model: MODEL, max_tokens: 4000, messages: msgs });
     try {
       raw = extractJSON(firstText(message));
@@ -332,14 +332,15 @@ IMPORTANT: skills and key_qualifications must be flat arrays of plain strings on
   const messages = [...thread, { role: 'user', content: userMessage }];
   let message, raw;
   for (let attempt = 0; attempt <= 1; attempt++) {
-    const msgs = attempt === 0 ? messages : [
-      ...messages,
-      { role: 'assistant', content: firstText(message) },
-      { role: 'user', content: 'Your previous reply did not contain valid JSON. Reply again with ONLY the JSON object.' },
-    ];
+    let prevText = null;
+    if (attempt > 0) { try { prevText = firstText(message); } catch (_) {} }
+    const msgs = attempt === 0 ? messages
+      : prevText !== null
+        ? [...messages, { role: 'assistant', content: prevText }, { role: 'user', content: 'Your previous reply did not contain valid JSON. Reply again with ONLY the JSON object.' }]
+        : messages;
     message = await client.messages.create({
       model: MODEL,
-      max_tokens: 4096, // bumped from 3500 to reduce truncation risk on long/senior CVs
+      max_tokens: 8192, // raised from 4096; Fable 5 uses thinking tokens from this budget
       system: writerSystemPrompt(cvText, job, preferences),
       messages: msgs,
     });
@@ -475,11 +476,12 @@ Return JSON only:
   const messages = [...thread, { role: 'user', content: userMessage }];
   let message, raw;
   for (let attempt = 0; attempt <= 1; attempt++) {
-    const msgs = attempt === 0 ? messages : [
-      ...messages,
-      { role: 'assistant', content: firstText(message) },
-      { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' },
-    ];
+    let prevText = null;
+    if (attempt > 0) { try { prevText = firstText(message); } catch (_) {} }
+    const msgs = attempt === 0 ? messages
+      : prevText !== null
+        ? [...messages, { role: 'assistant', content: prevText }, { role: 'user', content: 'Reply with ONLY the JSON object — no prose before or after it.' }]
+        : messages;
     message = await client.messages.create({
       model: MODEL,
       max_tokens: 500,

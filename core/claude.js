@@ -102,7 +102,10 @@ client.messages.create = meteredCreate;
 async function createJsonCompletion(params) {
   let messages = params.messages;
   let response = await client.messages.create({ ...params, messages });
-  let text = firstText(response);
+  // Safe: firstText throws when the model returns only thinking blocks (Fable 5, budget-limited
+  // runs). Keep text as undefined rather than propagating the throw before any retry.
+  let text;
+  try { text = firstText(response); } catch (_) {}
   let retried = false;
   try {
     extractJSON(text);
@@ -111,13 +114,15 @@ async function createJsonCompletion(params) {
     let excerpt = '';
     try { excerpt = (text || '').slice(0, 200); } catch (_) {}
     logDiagnostic('core.createJsonCompletion', { outcome: 'retry_triggered', excerpt }); // fire-and-forget
-    messages = [
-      ...messages,
-      { role: 'assistant', content: text },
-      { role: 'user', content: 'Your previous reply did not contain the requested JSON object. Reply again with ONLY the JSON object — no prose, no explanation, nothing before or after it.' },
-    ];
+    if (text) { // omit assistant turn when no text was returned — API rejects empty content
+      messages = [
+        ...messages,
+        { role: 'assistant', content: text },
+        { role: 'user', content: 'Your previous reply did not contain the requested JSON object. Reply again with ONLY the JSON object — no prose, no explanation, nothing before or after it.' },
+      ];
+    }
     response = await client.messages.create({ ...params, messages });
-    text = firstText(response);
+    try { text = firstText(response); } catch (_) { text = null; }
   }
   try {
     const raw = extractJSON(text);
