@@ -11,6 +11,18 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **fix(ui): #32 — Tailored-CV toolbar tooltips now appear to the right, never clipped** —
+  Root cause: `.cv-toolbar` has `overflow-y: auto`, which by the CSS spec also sets
+  `overflow-x` to `auto`, clipping any `position: absolute` child that extends beyond 230px.
+  Previous fix (put at `left:0; top: calc(100%+4px)`) dropped below buttons but was still
+  clipped near the bottom of the toolbar.
+  Fix: tooltip `::after` now uses `position: fixed` (not clipped by ancestor overflow) with
+  coordinates set to `left: right-edge+8px; top: vertical-center` via CSS custom properties
+  (`--tt-left`, `--tt-top`) written on `mouseenter` by a one-time JS event listener.
+  Result: tooltip always appears to the right of the hovered button, at its vertical centre,
+  fully visible regardless of scroll position or button location in the sidebar.
+  Tests: 401/401 green (no route changes).
+
 - **feat(ui): voice-to-text — mic button in Coach chat and HR Expert sidebar** —
   Web Speech API (`SpeechRecognition` / `webkitSpeechRecognition`) wired into both chat
   inputs. Mic button appears only when the browser supports the API (feature-detected at

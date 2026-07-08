@@ -184,14 +184,20 @@ ${CV_CSS}
   .donate-cancel:hover { color: var(--ink); }
 
   /* ── Tooltips on toolbar actions ─────────────────────── */
-  /* Plain CSS, no JS: shows on mouse hover and keyboard focus (:focus-visible only —
-     NOT :focus, which keeps the tooltip visible after a mouse click). */
+  /* position:fixed escapes the toolbar's overflow:auto clip so the tooltip is never cut off.
+     Coordinates are set to the right of the hovered button via a mouseenter JS handler below
+     (see "Tooltip positioning" script block). :focus-visible is kept for keyboard nav;
+     NOT :focus (would keep tooltip open after a mouse click). */
   [data-tooltip] { position: relative; }
   [data-tooltip]:hover::after, [data-tooltip]:focus-visible::after {
     content: attr(data-tooltip);
-    position: absolute; left: 0; top: calc(100% + 4px); transform: none;
-    margin-left: 0; z-index: 10030;
-    width: 100%; background: rgba(10,10,8,0.92); color: #fff; font-size: 11px; line-height: 1.45;
+    position: fixed;
+    left: var(--tt-left, 240px);
+    top: var(--tt-top, 50%);
+    transform: translateY(-50%);
+    z-index: 10030;
+    min-width: 180px; max-width: 260px;
+    background: rgba(10,10,8,0.92); color: #fff; font-size: 11px; line-height: 1.45;
     font-weight: 400; font-family: var(--font-ui); padding: 6px 9px; border-radius: 5px;
     box-shadow: 0 4px 14px rgba(0,0,0,0.45); pointer-events: none; white-space: normal;
   }
@@ -415,6 +421,16 @@ ${pageHtml}
   const HR_DISPLAY_HISTORY = JSON.parse(document.getElementById('cv-hr-history').textContent);
 
   (function(){const v=document.getElementById('tb-version');if(v)v.textContent='v'+(window.APP_VERSION||'dev');})()
+
+  // Tooltip positioning — sets CSS custom properties so the ::after tooltip (position:fixed)
+  // appears to the right of the hovered button, escaping the sidebar's overflow clip.
+  document.querySelectorAll('[data-tooltip]').forEach(function(el) {
+    el.addEventListener('mouseenter', function() {
+      var r = el.getBoundingClientRect();
+      el.style.setProperty('--tt-left', (r.right + 8) + 'px');
+      el.style.setProperty('--tt-top',  (r.top + r.height / 2) + 'px');
+    });
+  });
 
   // Single-line fields (.sl): block Enter, just commit on blur instead
   document.querySelectorAll('.sl').forEach(el => {
