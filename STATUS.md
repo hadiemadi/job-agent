@@ -5,34 +5,50 @@
 
 **Last updated:** 2026-07-08
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 391/391 green · **origin/main HEAD:** d16a526
+**Tests:** 391/391 green · **origin/main HEAD:** (to be updated after push)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
 
-- **fix(cv-page): remove HR model picker, fix tooltips, null-safe HR history** (`render/cvHtml.js`) —
+- **fix(cv-page): U+2028/U+2029 breaks all JS on Tailored CV page** (`render/cvHtml.js`) —
 
-  Five regressions on the Tailored CV page fixed:
+  **Root cause of all 4 reported regressions** (buttons doing nothing, HR chat empty, no tooltips,
+  no selection popover): Job descriptions from Jooble can contain U+2028 (LINE SEPARATOR) or U+2029
+  (PARAGRAPH SEPARATOR) Unicode characters. `JSON.stringify` does NOT escape these — they are valid
+  JSON but are JavaScript line terminators. When embedded in the `<script>` block, they terminate
+  the string literal mid-value, producing a `SyntaxError` that silently breaks every function on
+  the page (`onclick` attributes fail, event listeners are never registered, HR history never renders).
 
-  1. **HR sidebar model picker removed** — `<select class="hr-sb-model" id="hrModelChoice">` and its 3
-     options (Sonnet 4.6 / Opus 4.8 / Haiku 4.5) removed from the sidebar header. Model is already
-     chosen on the Preferences page and applied session-wide via `meteredCreate`; no per-chat override needed.
-     `sendHrMessage()` updated to not send `model` in the request body (server uses session model).
-     `setBusy()` selector updated from `.hr-sb-model` to `.hr-sb-send` (disables the Send button instead).
-     CSS `.hr-sb-model` rule removed.
+  **Fix in `render/cvHtml.js`** — `generateExecutiveTemplate` now uses a `safeEmbed(obj)` helper
+  before injecting job/HR data into the template's `<script>` block:
 
-  2. **HR chat null safety** — `HR_DISPLAY_HISTORY.forEach(...)` → `(HR_DISPLAY_HISTORY || []).forEach(...)`.
-     If the injected value is `null` instead of `[]`, the `forEach` no longer throws a `TypeError`
-     that could silently leave the chat empty.
+  ```js
+  const LSEP = String.fromCharCode(8232); // U+2028 — String.fromCharCode avoids literal in Node source
+  const PSEP = String.fromCharCode(8233); // U+2029
+  const safeEmbed = obj =>
+    JSON.stringify(obj)
+      .split(LSEP).join('\\u2028')   // replace literal with 6-char escape sequence
+      .split(PSEP).join('\\u2029')
+      .replace(/<\/script/gi, '<\\/script');
+  ```
 
-  3. **Tooltip CSS repositioned** — Tooltip `::after` was at `left: 100%; top: 50%` (to the right of each
-     button). The toolbar has `overflow-y: auto` which forces `overflow-x: auto`, clipping anything past
-     the 230px right edge — so all tooltips were invisible. Changed to `left: 0; top: calc(100% + 4px)`
-     (below the button, full button width). Now visible for all buttons except the donate button at the
-     very bottom of the sidebar (acceptable tradeoff vs. all buttons being invisible).
+  `const JOB_DATA` and `const HR_DISPLAY_HISTORY` in the template now use `${safeEmbed(job)}` and
+  `${safeEmbed(hrDisplayHistory)}` instead of raw `JSON.stringify`.
 
-  No behavior change on success paths. Tests: 391/391 (no route changes).
+  Previously shipped in same batch (commit `631e232`):
+
+  1. **HR sidebar model picker removed** — `<select class="hr-sb-model">` removed from sidebar.
+     Model chosen on Preferences page; no per-chat override needed. `sendHrMessage()` and
+     `setBusy()` updated accordingly.
+
+  2. **HR chat null safety** — `(HR_DISPLAY_HISTORY || []).forEach(...)` guards against `null`.
+
+  3. **Tooltip CSS repositioned** — Tooltip was at `left: 100%` (clipped by toolbar's
+     `overflow-x: auto`). Now at `left: 0; top: calc(100% + 4px)` (below each button, visible).
+
+  Tests: 391/391 (no route changes). **Action required: regenerate a fresh Tailored CV to get
+  updated HTML — old output files were generated with the broken template.**
 
 - **feat(diagnostics): deploy version in all error dialogs** (`d16a526`) —
   `RENDER_GIT_COMMIT` served as `/version.js` → `window.APP_VERSION`; every error blob

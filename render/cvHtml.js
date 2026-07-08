@@ -122,6 +122,18 @@ function generateExecutiveTemplate(cv, job, opts = {}) {
   const { hrDisplayHistory = [], aiSpendUsd = 0 } = opts;
   const pageHtml = renderCVPage(cv, job, { editable: true, showBadge: true });
 
+  // Escapes JSON for safe embedding in a <script> block.
+  // JSON.stringify does NOT escape U+2028/U+2029 (Unicode line/paragraph separators) —
+  // those are valid JSON but act as JS line terminators, producing a SyntaxError that
+  // silently breaks every onclick handler and event listener on the page.
+  const LSEP = String.fromCharCode(8232); // U+2028 LINE SEPARATOR
+  const PSEP = String.fromCharCode(8233); // U+2029 PARAGRAPH SEPARATOR
+  const safeEmbed = obj =>
+    JSON.stringify(obj)
+      .split(LSEP).join('\\u2028')
+      .split(PSEP).join('\\u2029')
+      .replace(/<\/script/gi, '<\\/script');
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -393,8 +405,8 @@ ${pageHtml}
 </div>
 
 <script>
-  const JOB_DATA = ${JSON.stringify(job).replace(/<\/script/gi, '<\\/script')};
-  const HR_DISPLAY_HISTORY = ${JSON.stringify(hrDisplayHistory).replace(/<\/script/gi, '<\\/script')};
+  const JOB_DATA = ${safeEmbed(job)};
+  const HR_DISPLAY_HISTORY = ${safeEmbed(hrDisplayHistory)};
 
   // Single-line fields (.sl): block Enter, just commit on blur instead
   document.querySelectorAll('.sl').forEach(el => {
