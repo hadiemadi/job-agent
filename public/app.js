@@ -359,10 +359,11 @@ async function deleteMyCV(cvId) {
 // ── Model picker + cost estimator (logged-in users only) ──────────────────────
 
 const MODEL_OPTIONS = [
-  { id: 'claude-fable-5',   label: 'Fable 5',   desc: 'Highest accuracy, best for complex tailoring decisions', inputPer1M: 10, outputPer1M: 50  },
-  { id: 'claude-opus-4-8',  label: 'Opus 4.8',  desc: 'Strong reasoning, faster than Fable',                   inputPer1M: 5,  outputPer1M: 25  },
-  { id: 'claude-sonnet-5',  label: 'Sonnet 5',  desc: 'Best balance of speed, quality, and cost',              inputPer1M: 2,  outputPer1M: 10  },
-  { id: 'claude-haiku-4-5', label: 'Haiku 4.5', desc: 'Fastest, most economical',                              inputPer1M: 1,  outputPer1M: 5   },
+  { id: 'claude-fable-5',   label: 'Fable 5',         desc: 'Highest accuracy, best for complex tailoring decisions', inputPer1M: 10,    outputPer1M: 50   },
+  { id: 'claude-opus-4-8',  label: 'Opus 4.8',        desc: 'Strong reasoning, faster than Fable',                   inputPer1M: 5,     outputPer1M: 25   },
+  { id: 'claude-sonnet-5',  label: 'Sonnet 5',        desc: 'Best balance of speed, quality, and cost',              inputPer1M: 2,     outputPer1M: 10   },
+  { id: 'claude-haiku-4-5', label: 'Haiku 4.5',       desc: 'Fastest, most economical',                              inputPer1M: 1,     outputPer1M: 5    },
+  { id: 'deepseek-chat',    label: 'DeepSeek V4 Pro', desc: 'Very capable, significantly lower cost — uses DeepSeek API', inputPer1M: 0.435, outputPer1M: 0.87 },
 ];
 
 // Fixed pipeline assumptions for cost estimate: 4 pipeline steps (read CV, parse job,

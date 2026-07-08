@@ -3,13 +3,59 @@
 > Single source of truth for project state. Kept current automatically by Claude
 > Code (see CLAUDE.md). Update the date whenever it changes.
 
-**Last updated:** 2026-07-08
+**Last updated:** 2026-07-09
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 401/401 green · **origin/main HEAD:** (pending push)
+**Tests:** 416/416 green · **origin/main HEAD:** (pending push)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **fix(voice) + feat(llm): mic button fix + DeepSeek V4 Pro model integration** — 4 commits:
+
+  1. **`fix(voice)`** — Mic buttons invisible in Chrome (both Coach chat and HR Expert sidebar).
+     Root cause: `style="display:none;"` as an inline attribute on both mic button templates.
+     Inline styles (specificity 1,0,0) always beat class-selector CSS rules (0,2,0), so
+     `.voice-supported .btn-mic { display:inline-flex }` could never win, leaving buttons hidden
+     even in Chrome where `SpeechRecognition` is supported.
+     - `public/app.js`: removed `style="display:none;"` from the btn-mic template — CSS class
+       handles both states (`.btn-mic` hides by default; `.voice-supported .btn-mic` shows).
+     - `render/cvHtml.js`: same inline-style removal + `btn.style.display = 'inline-flex'` in
+       `initHrVoice()` (standalone CV page has no `.voice-supported` body class, so JS must
+       show the button directly rather than relying on the CSS class mechanism).
+     - Regression test in `public/app.test.js`: checks `app.js` source has no
+       `class="btn-mic"[^>]*style="…display:none"` template pattern.
+
+  2. **`feat(llm): core/llmClient.js`** — New provider abstraction layer.
+     - `callDeepseek(params)`: calls DeepSeek's OpenAI-compatible `/chat/completions` endpoint
+       via global `fetch` (Node.js 18+); throws tagged ERR-RATE-001 (429) or ERR-SYS-001
+       on any failure. Throws status 503 with a clear message if `DEEPSEEK_API_KEY` is not set.
+     - `normalizeDeepseekResponse(raw)`: converts `{choices,usage}` OpenAI shape to
+       `{content:[{type:'text',text}],usage:{input_tokens,output_tokens}}` Anthropic shape
+       so `firstText()` and `extractJSON()` work unchanged downstream.
+     - `toDeepseekParams(params)`: translates Anthropic-format params (separate `system` string)
+       to the OpenAI messages-array format DeepSeek expects.
+     - 12 tests: normalize, param translation, missing key, network error, 429/5xx, auth header,
+       `firstText()` compat.
+
+  3. **`feat(llm): meteredCreate DeepSeek routing + pricing`** — `core/claude.js` updated:
+     - `meteredCreate` routes `deepseek-*` models to `callDeepseek()`, all others stay on
+       `rawMessagesCreate` (Anthropic SDK). The 24 existing call sites are unchanged.
+     - `DEEPSEEK_PRICE_INPUT_PER_MTOK` ($0.435/Mtok default, env-overridable) and
+       `DEEPSEEK_PRICE_OUTPUT_PER_MTOK` ($0.87/Mtok) added; `recordUsage` selects the right
+       rate by checking `model.startsWith('deepseek-')`.
+     - `core/claude.test.js` extended: mocks `./llmClient`; routing assertion (callDeepseek
+       called for deepseek-chat); pricing assertion ($1.305 per 1M+1M tokens); sets
+       `DAILY_AI_BUDGET_USD=1000` in test env to prevent spend cap from blocking later tests.
+
+  4. **`feat(llm): DeepSeek V4 Pro in model picker`** — `public/app.js` MODEL_OPTIONS gains a
+     fifth entry: `{ id:'deepseek-chat', label:'DeepSeek V4 Pro', inputPer1M:0.435, outputPer1M:0.87 }`.
+     Cost estimator populates its estimate cell automatically. `public/app.test.js` updated:
+     model option count 4→5, cost cell count 4→5.
+
+  ⚠️ **DEEPSEEK_API_KEY must be set in Render environment** before DeepSeek V4 Pro can be used.
+  If selected when the key is absent, `callDeepseek` throws status 503 with a clear message —
+  it never silently fails. Set via Render Dashboard → Environment → `DEEPSEEK_API_KEY`.
 
 - **feat(ui): #33 — "Send feedback" button on standalone Tailored CV error dialog** —
   `showCvPageError` in `render/cvHtml.js` now accepts an optional `errCode` second parameter

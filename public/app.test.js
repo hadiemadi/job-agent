@@ -780,7 +780,7 @@ describe('Model picker — initModelPicker', () => {
     loadAppInDom();
     await new Promise(resolve => setTimeout(resolve, 0));
     const opts = document.querySelectorAll('.model-option');
-    expect(opts.length).toBe(4);
+    expect(opts.length).toBe(5);
   });
 
   test('the specified preferred model has the "selected" class', async () => {
@@ -820,7 +820,7 @@ describe('Model picker — initModelPicker', () => {
   test('cost cells are populated with Estimated cost text', async () => {
     window.initModelPicker('claude-sonnet-5');
     const costCells = document.querySelectorAll('.model-opt-cost');
-    expect(costCells.length).toBe(4);
+    expect(costCells.length).toBe(5);
     costCells.forEach(cell => {
       expect(cell.textContent).toContain('Estimated cost');
     });
