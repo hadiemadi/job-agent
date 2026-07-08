@@ -5,11 +5,13 @@
 
 **Last updated:** 2026-07-08
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 391/391 green · **origin/main HEAD:** (pending push)
+**Tests:** 391/391 green · **origin/main HEAD:** (pending push — version badge)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **feat(ui): deploy version chip on all pages** — A small `vX1Y2Z3W` badge (7-char commit hash) now appears top-right on every page. Main page: `#versionChip` in `.header-actions`, populated by an inline script after `/version.js` loads. Tailored CV page: `#tb-version` at the top of the left toolbar, populated from the same `window.APP_VERSION` (CV page now loads `/version.js` in `<head>`). Lets you instantly confirm whether the latest deploy is running. `APP_VERSION` falls back to `'dev'` when `RENDER_GIT_COMMIT` is not set (local dev).
 
 - **fix(session): sid cookie changed to session cookie — closes all tabs resets to upload screen** (`services/session.js`) — Removed `maxAge` from the `sid` cookie so it expires when the browser closes. Reopening the site now always starts from the upload screen instead of resuming mid-flow.
 

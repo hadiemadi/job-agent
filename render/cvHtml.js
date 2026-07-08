@@ -134,6 +134,7 @@ function generateExecutiveTemplate(cv, job, opts = {}) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${cv.name} — CV for ${job.job_title}</title>
+<script src="/version.js"></script>
 <style>
 ${CV_CSS}
   /* ── Inline editing ─────────────────────────────────── */
@@ -292,6 +293,7 @@ ${CV_CSS}
 <body>
 
 <div class="cv-toolbar">
+  <div id="tb-version" style="font-size:10px;color:rgba(255,255,255,0.3);font-family:monospace;margin-bottom:10px;"></div>
   <span class="tb-hint"><strong>✏ Edit mode</strong> — click any text to edit it directly &nbsp;·&nbsp; select text first to discuss a change with HR instead &nbsp;·&nbsp; Enter on bullet points adds a new bullet</span>
   <div class="tb-actions">
     <button class="tb-btn tb-save" onclick="saveHTML()" data-tooltip="Downloads the CV exactly as it currently appears on screen, including any edits you've made, as a standalone editable HTML file.">Save as HTML</button>
@@ -403,6 +405,8 @@ ${pageHtml}
   // Data loaded from type="application/json" elements — immune to U+2028/U+2029 SyntaxErrors.
   const JOB_DATA = JSON.parse(document.getElementById('cv-job-data').textContent);
   const HR_DISPLAY_HISTORY = JSON.parse(document.getElementById('cv-hr-history').textContent);
+
+  (function(){const v=document.getElementById('tb-version');if(v)v.textContent='v'+(window.APP_VERSION||'dev');})()
 
   // Single-line fields (.sl): block Enter, just commit on blur instead
   document.querySelectorAll('.sl').forEach(el => {
