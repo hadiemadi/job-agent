@@ -370,7 +370,7 @@ ${CV_CSS}
   </div>
   <div class="hr-sb-input-row">
     <textarea id="hrSbInput" placeholder="Ask about your CV, this job, or your edits…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendHrMessage();}"></textarea>
-    <button class="hr-mic btn-mic" id="hrMicBtn" onclick="toggleHrVoice()" title="Voice input" aria-label="Voice input" style="display:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
+    <button class="hr-mic btn-mic" id="hrMicBtn" onclick="toggleHrVoice()" title="Voice input" aria-label="Voice input"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
     <button class="hr-sb-send" id="hrSbSend" onclick="sendHrMessage()">Send</button>
   </div>
 </div>
@@ -1024,12 +1024,13 @@ ${pageHtml}
   (HR_DISPLAY_HISTORY || []).forEach(m => addHrBubble(m.role, m.text));
 
   // Voice-to-text for the HR Expert sidebar (Web Speech API).
-  // Mic button is rendered with style="display:none"; shown here if browser supports SR.
+  // The standalone CV page has no .voice-supported body class, so the button is shown directly
+  // via inline style instead of relying on the CSS class mechanism used in the main app.
   (function initHrVoice() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const btn = document.getElementById('hrMicBtn');
     if (!SR || !btn) return;
-    btn.style.display = '';
+    btn.style.display = 'inline-flex';
     let rec = null;
     window.toggleHrVoice = function toggleHrVoice() {
       if (rec) { rec.stop(); return; }

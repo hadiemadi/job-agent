@@ -1076,7 +1076,7 @@ function renderExpandedGapCard(i) {
         <div class="chat-messages" id="chat-msgs-${i}"></div>
         <div class="chat-input-row">
           <textarea class="chat-input" id="chat-input-${i}" placeholder="Talk to your Career Coach…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat(${i});}"></textarea>
-          <button class="btn-mic" id="coach-mic-${i}" onclick="toggleCoachVoice(${i})" title="Voice input" aria-label="Voice input" style="display:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
+          <button class="btn-mic" id="coach-mic-${i}" onclick="toggleCoachVoice(${i})" title="Voice input" aria-label="Voice input"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
           <button class="btn btn-blue btn-sm" onclick="sendChat(${i})">Send</button>
         </div>
         <div id="chat-status-${i}" class="info-msg" style="display:none;margin-top:6px;"></div>
@@ -1629,9 +1629,9 @@ async function getCareerPath(title, i) {
 }
 
 // Voice-to-text for Career Coach chat panels (Web Speech API).
-// Mic buttons render with style="display:none"; the voice-supported body class (set in the
-// inline script in index.html) and the CSS rule .voice-supported .btn-mic make them visible
-// when the browser supports SpeechRecognition — so no-support cases never see broken buttons.
+// Mic buttons are hidden by the CSS default (.btn-mic { display:none }). When the browser
+// supports SpeechRecognition, index.html's inline script adds .voice-supported to <body>,
+// activating .voice-supported .btn-mic { display:inline-flex }. No inline style needed.
 (function initCoachVoice() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return;

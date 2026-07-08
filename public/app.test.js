@@ -1006,3 +1006,16 @@ describe('updateGoBtnAvailability — 3-condition button gating', () => {
     expect(document.getElementById('goBtn').disabled).toBe(true);
   });
 });
+
+// ── Mic button regression — no inline display:none on btn-mic ─────────────
+
+describe('Coach mic button — template must not carry inline display:none', () => {
+  test('renderExpandedGapCard btn-mic has no inline display:none that defeats CSS class rule', () => {
+    // Regression: the old template had style="display:none" on .btn-mic buttons.
+    // An inline style (specificity 1,0,0) always beats a class-selector rule (0,2,0),
+    // so .voice-supported .btn-mic { display:inline-flex } could never override it in Chrome.
+    // Fix: rely solely on the CSS class; no inline display style on the template button.
+    const src = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+    expect(src).not.toMatch(/class="btn-mic"[^>]*style="[^"]*display\s*:\s*none/);
+  });
+});
