@@ -13,6 +13,8 @@
 
 - **fix(session): sid cookie changed to session cookie — closes all tabs resets to upload screen** (`services/session.js`) — Removed `maxAge` from the `sid` cookie so it expires when the browser closes. Reopening the site now always starts from the upload screen instead of resuming mid-flow.
 
+- **feat(test-mode): Test mode speed cuts — token cap + skip classify + no web search** (`core/claude.js`, `routes/cv.routes.js`) — In test mode: all Claude calls capped at 600 output tokens (faster responses across the entire flow); `classify()` API call skipped on `/confirm-contact`; `extensiveSearch` forced off. Stacks on top of the Haiku + 3-gap cap already in place.
+
 - **feat(test-mode): Test mode checkbox in Advanced options** —
   Toggle on the right-column panel (Haiku · 3 gaps max). When checked:
   - Forces `claude-haiku-4-5` for ALL Claude API calls (overrides the model picker)

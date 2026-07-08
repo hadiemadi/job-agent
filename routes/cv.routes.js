@@ -106,13 +106,17 @@ router.post('/confirm-contact', async (req, res) => {
   // discipline-specific skill claim (pinned into that field's knowledge store once the field
   // is known — see /review-cv). Best-effort: classification failure just falls back to
   // treating the comment as a plain general instruction.
+  // Test mode skips the Input Router classify() call (saves one API round-trip).
   let routedInstruction = null;
-  try {
-    routedInstruction = await classify(customInstructions || '');
-  } catch (e) { /* best-effort — comment still flows via customInstructions either way */ }
+  if (!testMode) {
+    try {
+      routedInstruction = await classify(customInstructions || '');
+    } catch (e) { /* best-effort — comment still flows via customInstructions either way */ }
+  }
   appSession.clientPreferences = {
     tone: tone || 4, customInstructions: customInstructions || '', languageLevel: 2,
-    extensiveSearch: !!extensiveSearch, conventionsResearch: '',
+    // Test mode forces extensiveSearch off regardless of checkbox — no web research calls.
+    extensiveSearch: testMode ? false : !!extensiveSearch, conventionsResearch: '',
     // "Refresh discipline knowledge from web" — wired through but currently a no-op: the
     // Researcher (agents/researcher.js) is a deliberate stub until live search is enabled.
     refreshDiscipline: !!refreshDiscipline,

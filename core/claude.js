@@ -83,10 +83,16 @@ async function meteredCreate(params) {
   let effectiveParams = params;
   try {
     const sess = getSession();
-    if (sess && sess.clientPreferences && sess.clientPreferences.model) {
-      effectiveParams = { ...params, model: sess.clientPreferences.model };
+    if (sess && sess.clientPreferences) {
+      const prefs = sess.clientPreferences;
+      if (prefs.model) effectiveParams = { ...effectiveParams, model: prefs.model };
+      // Test mode: cap output tokens so every call returns quickly. Content quality degrades
+      // but the full feature flow is testable. 600 is enough for valid JSON gap/review objects.
+      if (prefs.testMode) {
+        effectiveParams = { ...effectiveParams, max_tokens: Math.min(effectiveParams.max_tokens || 1024, 600) };
+      }
     }
-  } catch (e) { /* no session context — use params.model */ }
+  } catch (e) { /* no session context — use params as-is */ }
   // Thinking models draw their thinking budget from the same max_tokens pool as text output.
   // Each function's max_tokens expresses how many tokens it wants for OUTPUT — we add the
   // model's thinking overhead on top so the output budget is always fully available.
