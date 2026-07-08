@@ -3,6 +3,7 @@ const { extractJSON, firstText } = require('./json');
 const { addSessionSpend, getSession } = require('../services/session');
 const { taggedError } = require('./errorCodes');
 const { logEvent, logDiagnostic } = require('./logger');
+const { callDeepseek } = require('./llmClient');
 
 // The one Anthropic client + model constant for the whole app — both src/ai.js and
 // src/coach.js used to instantiate their own copy of this; centralizing it here means a
@@ -29,9 +30,11 @@ function envNumber(name, fallback) {
   return Number.isNaN(n) ? fallback : n;
 }
 
-const DAILY_AI_BUDGET_USD     = envNumber('DAILY_AI_BUDGET_USD', 5);
-const PRICE_INPUT_PER_MTOK    = envNumber('ANTHROPIC_PRICE_INPUT_PER_MTOK', 3);
-const PRICE_OUTPUT_PER_MTOK   = envNumber('ANTHROPIC_PRICE_OUTPUT_PER_MTOK', 15);
+const DAILY_AI_BUDGET_USD          = envNumber('DAILY_AI_BUDGET_USD', 5);
+const PRICE_INPUT_PER_MTOK         = envNumber('ANTHROPIC_PRICE_INPUT_PER_MTOK', 3);
+const PRICE_OUTPUT_PER_MTOK        = envNumber('ANTHROPIC_PRICE_OUTPUT_PER_MTOK', 15);
+const DEEPSEEK_PRICE_INPUT_PER_MTOK  = envNumber('DEEPSEEK_PRICE_INPUT_PER_MTOK',  0.435);
+const DEEPSEEK_PRICE_OUTPUT_PER_MTOK = envNumber('DEEPSEEK_PRICE_OUTPUT_PER_MTOK', 0.87);
 
 function utcDateString() {
   return new Date().toISOString().slice(0, 10); // YYYY-MM-DD, UTC by construction
@@ -64,11 +67,14 @@ function checkBudget() {
 function recordUsage(usage, model) {
   if (!usage) return;
   rolloverIfNewUtcDay();
+  const isDeepseek = (model || '').startsWith('deepseek-');
+  const inputPrice  = isDeepseek ? DEEPSEEK_PRICE_INPUT_PER_MTOK  : PRICE_INPUT_PER_MTOK;
+  const outputPrice = isDeepseek ? DEEPSEEK_PRICE_OUTPUT_PER_MTOK : PRICE_OUTPUT_PER_MTOK;
   const inputTokens = (usage.input_tokens || 0) +
     (usage.cache_creation_input_tokens || 0) +
     (usage.cache_read_input_tokens || 0);
   const outputTokens = usage.output_tokens || 0;
-  const costUsd = (inputTokens / 1e6) * PRICE_INPUT_PER_MTOK + (outputTokens / 1e6) * PRICE_OUTPUT_PER_MTOK;
+  const costUsd = (inputTokens / 1e6) * inputPrice + (outputTokens / 1e6) * outputPrice;
   spendTodayUsd += costUsd;
   addSessionSpend(costUsd); // per-session running total — see services/session.js, surfaced as "AI cost for this CV"
   console.log(`[ai-spend] ${model || MODEL}: ~$${costUsd.toFixed(4)} this call — $${spendTodayUsd.toFixed(4)} / $${DAILY_AI_BUDGET_USD} today`);
@@ -103,7 +109,11 @@ async function meteredCreate(params) {
   if (overhead > 0) {
     effectiveParams = { ...effectiveParams, max_tokens: (effectiveParams.max_tokens || 1024) + overhead };
   }
-  const response = await rawMessagesCreate(effectiveParams);
+  // Route to DeepSeek for deepseek-* models; all others go through the Anthropic SDK.
+  const isDeepseek = (effectiveParams.model || '').startsWith('deepseek-');
+  const response = isDeepseek
+    ? await callDeepseek(effectiveParams)
+    : await rawMessagesCreate(effectiveParams);
   recordUsage(response.usage, effectiveParams.model);
   return response;
 }
