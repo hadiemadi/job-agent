@@ -454,7 +454,7 @@ ${pageHtml}
   // through here so error handling is consistent: real errors get a closeable overlay,
   // one-off confirmations (clipboard) get a brief auto-dismissing toast.
 
-  function showCvPageError(message) {
+  function showCvPageError(message, errCode) {
     let overlay = document.getElementById('cvErrOverlay');
     if (!overlay) {
       overlay = document.createElement('div');
@@ -464,14 +464,36 @@ ${pageHtml}
         '<div style="background:#fff;border-radius:10px;padding:24px 28px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.22);font-family:var(--font-ui);">' +
           '<div style="font-weight:600;font-size:15px;color:#b91c1c;margin-bottom:8px;">Something went wrong</div>' +
           '<div id="cvErrMsg" style="font-size:13.5px;color:#374151;line-height:1.5;margin-bottom:16px;"></div>' +
-          '<div style="text-align:right;">' +
+          '<div id="cvErrSent" style="display:none;font-size:12px;color:#059669;margin-bottom:8px;">Feedback sent — thank you!</div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+            '<button id="cvErrFeedbackBtn" style="background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:7px 14px;font-size:13px;cursor:pointer;">Send feedback</button>' +
             '<button onclick="document.getElementById(\\'cvErrOverlay\\').style.display=\\'none\\'" ' +
               'style="background:#185FA5;color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:13px;cursor:pointer;">Close</button>' +
           '</div>' +
+          '<span id="cvErrCode" style="display:none;"></span>' +
         '</div>';
       document.body.appendChild(overlay);
+      // Attach feedback handler once — fire-and-forget POST, mirrors showTechnicalErrorDialog
+      document.getElementById('cvErrFeedbackBtn').addEventListener('click', function() {
+        this.disabled = true;
+        var code = (document.getElementById('cvErrCode') || {}).textContent || '';
+        fetch('/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: code, route: '/cv', message: '', contact_email: null }),
+        }).catch(function() {});
+        var sent = document.getElementById('cvErrSent');
+        if (sent) sent.style.display = '';
+        this.style.display = 'none';
+      });
     }
     document.getElementById('cvErrMsg').textContent = message;
+    var codeEl = document.getElementById('cvErrCode');
+    if (codeEl) codeEl.textContent = errCode || '';
+    var fbBtn = document.getElementById('cvErrFeedbackBtn');
+    if (fbBtn) { fbBtn.disabled = false; fbBtn.style.display = ''; }
+    var sentEl = document.getElementById('cvErrSent');
+    if (sentEl) sentEl.style.display = 'none';
     overlay.style.display = 'flex';
   }
 

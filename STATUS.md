@@ -11,6 +11,15 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **feat(ui): #33 — "Send feedback" button on standalone Tailored CV error dialog** —
+  `showCvPageError` in `render/cvHtml.js` now accepts an optional `errCode` second parameter
+  and renders a "Send feedback" button alongside the existing "Close" button. On click it
+  silently POSTs `{ code, route: '/cv', message: '', contact_email: null }` to `/feedback`
+  (fire-and-forget, same pattern as `showTechnicalErrorDialog` in `public/app.js`), then shows
+  "Feedback sent — thank you!" and hides the button. Button state resets each time the dialog
+  is opened for a new error. No form filling required — all context is pre-captured.
+  Tests: 401/401 green (no route changes — `/feedback` endpoint already exists).
+
 - **fix(ui): #32 — Tailored-CV toolbar tooltips now appear to the right, never clipped** —
   Root cause: `.cv-toolbar` has `overflow-y: auto`, which by the CSS spec also sets
   `overflow-x` to `auto`, clipping any `position: absolute` child that extends beyond 230px.
