@@ -5,11 +5,17 @@
 
 **Last updated:** 2026-07-08
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 391/391 green · **origin/main HEAD:** 6725362
+**Tests:** 391/391 green · **origin/main HEAD:** (pending push)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **feat(test-mode): Test mode checkbox in Advanced options** —
+  Toggle on the right-column panel (Haiku · 3 gaps max). When checked:
+  - Forces `claude-haiku-4-5` for ALL Claude API calls (overrides the model picker)
+  - Caps gap analysis at 3 gaps maximum (via `selectTopGaps` `maxCount=3`)
+  Files: `public/index.html`, `public/app.js`, `routes/cv.routes.js`, `routes/hr.routes.js`, `services/session.js`
 
 - **fix(cv-page): U+2028/U+2029 breaks all JS on Tailored CV page** (`render/cvHtml.js`) —
 

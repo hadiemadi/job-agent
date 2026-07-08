@@ -80,7 +80,8 @@ router.post('/review-cv', async (req, res) => {
           appSession.clientPreferences = { ...appSession.clientPreferences, routedInstructionApplied: true };
         }
 
-        const selected = selectTopGaps(gaps, (appSession.clientPreferences || {}).gapSeverities);
+        const prefs = appSession.clientPreferences || {};
+        const selected = selectTopGaps(gaps, prefs.gapSeverities, 5, prefs.testMode ? 3 : 20);
         // setGaps writes to appSession.gaps (via getSession() in the als context) and returns
         // the created gap objects with their stable server-assigned ids.
         const gapRecords = setGaps(selected);

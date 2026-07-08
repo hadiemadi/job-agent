@@ -98,7 +98,7 @@ router.post('/delete-my-data', (req, res) => {
 
 router.post('/confirm-contact', async (req, res) => {
   const appSession = getSession();
-  const { name, title, email, phone, location, linkedin, customInstructions, tone, extensiveSearch, refreshDiscipline, gapSeverities, model } = req.body;
+  const { name, title, email, phone, location, linkedin, customInstructions, tone, extensiveSearch, refreshDiscipline, gapSeverities, model, testMode } = req.body;
   appSession.confirmedContact = { name, title, email, phone, location, linkedin };
   const validSeverities = Array.isArray(gapSeverities) ? gapSeverities.filter(s => ['major', 'mild', 'minor'].includes(s)) : [];
   // The Input Router decides whether this free-text comment is a field-agnostic instruction
@@ -118,7 +118,9 @@ router.post('/confirm-contact', async (req, res) => {
     refreshDiscipline: !!refreshDiscipline,
     gapSeverities: validSeverities.length ? validSeverities : ['major'],
     routedInstruction, routedInstructionApplied: false,
-    model: model || null, // null → use the app's default MODEL constant (core/claude.js)
+    testMode: !!testMode,
+    // testMode forces Haiku for all calls; otherwise use picker selection or app default.
+    model: testMode ? 'claude-haiku-4-5' : (model || null),
   };
   if (appSession.cvData) Object.assign(appSession.cvData, appSession.confirmedContact);
 

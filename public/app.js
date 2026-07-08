@@ -926,6 +926,7 @@ async function confirmContact() {
     tone:     parseInt(el('ci-tone').value, 10),
     extensiveSearch:   usePanel ? el('side-extensive-search').checked : el('ci-extensive-search').checked,
     refreshDiscipline: usePanel ? el('side-refresh-discipline').checked : el('ci-refresh-discipline').checked,
+    testMode: !!(el('side-test-mode') && el('side-test-mode').checked),
     gapSeverities: gapSeverities.length ? gapSeverities : ['major'],
     model: _selectedModel,
   };

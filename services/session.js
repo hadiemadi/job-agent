@@ -34,7 +34,7 @@ function createSession() {
     gaps: [], // see services/gapStore.js — HR-review gap cards, server-side accept/skip + conversation state
     clientPreferences: {
       tone: 4, customInstructions: '', languageLevel: 2, extensiveSearch: false, conventionsResearch: '',
-      gapSeverities: ['major'], refreshDiscipline: false, routedInstruction: null, routedInstructionApplied: false,
+      gapSeverities: ['major'], refreshDiscipline: false, testMode: false, routedInstruction: null, routedInstructionApplied: false,
       model: null, // null → use the app default MODEL (core/claude.js). Set from user preference via /confirm-contact.
     },
     aiSpendUsd: 0,
