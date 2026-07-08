@@ -11,6 +11,28 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **feat(diagnostics): sub-error codes + console mirror for ERR-CV-004 pipeline** —
+
+  Two changes to make the gap→tailor failure path self-describing without DB access:
+
+  1. `core/logger.js`: `logDiagnostic` now always `console.log`s every event (label + JSON payload
+     including traceId) before the DB write. Render streams `console.log` to its log dashboard,
+     so the full diagnostic timeline is readable there even when DATABASE_URL is unavailable locally.
+
+  2. `services/workflows.js`: `tailorCvWithReview` now wraps each stage individually — `ERR-CV-004a`
+     (initial_draft), `ERR-CV-004b` (initial_review), `ERR-CV-004c` (revision_draft_N),
+     `ERR-CV-004d` (revision_review_N). The thrown error carries both `.code` and `.stage` so the
+     exact failing stage is identifiable in the job result and the UI error dialog.
+
+  3. `routes/cv.routes.js`: background-task catch block now captures `err.code`/`err.stage` and
+     `getTraceId()` into the job failure result; `/job/:id/status` passes all three through.
+
+  4. `public/app.js`: cv_tailor failure block passes `stage`/`traceId` into `errData`;
+     `showTechnicalErrorDialog`'s copy-blob appends `stage:` and `traceId:` lines when present —
+     so the user can paste the full blob into chat and the failure is immediately identifiable.
+
+  Tests: 391/391. No behavior change on success paths.
+
 - **fix(ERR-CV-004): safe retry construction when model returns no text block** —
 
   Root cause: every retry loop constructs its attempt-1 message array with

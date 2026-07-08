@@ -19,22 +19,32 @@ async function tailorCvWithReview({
   cvText, job, autoChanges, confirmedChanges, recommendedSections, originalName,
   confirmedContact, thread, preferences, hrDisplayHistory, originalCvData, gapDiscussions,
 }) {
-  let writerResult = await rewriteCVWithChanges(
-    cvText, job, autoChanges, confirmedChanges, recommendedSections, originalName,
-    confirmedContact, thread, preferences, hrDisplayHistory, originalCvData, gapDiscussions
-  );
+  let writerResult;
+  try {
+    writerResult = await rewriteCVWithChanges(
+      cvText, job, autoChanges, confirmedChanges, recommendedSections, originalName,
+      confirmedContact, thread, preferences, hrDisplayHistory, originalCvData, gapDiscussions
+    );
+  } catch (err) { err.code = 'ERR-CV-004a'; err.stage = 'initial_draft'; throw err; }
 
-  let review = await reviewTailoredCV({ tailoredCv: writerResult.cvData, job, sourceCvText: cvText });
+  let review;
+  try {
+    review = await reviewTailoredCV({ tailoredCv: writerResult.cvData, job, sourceCvText: cvText });
+  } catch (err) { err.code = 'ERR-CV-004b'; err.stage = 'initial_review'; throw err; }
 
   let passes = 0;
   while (review.verdict === 'FIX_REQUIRED' && passes < MAX_REVISION_PASSES) {
     const requiredEditChanges = (review.required_edits || []).map(description => ({ description }));
-    writerResult = await rewriteCVWithChanges(
-      cvText, job, [], requiredEditChanges, recommendedSections, originalName,
-      confirmedContact, writerResult.thread, preferences, writerResult.hrDisplayHistory,
-      originalCvData, gapDiscussions
-    );
-    review = await reviewTailoredCV({ tailoredCv: writerResult.cvData, job, sourceCvText: cvText });
+    try {
+      writerResult = await rewriteCVWithChanges(
+        cvText, job, [], requiredEditChanges, recommendedSections, originalName,
+        confirmedContact, writerResult.thread, preferences, writerResult.hrDisplayHistory,
+        originalCvData, gapDiscussions
+      );
+    } catch (err) { err.code = 'ERR-CV-004c'; err.stage = `revision_draft_${passes + 1}`; throw err; }
+    try {
+      review = await reviewTailoredCV({ tailoredCv: writerResult.cvData, job, sourceCvText: cvText });
+    } catch (err) { err.code = 'ERR-CV-004d'; err.stage = `revision_review_${passes + 1}`; throw err; }
     passes += 1;
   }
 

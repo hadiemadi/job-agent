@@ -84,13 +84,16 @@ async function logError(errorCode, route, ctx) {
 async function logDiagnostic(label, data) {
   try {
     const pool = getPool();
-    if (!pool) return;
-    const sessionIdHash = hashSessionId(als.getStore());
     let traceId = null;
     try { traceId = getTraceId(); } catch (_) {}
+    const payload = { traceId, ...data };
+    // Always mirror to stdout so diagnostics are visible in Render logs even without DB access.
+    console.log('[diagnostic]', String(label).slice(0, 100), JSON.stringify(payload));
+    if (!pool) return;
+    const sessionIdHash = hashSessionId(als.getStore());
     await pool.query(
       'INSERT INTO diagnostic_log (session_id_hash, label, data_json) VALUES ($1, $2, $3)',
-      [sessionIdHash, String(label).slice(0, 100), JSON.stringify({ traceId, ...data })]
+      [sessionIdHash, String(label).slice(0, 100), JSON.stringify(payload)]
     );
   } catch (err) {
     console.warn('[logger] logDiagnostic failed (non-fatal):', err.message);

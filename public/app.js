@@ -655,7 +655,10 @@ function showTechnicalErrorDialog(data, route) {
   const code = data.error_code;
   const message = data.error || 'Something unexpected went wrong.';
   const timestamp = new Date().toISOString();
-  const blob = `error_code: ${code}\nroute: ${route || 'unknown'}\ntimestamp: ${timestamp}`;
+  const blobLines = [`error_code: ${code}`, `route: ${route || 'unknown'}`, `timestamp: ${timestamp}`];
+  if (data.stage) blobLines.push(`stage: ${data.stage}`);
+  if (data.traceId) blobLines.push(`traceId: ${data.traceId}`);
+  const blob = blobLines.join('\n');
 
   let overlay = el('errPopupOverlay');
   if (!overlay) {
@@ -1406,7 +1409,7 @@ function startPolling(jobId, isResume, kind) {
 
         // cv_tailor
         if (data.status === 'failed' || result.error) {
-          const errData = { error: result.error || 'Tailoring failed.', error_code: result.code || 'ERR-CV-004', kind: 'error' };
+          const errData = { error: result.error || 'Tailoring failed.', error_code: result.code || 'ERR-CV-004', kind: 'error', stage: result.stage || null, traceId: result.traceId || null };
           setStep(3, 'err', errData.error);
           if (!isResume) { el('applyBtn').disabled = false; show('changesCard'); }
           showErrorPopup(errData, '/rewrite');

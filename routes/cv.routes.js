@@ -7,7 +7,7 @@ const { readCV, parseCVStructure, adjustLanguageLevel, classify, generateCompari
 const { generateWordCV, generateWordCVAlt } = require('../src/wordExport');
 const { generateWordFromTemplate } = require('../src/wordTemplateExport');
 const { upload, templateUpload } = require('../services/uploads');
-const { getSession, setSession, registerOutputFile, purgeSessionData, als } = require('../services/session');
+const { getSession, setSession, registerOutputFile, purgeSessionData, als, getTraceId } = require('../services/session');
 const { saveProfilePreferences, saveCv } = require('../services/auth');
 const { getGaps } = require('../services/gapStore');
 const { tailorCvWithReview } = require('../services/workflows');
@@ -233,10 +233,12 @@ router.post('/rewrite', async (req, res) => {
             .catch(e => console.warn('[saveCv] write failed:', e.message));
         }
       } catch (err) {
+        let traceId = null;
+        try { traceId = getTraceId(); } catch (_) {}
         await updateJob(jobId, {
           status: 'failed',
           current_step: '',
-          result: { error: err.message, code: (err.code) || 'ERR-CV-004' },
+          result: { error: err.message, code: err.code || 'ERR-CV-004', stage: err.stage || null, traceId },
         }).catch(() => {});
       }
     });
@@ -296,7 +298,7 @@ router.get('/job/:id/status', pollLimiter, async (req, res) => {
         ? { cvData: r.cvData, error: r.error, code: r.code }
         : job.kind === 'parsing_job'
         ? { job: r.job, error: r.error, code: r.code, kind: r.kind, loginWall: r.loginWall, scraperDisabled: r.scraperDisabled }
-        : { filePath: r.filePath, reviewIssues: r.reviewIssues, error: r.error, code: r.code }
+        : { filePath: r.filePath, reviewIssues: r.reviewIssues, error: r.error, code: r.code, stage: r.stage, traceId: r.traceId }
     ) : null;
 
     res.json({ status: job.status, current_step: job.current_step || '', result: resultPayload });
