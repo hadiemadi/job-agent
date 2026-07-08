@@ -225,7 +225,7 @@ function buildPriorGapBlock(prior, extensive = false) {
   if (extensive) {
     const turns = Array.isArray(prior.coach_conversation) ? prior.coach_conversation : [];
     if (turns.length > 0) {
-      const excerpt = turns.slice(-4).map(t => `${t.role === 'user' ? 'Candidate' : 'Coach'}: ${String(t.content || '').slice(0, 120)}`).join('\n');
+      const excerpt = turns.slice(-5).map(t => `${t.role === 'user' ? 'Candidate' : 'Coach'}: ${String(t.content || '').slice(0, 120)}`).join('\n');
       parts.push('Recent conversation:\n' + excerpt);
     }
   }

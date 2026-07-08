@@ -11,6 +11,11 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **fix(coach): Deep research turn cap corrected from 4 to 5** —
+  `buildPriorGapBlock` (`agents/coach.js`): `turns.slice(-4)` → `turns.slice(-5)`.
+  When Deep research mode is on, Coach now receives the last 5 conversation turns (not 4)
+  as prior context. No test changes needed — no existing test asserted the cap value.
+
 - **fix(security): gap_memory field isolation — Coach reads only allowed fields** —
   `findGapMemoryBySlogan` (`services/auth.js`) changed from `SELECT *` to
   `SELECT gap_slogan, coach_conversation, coach_verdict` — `hr_statement` and `user_decision`
