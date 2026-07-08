@@ -5,11 +5,26 @@
 
 **Last updated:** 2026-07-08
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 391/391 green · **origin/main HEAD:** ee45143
+**Tests:** 391/391 green · **origin/main HEAD:** d16a526
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **feat(diagnostics): deploy version in all error dialogs** (`d16a526`) —
+  `RENDER_GIT_COMMIT` served as `/version.js` → `window.APP_VERSION`; every error blob
+  now includes `version: d16a526` so the exact deployed commit is always known when
+  an error is reported.
+
+- **fix(ERR-CV-004 / ERR-CV-004b): confirmed resolved in production** —
+  Root causes identified and fixed across two commits:
+  - `ERR-CV-004` (`099fe97`): retry loops called `firstText()` outside try/catch — safe
+    `prevText` pattern applied to all 11 call sites across 8 files.
+  - `ERR-CV-004b` (`ee45143`): Fable 5's always-on thinking consumed `reviewTailoredCV`'s
+    `max_tokens: 2500` before any text output. Fix: `meteredCreate` adds `THINKING_OVERHEAD`
+    per model (`+4000` for Fable 5, `+0` for all others) on top of each function's output
+    budget. `reviewTailoredCV` also raised to 8192.
+  User confirmed error no longer occurs in production.
 
 - **fix(ERR-CV-004b): model-aware thinking overhead in meteredCreate** —
 
