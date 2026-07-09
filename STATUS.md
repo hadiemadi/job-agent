@@ -11,6 +11,13 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **feat(ui): build-batch §12 — swap Preferences and Advanced options boxes between columns** —
+  Pure `index.html` change: the "Preferences" card (AI instructions textarea + tone slider)
+  moved from `#colLeft` to `#colRight` (below the model picker). The "Advanced options" card
+  (gap severities + Deep research / Refresh discipline / Test mode toggles) moved from
+  `#colRight` to `#colLeft` (above `#costTracker`). History cards, `#yourDetailsCard`, and
+  workspace card remain in `#colLeft` unaffected. No JS, CSS, or route changes. 446/446 green.
+
 - **feat(ui): build-batch §11 — elapsed time tracker ("Tailored in Xs")** —
   `_tailorStartTime` set via `startTailorTimer()` at the start of `applyChanges()`. When
   cv_tailor completes (poll done-handler, step 3), `updateElapsedDisplay()` computes
