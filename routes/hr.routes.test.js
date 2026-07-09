@@ -85,3 +85,31 @@ describe('buildGapMemoryBlock', () => {
     expect(await buildGapMemoryBlock('user-fail')).toBe('');
   });
 });
+
+describe('Item 9 — applyConcernChange shows before/after text', () => {
+  test('render/cvHtml.js captures beforeText and shows Before/After in confirmation', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'render', 'cvHtml.js'), 'utf8');
+    expect(src).toMatch(/const beforeText\s*=\s*activeConcern\.selectedText/);
+    expect(src).toMatch(/\*\*Before:\*\*/);
+    expect(src).toMatch(/\*\*After:\*\*/);
+    expect(src).toMatch(/beforeText.*data\.revisedText|data\.revisedText.*beforeText/s);
+  });
+});
+
+describe('Item 10 — sendHrMessage JSON-guard prevents raw JSON in chat', () => {
+  test('render/cvHtml.js detects JSON-looking replies and strips them to prose', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'render', 'cvHtml.js'), 'utf8');
+    expect(src).toMatch(/JSON\.parse\(replyText\)/);
+    expect(src).toMatch(/replyText.*parsed\.message.*parsed\.reply/s);
+  });
+});
+
+describe('Item 11 — recruiter-core.md honest pushback instruction', () => {
+  test('knowledge/recruiter-core.md contains sidebar chat prose-only and pushback rules', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'knowledge', 'recruiter-core.md'), 'utf8');
+    expect(src).toMatch(/SIDEBAR CHAT MODE/i);
+    expect(src).toMatch(/NEVER output JSON/i);
+    expect(src).toMatch(/HONEST PUSHBACK/i);
+    expect(src).toMatch(/push back/i);
+  });
+});

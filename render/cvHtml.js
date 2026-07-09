@@ -971,11 +971,12 @@ ${pageHtml}
       });
       const data = await res.json();
       if (!data.revisedText) throw new Error(data.error || 'Update failed');
+      const beforeText = activeConcern.selectedText;
       activeConcern.targetEl.textContent = data.revisedText; // replaces the span too — content is regenerated, not just unhighlighted
       if (data.changed === false) {
         addHrBubble('expert', "We concluded no change was needed here — I've kept this part exactly as it was.");
       } else {
-        addHrBubble('expert', "Done — I've updated that part of your CV based on our discussion.");
+        addHrBubble('expert', "Done — here's what changed:\n\n**Before:** " + beforeText + "\n\n**After:** " + data.revisedText);
       }
       hideConcernUI();
       activeConcern = null;
@@ -1092,7 +1093,18 @@ ${pageHtml}
       });
       const data = await res.json();
       if (!data.reply) throw new Error(data.error || 'No reply');
-      addHrBubble('expert', data.reply);
+      let replyText = data.reply;
+      // Guard against the model accidentally returning raw JSON in chat mode
+      if (/^\s*[{[]/.test(replyText)) {
+        try {
+          const parsed = JSON.parse(replyText);
+          replyText = (typeof parsed === 'object' && parsed !== null)
+            ? (parsed.message || parsed.reply || parsed.text || parsed.content ||
+               "I've reviewed that. Use the 'Apply this change' button to update the highlighted section.")
+            : replyText;
+        } catch (_) { /* not valid JSON — leave as is */ }
+      }
+      addHrBubble('expert', replyText);
     } catch (err) {
       addHrBubble('expert', 'Sorry, something went wrong: ' + err.message);
     } finally {
