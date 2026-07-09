@@ -66,8 +66,37 @@
        Logged-out: only col-center is visible — inputCard takes full container width. -->
   <div id="mainLayout" class="main-layout">
 
-    <!-- Left column: history cards stacked above Preferences (logged-in only) -->
+    <!-- Left column: Your Details (top) → history cards → Preferences (logged-in only) -->
     <div id="colLeft" class="col-side">
+      <!-- ── Your Details — logged-in contact fields (top of left column) ── -->
+      <div class="card prefs-side-card" id="yourDetailsCard">
+        <div class="prefs-box-label">Your Details</div>
+        <p class="contact-hint" style="margin:0 0 10px;">Used on every tailored CV — edit and they save automatically.</p>
+        <div class="form-row">
+          <div class="form-group" style="margin-bottom:8px;">
+            <label>Full name</label>
+            <input type="text" id="ld-name" placeholder="Jane Smith" />
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label>Job title</label>
+            <input type="text" id="ld-title" placeholder="Senior Engineer" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="margin-bottom:8px;">
+            <label>Phone</label>
+            <input type="tel" id="ld-phone" placeholder="+1 555 000 0000" />
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label>Location</label>
+            <input type="text" id="ld-location" placeholder="San Francisco, CA" />
+          </div>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>LinkedIn URL</label>
+          <input type="text" id="ld-linkedin" placeholder="https://www.linkedin.com/in/username" />
+        </div>
+      </div>
       <div class="card prefs-side-card">
         <div class="workspace-account" id="workspaceAccountInfo"></div>
         <div class="workspace-data-buttons">

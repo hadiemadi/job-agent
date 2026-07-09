@@ -1007,6 +1007,67 @@ describe('updateGoBtnAvailability — 3-condition button gating', () => {
   });
 });
 
+// ── Item 3 — reading_cv done-handler: logged-in skips popup ─────────────────
+
+describe('Item 3 — reading_cv done-handler: logged-in skips popup, ld-* prefill, guest unchanged', () => {
+  const CV_DATA = { name: 'Jane Smith', title: 'Sr Engineer', email: 'jane@example.com', phone: '+1 555 7777', location: 'Austin TX', linkedin: 'linkedin.com/in/jsmith' };
+
+  // Returns a jest mock that responds with a done reading_cv result for any URL (proven approach).
+  function doneFetch(cvData) {
+    return jest.fn(() => Promise.resolve({
+      json: () => Promise.resolve({ status: 'done', result: { cvData } }),
+    }));
+  }
+
+  beforeEach(() => {
+    document.cookie = 'onboarded=1';
+    window.TRIAL_MODE = false;
+  });
+
+  test('guest: contactCard is shown after reading_cv completes', async () => {
+    window.fetch = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ user: null }) }));
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    window.fetch = doneFetch(CV_DATA);
+    // buildSteps must run before startPolling so setStep(0,'ok',...) doesn't crash on si0=null
+    window.buildSteps(['Reading CV', 'Parsing job', 'HR Review', 'Tailor CV']);
+    window.startPolling('job-item3-guest', false, 'reading_cv');
+    await new Promise(resolve => setTimeout(resolve, 600));
+    // show() sets style.display = '' (empty), not 'block' — just verify it's not 'none'
+    expect(document.getElementById('contactCard').style.display).not.toBe('none');
+  }, 5000);
+
+  test('logged-in: contactCard stays hidden and ld-* fields pre-filled from cvData', async () => {
+    // Use guest fetch for initAuth, then showAuthUser() to synchronously set logged-in state.
+    // This avoids async auth timing races while ensuring _currentUserId is set.
+    window.fetch = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ user: null }) }));
+    loadAppInDom();
+    window.showAuthUser({ id: 'usr-001', email: 'hadi@example.com' }); // sync: _currentUserId set
+    await new Promise(resolve => setTimeout(resolve, 0)); // drain initAuth + loadPrefillData
+    window.fetch = doneFetch(CV_DATA);
+    // buildSteps must run before startPolling so setStep(0,'ok',...) doesn't crash on si0=null
+    window.buildSteps(['Reading CV', 'Parsing job', 'HR Review', 'Tailor CV']);
+    window.startPolling('job-item3-li', false, 'reading_cv');
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    expect(document.getElementById('contactCard').style.display).toBe('none');
+    expect(document.getElementById('ld-name').value).toBe('Jane Smith');
+    expect(document.getElementById('ld-title').value).toBe('Sr Engineer');
+  }, 10000);
+
+  test('guest flow unchanged: ci-name is filled and ld-name is untouched', async () => {
+    window.fetch = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ user: null }) }));
+    loadAppInDom();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    window.fetch = doneFetch(CV_DATA);
+    // buildSteps must run before startPolling so setStep(0,'ok',...) doesn't crash on si0=null
+    window.buildSteps(['Reading CV', 'Parsing job', 'HR Review', 'Tailor CV']);
+    window.startPolling('job-item3-g2', false, 'reading_cv');
+    await new Promise(resolve => setTimeout(resolve, 600));
+    expect(document.getElementById('ci-name').value).toBe('Jane Smith');
+    expect(document.getElementById('ld-name').value).toBe(''); // guest path never touches ld-*
+  }, 5000);
+});
+
 // ── Mic button regression — no inline display:none on btn-mic ─────────────
 
 describe('Coach mic button — template must not carry inline display:none', () => {

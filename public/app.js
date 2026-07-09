@@ -469,11 +469,26 @@ async function selectModel(modelId) {
 // extracted values) and on mid-session login (updates a visible form immediately).
 function applyProfilePrefill(profile) {
   if (!profile) return;
-  if (profile.name       !== undefined) el('ci-name').value        = profile.name;
-  if (profile.title      !== undefined) el('ci-title').value       = profile.title;
-  if (profile.phone      !== undefined) el('ci-phone').value       = profile.phone;
-  if (profile.location   !== undefined) el('ci-location').value    = profile.location;
-  if (profile.linkedin   !== undefined) el('ci-linkedin').value    = profile.linkedin;
+  if (profile.name       !== undefined) {
+    el('ci-name').value = profile.name;
+    if (el('ld-name')) el('ld-name').value = profile.name;
+  }
+  if (profile.title      !== undefined) {
+    el('ci-title').value = profile.title;
+    if (el('ld-title')) el('ld-title').value = profile.title;
+  }
+  if (profile.phone      !== undefined) {
+    el('ci-phone').value = profile.phone;
+    if (el('ld-phone')) el('ld-phone').value = profile.phone;
+  }
+  if (profile.location   !== undefined) {
+    el('ci-location').value = profile.location;
+    if (el('ld-location')) el('ld-location').value = profile.location;
+  }
+  if (profile.linkedin   !== undefined) {
+    el('ci-linkedin').value = profile.linkedin;
+    if (el('ld-linkedin')) el('ld-linkedin').value = profile.linkedin;
+  }
   if (profile.customInstructions !== undefined) {
     el('ci-instructions').value = profile.customInstructions;
     if (el('side-instructions')) el('side-instructions').value = profile.customInstructions;
@@ -937,12 +952,13 @@ async function confirmContact() {
     ? ['major', 'mild', 'minor'].filter(s => el('side-sev-' + s) && el('side-sev-' + s).checked)
     : ['major', 'mild', 'minor'].filter(s => el('ci-sev-' + s).checked);
   const contact = {
-    name:     el('ci-name').value.trim(),
-    title:    el('ci-title').value.trim(),
+    // Logged-in: read contact fields from ld-* (left column box). Guests: ci-* (popup).
+    name:     usePanel ? (el('ld-name')     ? el('ld-name').value.trim()     : '') : el('ci-name').value.trim(),
+    title:    usePanel ? (el('ld-title')    ? el('ld-title').value.trim()    : '') : el('ci-title').value.trim(),
     email:    el('ci-email').value.trim(),
-    phone:    el('ci-phone').value.trim(),
-    location: el('ci-location').value.trim(),
-    linkedin: el('ci-linkedin').value.trim(),
+    phone:    usePanel ? (el('ld-phone')    ? el('ld-phone').value.trim()    : '') : el('ci-phone').value.trim(),
+    location: usePanel ? (el('ld-location') ? el('ld-location').value.trim() : '') : el('ci-location').value.trim(),
+    linkedin: usePanel ? (el('ld-linkedin') ? el('ld-linkedin').value.trim() : '') : el('ci-linkedin').value.trim(),
     customInstructions: (usePanel ? el('side-instructions') : el('ci-instructions')).value.trim(),
     tone:     parseInt((usePanel && el('side-tone') ? el('side-tone') : el('ci-tone')).value, 10),
     extensiveSearch:   usePanel ? el('side-extensive-search').checked : el('ci-extensive-search').checked,
@@ -1357,22 +1373,41 @@ function startPolling(jobId, isResume, kind) {
             showErrorPopup(errData, '/upload-cv');
             return;
           }
-          // Contact card pre-fill and display. clearPendingJob() was called above; the new
-          // parsing_job entry will overwrite localStorage when the user confirms contact.
+          // Contact handling: logged-in users skip the popup — their details live in the
+          // left-column #yourDetailsCard (ld-* fields). Guests still see the popup.
           setStep(0, 'ok', 'CV ready');
-          setTimeout(() => {
+          setTimeout(async () => {
             hide('progressCard');
             const cvData = result.cvData || {};
-            el('ci-name').value     = cvData.name     || '';
-            el('ci-title').value    = cvData.title    || '';
-            el('ci-email').value    = cvData.email    || '';
-            el('ci-phone').value    = cvData.phone    || '';
-            el('ci-location').value = cvData.location || '';
-            el('ci-linkedin').value = cvData.linkedin || '';
-            // DB data always wins: override extracted values with saved preferences if available.
-            // Returning users see their own confirmed data; only first-time users see raw extraction.
-            if (_prefillProfile) applyProfilePrefill(_prefillProfile);
-            showContactCard();
+            const isLoggedIn = !!_currentUserId;
+            if (isLoggedIn) {
+              // For logged-in users: populate ld-* fields from CV extraction if not yet filled
+              // (first-time user with no saved profile). DB profile always wins over extraction.
+              const ldName     = el('ld-name');
+              const ldTitle    = el('ld-title');
+              const ldPhone    = el('ld-phone');
+              const ldLocation = el('ld-location');
+              const ldLinkedin = el('ld-linkedin');
+              if (ldName     && !ldName.value.trim())     ldName.value     = cvData.name     || '';
+              if (ldTitle    && !ldTitle.value.trim())    ldTitle.value    = cvData.title    || '';
+              if (ldPhone    && !ldPhone.value.trim())    ldPhone.value    = cvData.phone    || '';
+              if (ldLocation && !ldLocation.value.trim()) ldLocation.value = cvData.location || '';
+              if (ldLinkedin && !ldLinkedin.value.trim()) ldLinkedin.value = cvData.linkedin || '';
+              // Also keep ci-* email in sync (needed by confirmContact for both paths)
+              if (!el('ci-email').value.trim()) el('ci-email').value = cvData.email || '';
+              // Skip popup — proceed directly
+              await confirmContact();
+            } else {
+              // Guest: fill popup fields from CV extraction, apply saved profile, show popup.
+              el('ci-name').value     = cvData.name     || '';
+              el('ci-title').value    = cvData.title    || '';
+              el('ci-email').value    = cvData.email    || '';
+              el('ci-phone').value    = cvData.phone    || '';
+              el('ci-location').value = cvData.location || '';
+              el('ci-linkedin').value = cvData.linkedin || '';
+              if (_prefillProfile) applyProfilePrefill(_prefillProfile);
+              showContactCard();
+            }
           }, 400);
           return;
         }

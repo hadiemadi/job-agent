@@ -5,11 +5,23 @@
 
 **Last updated:** 2026-07-09
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 418/418 green · **origin/main HEAD:** (pending push)
+**Tests:** 421/421 green · **origin/main HEAD:** (pending push)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **feat(ui): build-batch §3 — logged-in users skip contact popup, use saved-profile box** —
+  For logged-in users, the CV upload done-handler no longer shows the popup. Instead it
+  pre-fills the always-visible `#yourDetailsCard` fields (`ld-name`, `ld-title`, `ld-phone`,
+  `ld-location`, `ld-linkedin`) from CV extraction (only if blank — saved profile always wins),
+  then calls `confirmContact()` directly. Guest flow unchanged: popup appears as before with
+  `ci-*` fields filled from CV extraction. Email lives on the `users` table and is wired through
+  `el('ci-email')` on both paths. 3 new tests: guest contactCard shown, logged-in ld-name
+  prefilled + contactCard stays hidden, guest ci-name filled + ld-name untouched. Root-cause
+  debugged: `setStep(0,'ok',…)` crashed on `el('si0') = null` because `buildSteps` had never
+  been called — tests now call `window.buildSteps([…])` before `startPolling` to match the
+  real `go()` call path. 421/421 green.
 
 - **fix(rate): ERR-RATE-002 complete — render.yaml + .env.example AI rate limit raised to 150** —
   Root cause of production still enforcing 20: `render.yaml` hardcoded `AI_RATE_LIMIT_MAX: "20"`,
