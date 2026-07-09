@@ -5,11 +5,47 @@
 
 **Last updated:** 2026-07-09
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 446/446 green · **origin/main HEAD:** `2ddff82`
+**Tests:** 454/454 green · **origin/main HEAD:** `7e6e143` (pre-push; item 15 commit pending)
 
 ---
 
-## ✅ Recently shipped (on `main`)
+## ✅ Recently shipped (on `main`, pending push)
+
+- **feat(ui): item 15 — swap "Preferences" / "Advanced options" sidebar box labels** —
+  Left column box (model picker + toggles) renamed to "Preferences"; right column box
+  (tone, wording, custom instructions) renamed to "Advanced options". Text-only change
+  in index.html — no IDs, classes, or JS changed. 454/454 green.
+
+- **feat(session+layout): items 13/14 — idle timeout 180 min + center box min-height** —
+  IDLE_LIMIT_MS raised from 60*60*1000 → 180*60*1000 (3-hour window). Three-col grid
+  gains align-items:stretch so all columns match the tallest; center column uses flexbox
+  with flex:1 on its card, eliminating the large blank space below the input card when
+  side columns are taller. session.test.js updated to assert 180-min constant. 454/454 green.
+
+- **feat(docx): item 12 — skills grouped into 3-5 categories in Word export** —
+  cvWriter.js changed skills schema to {category, items}[] with 3-5 named categories;
+  removed 'skills' from flattenStringArrayFields (key_qualifications stays flat).
+  render/cvHtml.js normalizes category objects to "Category: item1, item2" strings for
+  HTML display. wordExport.js detects "Category: items" flat strings from DOM round-trip
+  and renders them as bold-category rows under CORE COMPETENCIES. 2 new tests. 454/454 green.
+
+- **feat(hr): items 9/10/11 — before/after confirm, no-JSON chat, honest pushback** —
+  Item 9: applyConcernChange shows "Before: … / After: …" in the success bubble.
+  Item 10: sendHrMessage detects JSON-shaped replies and strips to a prose fallback.
+  Item 11: recruiter-core.md gains SIDEBAR CHAT MODE (prose-only) and HONEST PUSHBACK
+  (push back on requests that weaken the CV). 3 new tests. 452/452 green.
+
+- **feat(ui): item 6 — default model to DeepSeek V4 Pro** —
+  _selectedModel and initModelPicker fallback both default to 'deepseek-chat'. Recommended
+  badge moved from Sonnet 5 to DeepSeek V4 Pro. app.test.js updated. 446/449 green (3
+  pre-existing real-API tests in test.js unrelated to this change; all 26 mock suites pass).
+
+- **feat(ui): items 1-5, 7-8 — contact box + layout restructure + sizing fixes** (2 commits) —
+  Email field added to #yourDetailsCard; all fields vertical (no 2-column form-row).
+  Model picker moved inside left column box. History/account moved to top-right. History
+  descriptions converted to hover tooltips (data-tooltip). Job description textarea 3×
+  taller (rows 15→45). Speed labels appended "speed" where ambiguous. Side columns widened
+  50% (minmax(240px,1.5fr)). 449/449 green.
 
 - **fix(hotfix): commit missing §8 session-usage implementations** (`2ddff82`) —
   `services/session.js`, `core/claude.js`, `routes/hr.routes.js`, `routes/jobs.routes.js`
