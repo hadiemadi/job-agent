@@ -11,6 +11,10 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **feat(ui): build-batch §4 — enlarge job description textarea to 15 rows** —
+  `#jobText` `rows` attribute changed from `9` → `15` in `public/index.html`. No JS or
+  CSS changes needed — the resize handle and scroll behavior are unchanged. 421/421 green.
+
 - **feat(ui): build-batch §3 — logged-in users skip contact popup, use saved-profile box** —
   For logged-in users, the CV upload done-handler no longer shows the popup. Instead it
   pre-fills the always-visible `#yourDetailsCard` fields (`ld-name`, `ld-title`, `ld-phone`,
