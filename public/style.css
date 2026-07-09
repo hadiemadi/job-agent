@@ -444,3 +444,17 @@ input[type="range"] { width:100%; cursor:pointer; accent-color:var(--accent); }
   opacity:0; z-index:200; transition:opacity 0.12s;
 }
 [data-tooltip]:hover::after { opacity:1; }
+
+/* ── Tone slider row in side Preferences panel ───────────────────── */
+.tone-label-row { display:flex; align-items:center; gap:6px; font-size:13px; font-weight:500; color:var(--ink); margin-bottom:6px; }
+.tooltip-anchor { font-size:11px; color:var(--muted); cursor:help; position:relative; }
+.tooltip-anchor::after {
+  content:attr(data-tooltip);
+  position:fixed; left:var(--tt-left,auto); top:var(--tt-top,auto);
+  background:#1f2937; color:#f9fafb;
+  font-size:11px; line-height:1.45; font-weight:400;
+  padding:6px 10px; border-radius:5px;
+  white-space:normal; width:260px; pointer-events:none;
+  opacity:0; z-index:9999; transition:opacity 0.12s;
+}
+.tooltip-anchor:hover::after { opacity:1; }

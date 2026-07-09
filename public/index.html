@@ -96,9 +96,17 @@
       </div>
       <div class="card prefs-side-card">
         <div class="prefs-box-label">Preferences</div>
-        <div class="form-group" style="margin:0;">
+        <div class="form-group" style="margin:0 0 14px;">
           <label>Anything you'd like the AI to know? <span class="opt">(optional)</span></label>
-          <textarea id="side-instructions" rows="6" placeholder="e.g. emphasize my leadership experience, avoid mentioning my current employer by name…"></textarea>
+          <textarea id="side-instructions" rows="4" placeholder="e.g. emphasize my leadership experience, avoid mentioning my current employer by name…"></textarea>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="tone-label-row">
+            Tone — how direct should feedback be?
+            <span class="tooltip-anchor" data-tooltip="Controls HOW BLUNTLY the AI delivers feedback, not what it tells you. Level 1: softer phrasing ('this could be strengthened by…'). Level 5: direct ('this is a real weakness…'). The underlying assessment doesn't change, only delivery style.">ⓘ</span>
+          </label>
+          <input type="range" id="side-tone" min="1" max="5" value="4" oninput="el('side-tone-label').textContent = ['Very neutral','Calm','Balanced','Direct (default)','Very blunt'][this.value-1]">
+          <div class="opt" id="side-tone-label" style="text-align:center;">Direct (default)</div>
         </div>
       </div>
     </div>

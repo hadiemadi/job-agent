@@ -478,7 +478,14 @@ function applyProfilePrefill(profile) {
     el('ci-instructions').value = profile.customInstructions;
     if (el('side-instructions')) el('side-instructions').value = profile.customInstructions;
   }
-  if (profile.tone !== undefined) el('ci-tone').value = profile.tone;
+  if (profile.tone !== undefined) {
+    el('ci-tone').value = profile.tone;
+    if (el('side-tone')) {
+      el('side-tone').value = profile.tone;
+      const labels = ['Very neutral','Calm','Balanced','Direct (default)','Very blunt'];
+      if (el('side-tone-label')) el('side-tone-label').textContent = labels[profile.tone - 1] || 'Direct (default)';
+    }
+  }
   if (Array.isArray(profile.gapSeverities)) {
     const gs = profile.gapSeverities;
     if (el('ci-sev-major'))  el('ci-sev-major').checked  = gs.includes('major');
@@ -546,6 +553,19 @@ el('cvFile').addEventListener('change', updateGoBtnAvailability);
 el('jobText').addEventListener('input', updateGoBtnAvailability);
 el('consentCheck').addEventListener('change', updateGoBtnAvailability);
 updateGoBtnAvailability();
+
+// Wire fixed-position tooltip for .tooltip-anchor elements (tone slider info icon).
+// The ::after pseudo-element uses position:fixed with CSS custom props --tt-left/--tt-top
+// so it escapes any ancestor's overflow clip and always appears fully visible.
+(function wireTooltipAnchors() {
+  document.querySelectorAll('.tooltip-anchor').forEach(anchor => {
+    anchor.addEventListener('mouseenter', function() {
+      const r = this.getBoundingClientRect();
+      this.style.setProperty('--tt-left', (r.right + 8) + 'px');
+      this.style.setProperty('--tt-top',  (r.top + r.height / 2 - 60) + 'px');
+    });
+  });
+})();
 
 // "Delete my data now" — two paths:
 //  • Guest: purges session only (CV text, HR/coach history, generated files).
@@ -924,7 +944,7 @@ async function confirmContact() {
     location: el('ci-location').value.trim(),
     linkedin: el('ci-linkedin').value.trim(),
     customInstructions: (usePanel ? el('side-instructions') : el('ci-instructions')).value.trim(),
-    tone:     parseInt(el('ci-tone').value, 10),
+    tone:     parseInt((usePanel && el('side-tone') ? el('side-tone') : el('ci-tone')).value, 10),
     extensiveSearch:   usePanel ? el('side-extensive-search').checked : el('ci-extensive-search').checked,
     refreshDiscipline: usePanel ? el('side-refresh-discipline').checked : el('ci-refresh-discipline').checked,
     testMode: !!(el('side-test-mode') && el('side-test-mode').checked),
