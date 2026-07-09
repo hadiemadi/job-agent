@@ -1,6 +1,6 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { extractJSON, firstText } = require('./json');
-const { addSessionSpend, getSession } = require('../services/session');
+const { addSessionSpend, addSessionTokens, getSession } = require('../services/session');
 const { taggedError } = require('./errorCodes');
 const { logEvent, logDiagnostic } = require('./logger');
 const { callDeepseek } = require('./llmClient');
@@ -76,7 +76,8 @@ function recordUsage(usage, model) {
   const outputTokens = usage.output_tokens || 0;
   const costUsd = (inputTokens / 1e6) * inputPrice + (outputTokens / 1e6) * outputPrice;
   spendTodayUsd += costUsd;
-  addSessionSpend(costUsd); // per-session running total — see services/session.js, surfaced as "AI cost for this CV"
+  addSessionSpend(costUsd);
+  addSessionTokens(inputTokens, outputTokens);
   console.log(`[ai-spend] ${model || MODEL}: ~$${costUsd.toFixed(4)} this call — $${spendTodayUsd.toFixed(4)} / $${DAILY_AI_BUDGET_USD} today`);
 }
 

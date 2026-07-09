@@ -4,7 +4,7 @@ const {
   generateCoverLetter, generateInterviewQuestions, refineWithHR, chatWithHRExpert, applyConcernChange,
 } = require('../agent');
 const { generateCoverLetterWord } = require('../src/wordExport');
-const { getSession, als } = require('../services/session');
+const { getSession, als, snapshotSessionUsage } = require('../services/session');
 const { setGaps, getGap, proposeStatement, setUserDecision, buildSharedGapContext } = require('../services/gapStore');
 const { createJob, updateJob } = require('../services/jobQueue');
 const { sendError } = require('../core/respondError');
@@ -76,6 +76,7 @@ router.post('/review-cv', async (req, res) => {
     als.run(sid, async () => {
       try {
         await updateJob(jobId, { status: 'running', current_step: 'HR Review' });
+        const usageBefore = snapshotSessionUsage();
 
         // Opt-in live research — mutates appSession.clientPreferences in place so the
         // subsequent reviewCV call picks it up via the live session reference.
@@ -130,6 +131,8 @@ router.post('/review-cv', async (req, res) => {
         // gapRecords carries the gap objects with their already-assigned ids so the
         // status handler can restore them directly without calling setGaps (which would
         // create new ids and break any gap-id references the frontend already holds).
+        const usageAfter = snapshotSessionUsage();
+        const stageUsage = { usd: usageAfter.usd - usageBefore.usd, tokIn: usageAfter.tokIn - usageBefore.tokIn, tokOut: usageAfter.tokOut - usageBefore.tokOut };
         await updateJob(jobId, {
           status: 'done', current_step: '',
           result: {
@@ -139,6 +142,7 @@ router.post('/review-cv', async (req, res) => {
             field: field || null,
             lastGenHrCount: 0,
             gapRecords: appSession.gaps,
+            stageUsage,
           },
         });
 

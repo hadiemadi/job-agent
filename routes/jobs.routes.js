@@ -3,7 +3,7 @@ const fse = require('fs-extra');
 const { readCV, extractJobTitles, searchAllLocations, analyzeJobFit, parseJobFromText } = require('../agent');
 const { scrapeJobPage } = require('../src/scraper');
 const { upload } = require('../services/uploads');
-const { getSession, setSession, als } = require('../services/session');
+const { getSession, setSession, als, snapshotSessionUsage } = require('../services/session');
 const { createJob, updateJob } = require('../services/jobQueue');
 const { sendError } = require('../core/respondError');
 const { logEvent } = require('../core/logger');
@@ -73,6 +73,7 @@ router.post('/fetch-job', async (req, res) => {
     als.run(sid, async () => {
       try {
         await updateJob(jobId, { status: 'running', current_step: 'Parsing job' });
+        const before = snapshotSessionUsage();
         let text = rawText;
         if (!text) {
           try {
@@ -92,7 +93,9 @@ router.post('/fetch-job', async (req, res) => {
         const job = await parseJobFromText(text, jobUrl);
         const appSession = getSession();
         appSession.currentJob = job;
-        await updateJob(jobId, { status: 'done', current_step: '', result: { job } });
+        const after = snapshotSessionUsage();
+        const stageUsage = { usd: after.usd - before.usd, tokIn: after.tokIn - before.tokIn, tokOut: after.tokOut - before.tokOut };
+        await updateJob(jobId, { status: 'done', current_step: '', result: { job, stageUsage } });
         logEvent('job_parsed', { route: '/fetch-job', outcome: 'ok' });
       } catch (err) {
         await updateJob(jobId, {

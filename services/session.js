@@ -38,6 +38,8 @@ function createSession() {
       model: null, // null → use the app default MODEL (core/claude.js). Set from user preference via /confirm-contact.
     },
     aiSpendUsd: 0,
+    aiTokensIn: 0,
+    aiTokensOut: 0,
     // #29/#31: how many hrDisplayHistory entries existed as of the last FULL CV generation
     // (/rewrite or /regenerate-cv) — lets a later regeneration tell which sidebar exchanges
     // are genuinely NEW since then, so it only pulls fresh HR input instead of re-stating
@@ -119,6 +121,29 @@ function addSessionSpend(usd) {
 function getSessionSpend() {
   const session = getSession();
   return session.aiSpendUsd || 0;
+}
+
+function addSessionTokens(inTok, outTok) {
+  const session = getSession();
+  session.aiTokensIn  = (session.aiTokensIn  || 0) + (inTok  || 0);
+  session.aiTokensOut = (session.aiTokensOut || 0) + (outTok || 0);
+}
+
+function getSessionUsage() {
+  const session = getSession();
+  return { usd: session.aiSpendUsd || 0, tokIn: session.aiTokensIn || 0, tokOut: session.aiTokensOut || 0 };
+}
+
+function resetSessionUsage() {
+  const session = getSession();
+  session.aiSpendUsd  = 0;
+  session.aiTokensIn  = 0;
+  session.aiTokensOut = 0;
+}
+
+function snapshotSessionUsage() {
+  const u = getSessionUsage();
+  return { usd: u.usd, tokIn: u.tokIn, tokOut: u.tokOut };
 }
 
 // Used by the GET /output/:file route to decide 404 vs serve — true only if the CURRENT
@@ -246,4 +271,5 @@ module.exports = {
   registerOutputFile, isOwnedOutputFile, getOutputDownloadName, purgeSessionData,
   addSessionSpend, getSessionSpend, getTraceId,
   IDLE_LIMIT_MS, sweepSessions,
+  addSessionTokens, getSessionUsage, resetSessionUsage, snapshotSessionUsage,
 };
