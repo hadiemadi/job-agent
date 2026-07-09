@@ -1202,3 +1202,44 @@ describe('Item 10 — model picker enhancements', () => {
     expect(costEl.textContent).toMatch(/\$/);
   });
 });
+
+// ── Item 11 — elapsed time tracker ───────────────────────────────────────────
+
+describe('Item 11 — elapsed time tracker', () => {
+  beforeEach(() => {
+    document.cookie = 'onboarded=1';
+    window.TRIAL_MODE = false;
+    loadAppInDom();
+  });
+
+  test('#elapsedTracker is hidden on page load', () => {
+    const el = document.getElementById('elapsedTracker');
+    expect(el).not.toBeNull();
+    expect(el.style.display).toBe('none');
+  });
+
+  test('updateElapsedDisplay() shows "Tailored in Xs" and makes #elapsedTracker visible', () => {
+    // startTailorTimer() is a function declaration — accessible on window, and sets
+    // the closure-bound _tailorStartTime that updateElapsedDisplay() reads.
+    const now = Date.now();
+    jest.spyOn(Date, 'now')
+      .mockReturnValueOnce(now)         // startTailorTimer() → _tailorStartTime = now
+      .mockReturnValueOnce(now + 5200); // updateElapsedDisplay() → elapsed calc
+
+    window.startTailorTimer();
+    window.updateElapsedDisplay();
+
+    const tracker = document.getElementById('elapsedTracker');
+    expect(tracker.style.display).toBe('');
+    expect(tracker.textContent).toMatch(/Tailored in \d+s/);
+    Date.now.mockRestore();
+  });
+
+  test('updateElapsedDisplay() is a no-op before startTailorTimer() is called (fresh DOM load)', () => {
+    // On a fresh DOM load, _tailorStartTime is null — updateElapsedDisplay must be a no-op.
+    // We never call startTailorTimer() in this test, so the closure var stays null.
+    window.updateElapsedDisplay();
+    const tracker = document.getElementById('elapsedTracker');
+    expect(tracker.style.display).toBe('none'); // stays hidden
+  });
+});

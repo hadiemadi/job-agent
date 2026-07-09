@@ -5,11 +5,17 @@
 
 **Last updated:** 2026-07-09
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 443/443 green · **origin/main HEAD:** (pending push)
+**Tests:** 446/446 green · **origin/main HEAD:** (pending push)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **feat(ui): build-batch §11 — elapsed time tracker ("Tailored in Xs")** —
+  `_tailorStartTime` set via `startTailorTimer()` at the start of `applyChanges()`. When
+  cv_tailor completes (poll done-handler, step 3), `updateElapsedDisplay()` computes
+  `(now - _tailorStartTime)` and writes "Tailored in Xs" to `#elapsedTracker` (a new card
+  at the bottom of the left column, below `#costTracker`). 3 tests. 446/446 green.
 
 - **feat(ui): build-batch §10 — model picker: provider prefix, scoreboard, Recommended tag, token estimate** —
   `MODEL_OPTIONS` gains `provider`, `accuracy`, `speed` fields (drops old `desc`). Header button

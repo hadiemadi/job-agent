@@ -3,6 +3,7 @@ let _cvFileName = null; // set in go() — preserved across steps for resume/sav
 let _jobText   = null; // set in go() — raw job description text, preserved the same way
 let _currentJob = null;
 let _hrReview = null;
+let _tailorStartTime = null; // set in applyChanges(); cleared on each new tailor run
 let _selectedDir = null;
 // One entry per rendered gap card (services/gapStore.js: status tracks discuss/draft progress
 // open -> [discussing] -> proposed; userDecision is the candidate's own, separate
@@ -876,6 +877,15 @@ function formatStageUsage(u) {
   return '$' + Number(u.usd || 0).toFixed(4) + ' · ' + fmtTok(u.tokIn || 0) + '+' + fmtTok(u.tokOut || 0) + ' tok';
 }
 
+function updateElapsedDisplay() {
+  if (!_tailorStartTime) return;
+  const secs = Math.round((Date.now() - _tailorStartTime) / 1000);
+  const elapsed = el('elapsedTracker');
+  if (!elapsed) return;
+  elapsed.textContent = 'Tailored in ' + secs + 's';
+  show('elapsedTracker');
+}
+
 function updateCostTracker(u) {
   if (!u) return;
   const body = el('costTrackerBody');
@@ -1546,6 +1556,7 @@ function startPolling(jobId, isResume, kind) {
         setStep(3, 'ok', 'CV tailored');
         if (result.stageUsage) { const sc = el('sc3'); if (sc) sc.textContent = formatStageUsage(result.stageUsage); }
         updateCostTracker(data.sessionUsage);
+        updateElapsedDisplay();
         setTimeout(() => { hide('progressCard'); showComparison(_currentJob, result); }, 500);
       })
       .catch(() => {
@@ -1557,7 +1568,10 @@ function startPolling(jobId, isResume, kind) {
   poll();
 }
 
+function startTailorTimer() { _tailorStartTime = Date.now(); }
+
 async function applyChanges() {
+  startTailorTimer(); // start elapsed timer from "Apply changes" click
   // Stop any running poll loop (e.g. hr_review) BEFORE the async POST to /rewrite.
   // An in-flight poll fetch can set _pollTimer after startPolling('cv_tailor') runs,
   // which would create a ghost loop alongside the cv_tailor loop and double the
