@@ -284,6 +284,35 @@ describe('agents/cvWriter', () => {
   });
 });
 
+describe('Regression: generateExecutiveTemplate <script> block is syntactically valid JS', () => {
+  // Any \n (bare newline) inside a JS string literal inside the page template causes a
+  // SyntaxError at browser parse time, silently killing every function in the block and
+  // making all buttons non-functional. This test catches that class of bug by parsing
+  // the extracted script block with vm.Script before it ever reaches a browser.
+  test('embedded <script> block has no SyntaxErrors with a representative mock payload', () => {
+    const vm = require('vm');
+    const { generateExecutiveTemplate } = require('../render/cvHtml');
+    const mockCv = {
+      name: 'Jane Doe', title: 'Senior TPM', email: 'jane@example.com',
+      phone: '+1-555-0000', location: 'San Francisco, CA', linkedin: 'linkedin.com/in/jane',
+      summary: 'Senior TPM with RF background.',
+      skills: [{ category: 'Program Management', items: ['Agile', 'JIRA'] }],
+      experience: [{ role: 'TPM', company: 'Acme', period: '2020–2024', bullets: ['Led cross-functional teams.'] }],
+      education: [{ degree: 'BSEE', school: 'MIT', year: '2010' }],
+    };
+    const mockJob = { job_title: 'TPM', employer_name: 'Nokia', job_description: 'Lead programs.' };
+    const html = generateExecutiveTemplate(mockCv, mockJob, {
+      hrDisplayHistory: [{ role: 'expert', text: 'Here is your CV summary. **Bold text** and\nnewlines should survive.' }],
+      aiSpendUsd: 0.05, aiTokensIn: 1000, aiTokensOut: 500,
+    });
+    // Extract the <script> block (first non-data one — skip type="application/json" blocks)
+    const scriptMatch = html.match(/<script(?!\s+type="application\/json")[^>]*>([\s\S]*?)<\/script>/i);
+    expect(scriptMatch).not.toBeNull();
+    const scriptContent = scriptMatch[1];
+    expect(() => new vm.Script(scriptContent)).not.toThrow();
+  });
+});
+
 describe('Item 12 — wordExport.js skillsSection parses "Category: items" strings from DOM round-trip', () => {
   test('flat "Category: items" strings are rendered as bold-category rows, not bullet list', () => {
     const { generateWordCV } = require('../src/wordExport');

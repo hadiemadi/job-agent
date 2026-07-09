@@ -980,7 +980,7 @@ ${pageHtml}
       if (data.changed === false) {
         addHrBubble('expert', "We concluded no change was needed here — I've kept this part exactly as it was.");
       } else {
-        addHrBubble('expert', "Done — here's what changed:\n\n**Before:** " + beforeText + "\n\n**After:** " + data.revisedText);
+        addHrBubble('expert', "Done — here's what changed:\\n\\n**Before:** " + beforeText + "\\n\\n**After:** " + data.revisedText);
       }
       hideConcernUI();
       activeConcern = null;

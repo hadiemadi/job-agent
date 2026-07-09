@@ -3,13 +3,26 @@
 > Single source of truth for project state. Kept current automatically by Claude
 > Code (see CLAUDE.md). Update the date whenever it changes.
 
-**Last updated:** 2026-07-09
+**Last updated:** 2026-07-10
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 454/454 green · **origin/main HEAD:** `ee29c5e`
+**Tests:** 455/455 green · **origin/main HEAD:** `64fcd06` (bug-fix commit pending push)
 
 ---
 
-## ✅ Recently shipped (on `main`, pending push)
+## ✅ Recently shipped (on `main`)
+
+- **fix(cv-page): `\n` in template literal → SyntaxError kills all buttons** (`render/cvHtml.js`) —
+  Root cause (regression from batch item 9 commit `24e10df`): `applyConcernChange()` used
+  `"Done — here's what changed:\n\n**Before:** "` inside a Node.js template literal. `\n`
+  inside a double-quoted JS string inside a template literal is a real newline in the
+  generated output. The browser `<script>` block received a string literal containing bare
+  newlines → `SyntaxError` at parse time → entire script block rejected → every function
+  undefined → all buttons on the Tailored CV page non-functional.
+  Fix: `\n\n` → `\\n\\n` (double backslash in source → literal `\n` in output → valid JS).
+  Regression test added: `agents/agents.smoke.test.js` renders a full template with a
+  real-looking payload (including newlines in `hrDisplayHistory`), extracts the `<script>`
+  block, and validates it with `vm.Script` — catches this entire class of SyntaxError.
+  455/455 green.
 
 - **feat(ui): item 15 — swap "Preferences" / "Advanced options" sidebar box labels** —
   Left column box (model picker + toggles) renamed to "Preferences"; right column box
