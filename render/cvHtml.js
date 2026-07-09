@@ -1009,7 +1009,7 @@ ${pageHtml}
       const res = await fetch('/donate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount }),
+        body: JSON.stringify({ amount, returnUrl: window.location.href }),
       });
       const data = await res.json();
       if (!data.url) throw new Error(data.error || 'Payment setup failed');

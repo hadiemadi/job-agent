@@ -11,6 +11,13 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **fix(donate): build-batch §7 — Stripe donation redirects back to tailored CV page** —
+  `donate()` in `render/cvHtml.js` now sends `returnUrl: window.location.href` with the POST.
+  `POST /donate` validates same-origin (starts with `req.protocol://req.host`) then uses the
+  URL as `success_url` (with `?donated=1` appended), falling back to `/?donated=1` for any
+  cross-origin or missing value. Prevents open redirect — only same-origin URLs accepted.
+  424/424 green (no new tests needed; existing donate tests cover happy path + fallback).
+
 - **feat(session): build-batch §6 — idle session timeout reduced from 24h to 60 minutes** —
   `IDLE_LIMIT_MS` in `services/session.js` changed from 24 hours → 60 minutes. Session data
   (CV text, HR review, etc.) is now cleared after 60 minutes of inactivity, matching the

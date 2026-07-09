@@ -32,6 +32,11 @@ router.post('/donate', async (req, res) => {
 
   try {
     const origin = `${req.protocol}://${req.get('host')}`;
+    // returnUrl must be same-origin to prevent open redirect attacks.
+    const rawReturn = req.body && req.body.returnUrl;
+    const successUrl = (typeof rawReturn === 'string' && rawReturn.startsWith(origin))
+      ? `${rawReturn}${rawReturn.includes('?') ? '&' : '?'}donated=1`
+      : `${origin}/?donated=1`;
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
@@ -45,7 +50,7 @@ router.post('/donate', async (req, res) => {
           quantity: 1,
         },
       ],
-      success_url: `${origin}/?donated=1`,
+      success_url: successUrl,
       cancel_url:  `${origin}/`,
     });
 
