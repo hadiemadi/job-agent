@@ -314,6 +314,10 @@
     <div class="card modal-box">
       <div class="steps" id="steps"></div>
       <div id="progressCost" style="display:none;text-align:center;font-size:0.72rem;color:var(--ink);opacity:0.6;margin-top:8px;"></div>
+      <!-- Cancel is UI-only: stops polling but backend AI calls finish in the background -->
+      <div style="text-align:center;margin-top:14px;">
+        <button id="cancelProgressBtn" class="btn" style="font-size:0.8rem;padding:5px 16px;background:transparent;border:1px solid var(--ink);opacity:0.5;" onclick="cancelProgress()">Cancel</button>
+      </div>
     </div>
   </div>
 

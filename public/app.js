@@ -1339,6 +1339,26 @@ function stopPolling() {
   if (_pollTimer !== null) { clearTimeout(_pollTimer); _pollTimer = null; }
 }
 
+// UI-only cancel — stops the poll timer and returns the user to the upload screen.
+// IMPORTANT: the backend job (reading CV, HR review, tailoring) keeps running to completion
+// because there is no AbortController wired to the job queue. This is intentional: aborting
+// mid-generation could leave the session in a half-written state (partial cvData, incomplete
+// hrThread) and would require complex cleanup. The cost of letting it finish is a few API
+// tokens that are simply discarded. If the user re-uploads and starts fresh immediately,
+// resetSessionUsage() will zero the counter again.
+function cancelProgress() {
+  stopPolling();
+  clearPendingJob();
+  hide('progressCard');
+  // Restore the upload form so the user can start a fresh tailoring session
+  show('cvPickerGroup');  hide('fileChosenDisplay');
+  show('jobTextGroup');   hide('jobDescDisplay');
+  const btn = el('goBtn');
+  if (btn) { btn.disabled = false; show('goBtn'); }
+  setGoStatus('Cancelled. Upload your CV to start a new tailoring.', 'info');
+  show('goStatus');
+}
+
 // Polls /job/:id/status until done/failed, then branches on kind:
 //   'reading_cv'  → shows contact card pre-filled (step 0 done)
 //   'parsing_job' → cascades to /review-cv (step 1 done → step 2 starts)

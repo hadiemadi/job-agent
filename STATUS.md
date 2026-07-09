@@ -5,11 +5,18 @@
 
 **Last updated:** 2026-07-09
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 434/434 green · **origin/main HEAD:** (pending push)
+**Tests:** 437/437 green · **origin/main HEAD:** (pending push)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **feat(ui): build-batch §9 — Cancel button on progress popup** —
+  Added `#cancelProgressBtn` inside the progress popup modal. `cancelProgress()` in `app.js`
+  stops the poll timer (`stopPolling()`) and clears the pending job, then closes the popup and
+  restores the full upload form (CV picker, job text, enabled Go button). Backend AI jobs run
+  to completion (no AbortController — documented in code comment). 3 tests: UI reset, stopPolling
+  delegation, goStatus cancellation notice. 437/437 green.
 
 - **feat(tracker): build-batch §8 — real AI cost/token tracker (per-stage + running total)** —
   Per-CV-session cost + token tracking (resets on new CV upload). Token accumulation wired into

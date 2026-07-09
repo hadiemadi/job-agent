@@ -1080,3 +1080,48 @@ describe('Coach mic button — template must not carry inline display:none', () 
     expect(src).not.toMatch(/class="btn-mic"[^>]*style="[^"]*display\s*:\s*none/);
   });
 });
+
+// ── Item 9 — cancelProgress() resets UI state ────────────────────────────
+
+describe('Item 9 — cancelProgress() resets UI to upload screen', () => {
+  beforeEach(() => {
+    document.cookie = 'onboarded=1';
+    window.TRIAL_MODE = false;
+    loadAppInDom();
+  });
+
+  test('cancelProgress() hides the progress popup and re-shows the upload form', () => {
+    // Simulate the state after go() runs: progress card visible, form elements hidden.
+    document.getElementById('progressCard').style.display = '';
+    document.getElementById('cvPickerGroup').style.display = 'none';
+    document.getElementById('jobTextGroup').style.display  = 'none';
+    document.getElementById('fileChosenDisplay').style.display = '';
+    document.getElementById('goBtn').disabled = true;
+    document.getElementById('goBtn').style.display = 'none';
+
+    window.cancelProgress();
+
+    expect(document.getElementById('progressCard').style.display).toBe('none');
+    expect(document.getElementById('cvPickerGroup').style.display).toBe('');
+    expect(document.getElementById('jobTextGroup').style.display).toBe('');
+    expect(document.getElementById('goBtn').disabled).toBe(false);
+    expect(document.getElementById('goBtn').style.display).toBe('');
+  });
+
+  test('cancelProgress() calls stopPolling() to cancel any in-flight timer', () => {
+    // _pollTimer is a `let` binding in eval scope — not reachable via window.*
+    // Test that stopPolling() is invoked (the function that owns the cancellation logic).
+    const spy = jest.spyOn(window, 'stopPolling');
+    window.cancelProgress();
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  test('cancelProgress() shows a cancellation notice in goStatus', () => {
+    document.getElementById('progressCard').style.display = '';
+    window.cancelProgress();
+    const status = document.getElementById('goStatus');
+    expect(status.style.display).toBe('');
+    expect(status.textContent).toMatch(/Cancelled/i);
+  });
+});
