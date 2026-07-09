@@ -11,6 +11,14 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **feat(session): build-batch §6 — idle session timeout reduced from 24h to 60 minutes** —
+  `IDLE_LIMIT_MS` in `services/session.js` changed from 24 hours → 60 minutes. Session data
+  (CV text, HR review, etc.) is now cleared after 60 minutes of inactivity, matching the
+  privacy promise ("data deleted after session"). Sweep extracted to named `sweepSessions()`
+  function and exported alongside `IDLE_LIMIT_MS`. Two tests: IDLE_LIMIT_MS value assertion;
+  behavioral test creates session, ages lastSeen past limit, calls sweepSessions(), confirms
+  next getSession() returns a fresh clean session. 424/424 green.
+
 - **feat(session): build-batch §5 — HR summary scoped to current tailoring session** —
   `/review-cv` background job now resets `appSession.hrDisplayHistory = []` and
   `appSession.lastGenHrCount = 0` at the start of each new tailoring session. This scopes

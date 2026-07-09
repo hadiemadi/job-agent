@@ -207,10 +207,10 @@ function requestScope(handler) {
   return (req, res) => als.run(null, () => handler(req, res));
 }
 
-// Memory-leak protection: drop sessions nobody has touched in 24h. Minimal by design —
-// single in-memory Map, single-process app (see CLAUDE.md Phase 5 for real multi-user
-// infra/DB work), this just stops it growing unbounded on a long-running server.
-const IDLE_LIMIT_MS = 24 * 60 * 60 * 1000;
+// Drop sessions idle for 60 minutes — "idle" means no inbound requests (lastSeen not updated).
+// Single in-memory Map, single-process app; this also serves as the privacy boundary so stale
+// session data (CV text, HR review, etc.) doesn't persist longer than an hour of inactivity.
+const IDLE_LIMIT_MS = 60 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 30 * 60 * 1000;
 
 // Generated CVs/cover letters/comparisons must not outlive this window even if the
@@ -219,7 +219,7 @@ const SWEEP_INTERVAL_MS = 30 * 60 * 1000;
 // ends," but a long-lived session shouldn't mean indefinite retention either.
 const OUTPUT_RETENTION_MS = envNumber('OUTPUT_RETENTION_MINUTES', 180) * 60 * 1000;
 
-const sweepInterval = setInterval(() => {
+function sweepSessions() {
   const now = Date.now();
   for (const [sid, session] of sessions) {
     if (now - session.lastSeen > IDLE_LIMIT_MS) {
@@ -235,7 +235,9 @@ const sweepInterval = setInterval(() => {
       }
     }
   }
-}, SWEEP_INTERVAL_MS);
+}
+
+const sweepInterval = setInterval(sweepSessions, SWEEP_INTERVAL_MS);
 // Don't let the sweep timer keep a test runner or short-lived script process alive.
 if (sweepInterval.unref) sweepInterval.unref();
 
@@ -243,4 +245,5 @@ module.exports = {
   getSession, setSession, als, sessionMiddleware, requestScope, createSession,
   registerOutputFile, isOwnedOutputFile, getOutputDownloadName, purgeSessionData,
   addSessionSpend, getSessionSpend, getTraceId,
+  IDLE_LIMIT_MS, sweepSessions,
 };
