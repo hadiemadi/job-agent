@@ -359,11 +359,11 @@ async function deleteMyCV(cvId) {
 // ── Model picker + cost estimator (logged-in users only) ──────────────────────
 
 const MODEL_OPTIONS = [
-  { id: 'claude-fable-5',   label: 'Fable 5',         desc: 'Highest accuracy, best for complex tailoring decisions', inputPer1M: 10,    outputPer1M: 50   },
-  { id: 'claude-opus-4-8',  label: 'Opus 4.8',        desc: 'Strong reasoning, faster than Fable',                   inputPer1M: 5,     outputPer1M: 25   },
-  { id: 'claude-sonnet-5',  label: 'Sonnet 5',        desc: 'Best balance of speed, quality, and cost',              inputPer1M: 2,     outputPer1M: 10   },
-  { id: 'claude-haiku-4-5', label: 'Haiku 4.5',       desc: 'Fastest, most economical',                              inputPer1M: 1,     outputPer1M: 5    },
-  { id: 'deepseek-chat',    label: 'DeepSeek V4 Pro', desc: 'Very capable, significantly lower cost — uses DeepSeek API', inputPer1M: 0.435, outputPer1M: 0.87 },
+  { id: 'claude-fable-5',   provider: 'Anthropic', label: 'Fable 5',         accuracy: 'Highest accuracy',    speed: 'Slower',   inputPer1M: 10,    outputPer1M: 50   },
+  { id: 'claude-opus-4-8',  provider: 'Anthropic', label: 'Opus 4.8',        accuracy: 'High accuracy',       speed: 'Moderate', inputPer1M: 5,     outputPer1M: 25   },
+  { id: 'claude-sonnet-5',  provider: 'Anthropic', label: 'Sonnet 5',        accuracy: 'Strong accuracy',     speed: 'Balanced', inputPer1M: 2,     outputPer1M: 10   },
+  { id: 'claude-haiku-4-5', provider: 'Anthropic', label: 'Haiku 4.5',       accuracy: 'Reasonable accuracy', speed: 'Fastest',  inputPer1M: 1,     outputPer1M: 5    },
+  { id: 'deepseek-chat',    provider: 'DeepSeek',  label: 'DeepSeek V4 Pro', accuracy: 'Strong accuracy',     speed: 'Balanced', inputPer1M: 0.435, outputPer1M: 0.87 },
 ];
 
 // Fixed pipeline assumptions for cost estimate: 4 pipeline steps (read CV, parse job,
@@ -378,13 +378,17 @@ const _COST_BUFFER = 1.2;
 let _selectedModel = 'claude-sonnet-5';
 let _prefillProfile = null; // profile preferences fetched from DB on login; null for guests/first-time users
 
+function calcTokenEstimate(jobTextLength) {
+  const jobTokens = Math.ceil((jobTextLength || 0) / 4);
+  const totalInput  = (_COST_CV_TOKENS + jobTokens + _COST_OVERHEAD_TOKENS) * _COST_PIPELINE_STEPS;
+  const totalOutput = _COST_OUTPUT_TOKENS * _COST_PIPELINE_STEPS;
+  return { totalInput, totalOutput, totalTok: totalInput + totalOutput };
+}
+
 function calcCostEstimate(modelId, jobTextLength) {
   const m = MODEL_OPTIONS.find(o => o.id === modelId);
   if (!m) return null;
-  const jobTokens = Math.ceil((jobTextLength || 0) / 4);
-  const inputPerStep = _COST_CV_TOKENS + jobTokens + _COST_OVERHEAD_TOKENS;
-  const totalInput  = inputPerStep * _COST_PIPELINE_STEPS;
-  const totalOutput = _COST_OUTPUT_TOKENS * _COST_PIPELINE_STEPS;
+  const { totalInput, totalOutput } = calcTokenEstimate(jobTextLength);
   const rawCost = (totalInput / 1e6) * m.inputPer1M + (totalOutput / 1e6) * m.outputPer1M;
   return rawCost * _COST_BUFFER;
 }
@@ -399,7 +403,7 @@ function _updateModelPickerCurrent() {
   const cur = el('modelPickerCurrent');
   if (!cur) return;
   const m = MODEL_OPTIONS.find(o => o.id === _selectedModel);
-  cur.textContent = m ? m.label : _selectedModel;
+  cur.textContent = m ? (m.provider + ' — ' + m.label) : _selectedModel;
 }
 
 function toggleModelPicker() {
@@ -417,15 +421,21 @@ function initModelPicker(preferredModel) {
   if (!container) return;
   container.innerHTML = MODEL_OPTIONS.map(m => {
     const safeId = m.id.replace(/[^a-zA-Z0-9]/g, '-');
-    const isDefault = m.id === 'claude-sonnet-5';
+    const isRecommended = m.id === 'claude-sonnet-5';
+    const tag = isRecommended
+      ? ' <span class="model-opt-default">Recommended</span>'
+      : '';
     return '<div class="model-option' + (m.id === _selectedModel ? ' selected' : '') + '"' +
       ' id="model-opt-' + safeId + '"' +
       ' onclick="selectModel(\'' + m.id + '\')">' +
       '<div class="model-opt-header">' +
-        '<span class="model-opt-label">' + escapeHtml(m.label) + (isDefault ? ' <span class="model-opt-default">(default)</span>' : '') + '</span>' +
+        '<span class="model-opt-label">' + escapeHtml(m.provider) + ' — ' + escapeHtml(m.label) + tag + '</span>' +
         '<span class="model-opt-cost" id="cost-' + safeId + '"></span>' +
       '</div>' +
-      '<span class="model-opt-desc">' + escapeHtml(m.desc) + '</span>' +
+      '<div class="model-opt-scoreboard">' +
+        '<span class="sboard-row">🎯 ' + escapeHtml(m.accuracy) + '</span>' +
+        '<span class="sboard-row">⚡ ' + escapeHtml(m.speed) + '</span>' +
+      '</div>' +
       '</div>';
   }).join('');
   _updateModelPickerCurrent();
@@ -434,12 +444,14 @@ function initModelPicker(preferredModel) {
 
 function updateCostEstimate() {
   const jobText = el('jobText') ? el('jobText').value : '';
+  const { totalTok } = calcTokenEstimate(jobText.length);
+  const tokLabel = totalTok >= 1000 ? Math.round(totalTok / 1000) + 'k tok' : totalTok + ' tok';
   MODEL_OPTIONS.forEach(m => {
     const safeId = m.id.replace(/[^a-zA-Z0-9]/g, '-');
     const costEl = el('cost-' + safeId);
     if (!costEl) return;
     const cost = calcCostEstimate(m.id, jobText.length);
-    costEl.textContent = 'Estimated cost: ~' + formatCostEstimate(cost);
+    costEl.textContent = '~' + tokLabel + ' · ' + formatCostEstimate(cost);
   });
 }
 

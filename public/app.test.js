@@ -817,12 +817,14 @@ describe('Model picker — initModelPicker', () => {
     }));
   });
 
-  test('cost cells are populated with Estimated cost text', async () => {
+  test('cost cells are populated with token count and cost estimate', async () => {
     window.initModelPicker('claude-sonnet-5');
     const costCells = document.querySelectorAll('.model-opt-cost');
     expect(costCells.length).toBe(5);
     costCells.forEach(cell => {
-      expect(cell.textContent).toContain('Estimated cost');
+      // New format: "~Xk tok · $Y.YY" — must contain token unit and dollar sign
+      expect(cell.textContent).toMatch(/tok/);
+      expect(cell.textContent).toMatch(/\$/);
     });
   });
 });
@@ -1123,5 +1125,80 @@ describe('Item 9 — cancelProgress() resets UI to upload screen', () => {
     const status = document.getElementById('goStatus');
     expect(status.style.display).toBe('');
     expect(status.textContent).toMatch(/Cancelled/i);
+  });
+});
+
+// ── Item 10 — model picker: provider prefix, scoreboard, Recommended tag ──
+
+describe('Item 10 — model picker enhancements', () => {
+  beforeEach(() => {
+    document.cookie = 'onboarded=1';
+    window.TRIAL_MODE = false;
+    loadAppInDom();
+  });
+
+  test('MODEL_OPTIONS source has provider, accuracy, and speed fields on every entry', () => {
+    // const is in eval scope, not window — check via source
+    const src = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+    expect(src).toMatch(/provider:\s*'Anthropic'/);
+    expect(src).toMatch(/provider:\s*'DeepSeek'/);
+    expect(src).toMatch(/accuracy:\s*'Highest accuracy'/);
+    expect(src).toMatch(/speed:\s*'Slower'/);
+    expect(src).toMatch(/speed:\s*'Fastest'/);
+  });
+
+  test('every model label in the header shows "Provider — Label" format', () => {
+    window.initModelPicker('claude-sonnet-5');
+    // Spot-check all 5 known model options
+    const checks = [
+      ['claude-fable-5',   'Anthropic — Fable 5'],
+      ['claude-opus-4-8',  'Anthropic — Opus 4.8'],
+      ['claude-sonnet-5',  'Anthropic — Sonnet 5'],
+      ['claude-haiku-4-5', 'Anthropic — Haiku 4.5'],
+      ['deepseek-chat',    'DeepSeek — DeepSeek V4 Pro'],
+    ];
+    checks.forEach(([id, expectedText]) => {
+      const safeId = id.replace(/[^a-zA-Z0-9]/g, '-');
+      const optEl = document.getElementById('model-opt-' + safeId);
+      expect(optEl).not.toBeNull();
+      expect(optEl.innerHTML).toContain(expectedText);
+    });
+  });
+
+  test('Sonnet 5 is tagged "Recommended" (not "(default)")', () => {
+    window.initModelPicker('claude-sonnet-5');
+    const safeId = 'claude-sonnet-5'.replace(/[^a-zA-Z0-9]/g, '-');
+    const optEl = document.getElementById('model-opt-' + safeId);
+    expect(optEl.innerHTML).toContain('Recommended');
+    expect(optEl.innerHTML).not.toContain('(default)');
+  });
+
+  test('each model option renders accuracy and speed scoreboard rows', () => {
+    window.initModelPicker('claude-sonnet-5');
+    // Spot-check known scoreboard values for Fable 5 and Haiku
+    const fableEl = document.getElementById('model-opt-claude-fable-5');
+    expect(fableEl.innerHTML).toContain('Highest accuracy');
+    expect(fableEl.innerHTML).toContain('Slower');
+    const haikuEl = document.getElementById('model-opt-claude-haiku-4-5');
+    expect(haikuEl.innerHTML).toContain('Reasonable accuracy');
+    expect(haikuEl.innerHTML).toContain('Fastest');
+  });
+
+  test('_updateModelPickerCurrent shows "Provider — Label" in the header button', () => {
+    window.initModelPicker('claude-sonnet-5');
+    const cur = document.getElementById('modelPickerCurrent');
+    expect(cur.textContent).toBe('Anthropic — Sonnet 5');
+  });
+
+  test('updateCostEstimate includes token count alongside cost in each option', () => {
+    window.initModelPicker('claude-sonnet-5');
+    // Type some job text so token count is non-zero
+    document.getElementById('jobText').value = 'A'.repeat(4000); // ~1000 tokens
+    window.updateCostEstimate();
+    const safeId = 'claude-sonnet-5'.replace(/[^a-zA-Z0-9]/g, '-');
+    const costEl = document.getElementById('cost-' + safeId);
+    // Must contain "tok" (the token unit abbreviation) and "$" (the cost)
+    expect(costEl.textContent).toMatch(/tok/);
+    expect(costEl.textContent).toMatch(/\$/);
   });
 });

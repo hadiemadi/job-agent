@@ -5,11 +5,19 @@
 
 **Last updated:** 2026-07-09
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 437/437 green · **origin/main HEAD:** (pending push)
+**Tests:** 443/443 green · **origin/main HEAD:** (pending push)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **feat(ui): build-batch §10 — model picker: provider prefix, scoreboard, Recommended tag, token estimate** —
+  `MODEL_OPTIONS` gains `provider`, `accuracy`, `speed` fields (drops old `desc`). Header button
+  now shows "Provider — Label" (via `_updateModelPickerCurrent`). Each option card shows a
+  2-line scoreboard (🎯 accuracy · ⚡ speed) instead of a single description. Sonnet 5 tagged
+  "Recommended" (was "(default)"). Cost line updated to `~Xk tok · $Y.YY` format (token count
+  + cost, from `calcTokenEstimate()` + `calcCostEstimate()`). New `.model-opt-scoreboard` /
+  `.sboard-row` CSS in `style.css`. 6 new tests (source + DOM). 443/443 green.
 
 - **feat(ui): build-batch §9 — Cancel button on progress popup** —
   Added `#cancelProgressBtn` inside the progress popup modal. `cancelProgress()` in `app.js`
