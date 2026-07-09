@@ -11,16 +11,12 @@
 
 ## ✅ Recently shipped (on `main`)
 
-- **fix(rate): ERR-RATE-002 — AI rate limit raised 60→150 req/hr** —
-  `AI_RATE_LIMIT_MAX` default raised from 60 to 150 in `services/ratelimit.js`.
-  The $5/day spend cap is the real cost control; the rate limit should only catch scripted
-  abuse, not block a real user in a thorough session.
-  - **Math:** realistic worst case ≈ 10 gaps × 5 AI calls each (HR draft + 2 coach turns +
-    redraft + coach review) + initial HR review + CV tailoring = ~60 calls total.
-    150/hr is 2.5× that headroom. At $0.014/call avg: 150 calls/hr = $2.10 — under the cap.
-  - **Tests:** threshold test updated (60→150); two new tests: heavy session (50 calls < 150)
-    passes; abusive volume (200 > 150) is caught. 418/418 green.
-  - Scoping unchanged: per-browser session cookie (`sid`) with IP fallback.
+- **fix(rate): ERR-RATE-002 complete — render.yaml + .env.example AI rate limit raised to 150** —
+  Root cause of production still enforcing 20: `render.yaml` hardcoded `AI_RATE_LIMIT_MAX: "20"`,
+  overriding the code default. Both `render.yaml` and `.env.example` updated to 150. Combined with
+  the previous code default change in `services/ratelimit.js` (60→150), the fix is now complete end-to-end.
+  Realistic worst case ≈ 60 AI calls/session; 150/hr is 2.5× headroom; $5/day spend cap is the
+  real cost control. 418/418 green (no new tests needed for config-only change).
 
 - **fix(voice) + feat(llm): mic button fix + DeepSeek V4 Pro model integration** — 4 commits:
 
