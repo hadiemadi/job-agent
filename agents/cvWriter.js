@@ -4,7 +4,7 @@ const { client, MODEL, createJsonCompletion } = require('../core/claude');
 const { extractJSON, firstText } = require('../core/json');
 const { logDiagnostic } = require('../core/logger');
 const { loadCore } = require('../core/knowledge');
-const { registerOutputFile, getSessionSpend } = require('../services/session');
+const { registerOutputFile, getSessionSpend, getSessionUsage } = require('../services/session');
 const { hrSystemPrompt, stealthWritingDirective, EVIDENCE_HIERARCHY } = require('./recruiter');
 
 // The writer's own generation directive, appended on top of the shared HR persona/rules
@@ -391,7 +391,8 @@ IMPORTANT: skills and key_qualifications must be flat arrays of plain strings on
   const initialHrMessage = buildSessionSummary(preferences, originalCvData, cvData, modified_sections, allChanges, gapDiscussions);
   const updatedDisplayHistory = [...(hrDisplayHistory || []), { role: 'expert', text: initialHrMessage }];
 
-  const html = generateExecutiveTemplate(cvData, job, { hrDisplayHistory: updatedDisplayHistory, aiSpendUsd: getSessionSpend() });
+  const { usd: aiSpendUsd, tokIn: aiTokensIn, tokOut: aiTokensOut } = getSessionUsage();
+  const html = generateExecutiveTemplate(cvData, job, { hrDisplayHistory: updatedDisplayHistory, aiSpendUsd, aiTokensIn, aiTokensOut });
   const filePath = registerOutputFile('html'); // unguessable, session-scoped — see services/session.js
   await fse.outputFile(filePath, html);
 
@@ -439,7 +440,8 @@ Return JSON only:
     (template_suggestion ? `\n- ${template_suggestion}` : '');
   const updatedDisplayHistory = [...(hrDisplayHistory || []), { role: 'expert', text: initialHrMessage }];
 
-  const html = generateExecutiveTemplate(updatedCv, job, { hrDisplayHistory: updatedDisplayHistory, aiSpendUsd: getSessionSpend() });
+  const { usd: aiSpendUsd, tokIn: aiTokensIn, tokOut: aiTokensOut } = getSessionUsage();
+  const html = generateExecutiveTemplate(updatedCv, job, { hrDisplayHistory: updatedDisplayHistory, aiSpendUsd, aiTokensIn, aiTokensOut });
   const filePath = registerOutputFile('html'); // unguessable, session-scoped — see services/session.js
   await fse.outputFile(filePath, html);
 

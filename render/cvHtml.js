@@ -119,7 +119,7 @@ function renderCVPage(cv, job, opts = {}) {
 
 // ── Standalone tailored CV (editable, with toolbar) ───────────────────────────
 function generateExecutiveTemplate(cv, job, opts = {}) {
-  const { hrDisplayHistory = [], aiSpendUsd = 0 } = opts;
+  const { hrDisplayHistory = [], aiSpendUsd = 0, aiTokensIn = 0, aiTokensOut = 0 } = opts;
   const pageHtml = renderCVPage(cv, job, { editable: true, showBadge: true });
 
   // Serialize data for <script type="application/json"> elements.
@@ -337,7 +337,7 @@ ${CV_CSS}
     <button class="tb-btn tb-save" id="hrToggleBtn" onclick="toggleHrSidebar()" data-tooltip="Shows or hides the HR Expert chat panel — select any text in the CV to start a discussion about it.">Hide HR Expert</button>
   </div>
   <div class="tb-donate-wrap">
-    <div class="tb-cost" title="Total Anthropic API cost for this session's CV — not the global daily budget, not other users' usage">AI cost for this CV: $${Number(aiSpendUsd || 0).toFixed(2)}</div>
+    <div id="tb-cost" class="tb-cost" title="Total Anthropic API cost for this session's CV — not the global daily budget, not other users' usage">AI cost: $${Number(aiSpendUsd || 0).toFixed(4)}<br><span style="font-size:0.7em;opacity:0.7;">In: ${aiTokensIn.toLocaleString()} · Out: ${aiTokensOut.toLocaleString()} tok</span></div>
     <button class="tb-donate" onclick="openDonate()">Buy me a coffee ☕</button>
   </div>
 </div>
@@ -549,6 +549,19 @@ ${pageHtml}
     });
   }
 
+  // Refreshes #tb-cost with the latest per-session token totals from the server. Called after
+  // every AI action (cover letter, HR chat, regen, etc.) so the cost stays current without
+  // a page reload. Fire-and-forget — a network failure just leaves the last known value shown.
+  function refreshCostDisplay() {
+    fetch('/session/usage').then(function(r) { return r.json(); }).then(function(u) {
+      const el = document.getElementById('tb-cost');
+      if (!el) return;
+      el.innerHTML = 'AI cost: $' + Number(u.usd || 0).toFixed(4) +
+        '<br><span style="font-size:0.7em;opacity:0.7;">In: ' + (u.tokIn || 0).toLocaleString() +
+        ' · Out: ' + (u.tokOut || 0).toLocaleString() + ' tok</span>';
+    }).catch(function() {});
+  }
+
   // Save edited CV as a standalone HTML file (toolbar + edit scripts included so it stays editable)
   function saveHTML() {
     const html = '<!DOCTYPE html>\\n' + document.documentElement.outerHTML;
@@ -750,6 +763,7 @@ ${pageHtml}
     } finally {
       btn.disabled = false;
       setBusy(false);
+      refreshCostDisplay();
     }
   }
 
@@ -834,6 +848,7 @@ ${pageHtml}
     } finally {
       btn.disabled = false;
       setBusy(false);
+      refreshCostDisplay();
     }
   }
 
@@ -969,6 +984,7 @@ ${pageHtml}
     } finally {
       applyBtn.disabled = false; keepBtn.disabled = false;
       setBusy(false);
+      refreshCostDisplay();
     }
   }
 
@@ -1082,6 +1098,7 @@ ${pageHtml}
     } finally {
       sendBtn.disabled = false;
       setBusy(false);
+      refreshCostDisplay();
     }
   }
 </script>

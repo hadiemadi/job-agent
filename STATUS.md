@@ -5,11 +5,24 @@
 
 **Last updated:** 2026-07-09
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 421/421 green · **origin/main HEAD:** (pending push)
+**Tests:** 434/434 green · **origin/main HEAD:** (pending push)
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **feat(tracker): build-batch §8 — real AI cost/token tracker (per-stage + running total)** —
+  Per-CV-session cost + token tracking (resets on new CV upload). Token accumulation wired into
+  `core/claude.js`'s `recordUsage()` via new `addSessionTokens()` in `services/session.js`.
+  New session helpers: `addSessionTokens`, `getSessionUsage`, `resetSessionUsage`, `snapshotSessionUsage`.
+  Every background job (reading_cv, parsing_job, hr_review, cv_tailor) snapshots usage before/after
+  and stores `stageUsage` in its result. Every `GET /job/:id/status` poll response includes `sessionUsage`
+  (cumulative). Progress popup: per-step cost badge (`#sc0`–`#sc3`) shown as each stage completes.
+  Running total in `#costTracker` card (bottom of left column) and `#progressCost` in the popup.
+  Tailored CV toolbar: `#tb-cost` enhanced with tokens (in + out); `refreshCostDisplay()` JS
+  function calls `GET /session/usage` after every AI action (HR chat, cover letter, interview Q,
+  concern apply). `GET /session/usage` route added to `cv.routes.js`. 9 new tests (session functions
+  + source-level assertions). 434/434 green.
 
 - **fix(donate): build-batch §7 — Stripe donation redirects back to tailored CV page** —
   `donate()` in `render/cvHtml.js` now sends `returnUrl: window.location.href` with the POST.

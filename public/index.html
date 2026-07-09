@@ -138,6 +138,11 @@
           <div class="opt" id="side-tone-label" style="text-align:center;">Direct (default)</div>
         </div>
       </div>
+      <!-- AI cost tracker — shown once any stage completes, updated by updateCostTracker() -->
+      <div class="card prefs-side-card" id="costTracker" style="display:none;font-size:0.8rem;">
+        <div class="prefs-box-label">AI cost for this CV</div>
+        <div id="costTrackerBody" style="font-family:monospace;margin-top:4px;line-height:1.7;"></div>
+      </div>
     </div>
 
     <!-- Center column: always visible — inputCard only -->
@@ -308,6 +313,7 @@
   <div class="modal-overlay" id="progressCard" style="display:none;">
     <div class="card modal-box">
       <div class="steps" id="steps"></div>
+      <div id="progressCost" style="display:none;text-align:center;font-size:0.72rem;color:var(--ink);opacity:0.6;margin-top:8px;"></div>
     </div>
   </div>
 

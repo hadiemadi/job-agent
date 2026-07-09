@@ -7,7 +7,7 @@ const { readCV, parseCVStructure, adjustLanguageLevel, classify, generateCompari
 const { generateWordCV, generateWordCVAlt } = require('../src/wordExport');
 const { generateWordFromTemplate } = require('../src/wordTemplateExport');
 const { upload, templateUpload } = require('../services/uploads');
-const { getSession, setSession, registerOutputFile, purgeSessionData, als, getTraceId } = require('../services/session');
+const { getSession, setSession, registerOutputFile, purgeSessionData, als, getTraceId, resetSessionUsage, getSessionUsage, snapshotSessionUsage } = require('../services/session');
 const { saveProfilePreferences, saveCv } = require('../services/auth');
 const { getGaps } = require('../services/gapStore');
 const { tailorCvWithReview } = require('../services/workflows');
@@ -59,6 +59,8 @@ router.post('/upload-cv', upload.single('cv'), async (req, res) => {
     als.run(sid, async () => {
       try {
         await updateJob(jobId, { status: 'running', current_step: 'Reading CV' });
+        resetSessionUsage(); // per-CV tracker: reset when a new CV upload starts
+        const before = snapshotSessionUsage();
         const cvText = await readCV(cvPath);
         const cvData = await parseCVStructure(cvText);
         // Same scrub-on-read policy as before — file deleted as soon as text is extracted.
@@ -67,7 +69,9 @@ router.post('/upload-cv', upload.single('cv'), async (req, res) => {
         appSession.cvText = cvText;
         appSession.cvPath = null;
         appSession.cvData = cvData;
-        await updateJob(jobId, { status: 'done', current_step: '', result: { cvData } });
+        const after = snapshotSessionUsage();
+        const stageUsage = { usd: after.usd - before.usd, tokIn: after.tokIn - before.tokIn, tokOut: after.tokOut - before.tokOut };
+        await updateJob(jobId, { status: 'done', current_step: '', result: { cvData, stageUsage } });
         appSession.stepTimestamps = { ...(appSession.stepTimestamps || {}), cvUploadCompletedAt: Date.now() };
         // Anchor a trace ID to this upload — auto-threaded into all subsequent logDiagnostic
         // calls for this flow via logger.js's getTraceId(), so the full timeline of a single
@@ -210,8 +214,11 @@ router.post('/rewrite', async (req, res) => {
     als.run(sid, async () => {
       try {
         await updateJob(jobId, { status: 'running', current_step: 'Writing CV' });
+        const before = snapshotSessionUsage();
         const { filePath, cvData, modified_sections, thread, hrDisplayHistory, review } = await tailorCvWithReview(jobParams);
         const reviewIssues = review && review.verdict === 'FIX_REQUIRED' ? review.required_edits : [];
+        const after = snapshotSessionUsage();
+        const stageUsage = { usd: after.usd - before.usd, tokIn: after.tokIn - before.tokIn, tokOut: after.tokOut - before.tokOut };
         // Store session-updatable fields in the job result — the GET /job/:id/status route
         // applies them to the session when the client polls and gets status === 'done', so
         // downstream routes (/regenerate-cv, /export-word) see the correct state.
@@ -219,7 +226,7 @@ router.post('/rewrite', async (req, res) => {
           status: 'done',
           current_step: '',
           result: {
-            filePath, reviewIssues,
+            filePath, reviewIssues, stageUsage,
             hrThread: thread,
             hrDisplayHistory,
             lastGenHrCount: hrDisplayHistory.length,
@@ -299,15 +306,17 @@ router.get('/job/:id/status', pollLimiter, async (req, res) => {
     const terminal = job.status === 'done' || job.status === 'failed';
     const resultPayload = terminal ? (
       job.kind === 'hr_review'
-        ? { hrReview: r.hrReview, currentJob: r.currentJob, error: r.error, code: r.code }
+        ? { hrReview: r.hrReview, currentJob: r.currentJob, error: r.error, code: r.code, stageUsage: r.stageUsage }
         : job.kind === 'reading_cv'
-        ? { cvData: r.cvData, error: r.error, code: r.code }
+        ? { cvData: r.cvData, error: r.error, code: r.code, stageUsage: r.stageUsage }
         : job.kind === 'parsing_job'
-        ? { job: r.job, error: r.error, code: r.code, kind: r.kind, loginWall: r.loginWall, scraperDisabled: r.scraperDisabled }
-        : { filePath: r.filePath, reviewIssues: r.reviewIssues, error: r.error, code: r.code, stage: r.stage, traceId: r.traceId }
+        ? { job: r.job, error: r.error, code: r.code, kind: r.kind, loginWall: r.loginWall, scraperDisabled: r.scraperDisabled, stageUsage: r.stageUsage }
+        : { filePath: r.filePath, reviewIssues: r.reviewIssues, error: r.error, code: r.code, stage: r.stage, traceId: r.traceId, stageUsage: r.stageUsage }
     ) : null;
 
-    res.json({ status: job.status, current_step: job.current_step || '', result: resultPayload });
+    let sessionUsage;
+    try { sessionUsage = getSessionUsage(); } catch (_) { sessionUsage = null; }
+    res.json({ status: job.status, current_step: job.current_step || '', result: resultPayload, sessionUsage });
   } catch (err) {
     sendError(res, '/job/:id/status', 'ERR-CV-004', err);
   }
@@ -437,6 +446,14 @@ router.post('/upload-template', templateUpload.single('template'), async (req, r
   } catch (err) {
     sendError(res, '/upload-template', 'ERR-CV-007', err);
   }
+});
+
+// Returns the current session's cumulative AI usage (cost + token counts) so the
+// Tailored CV page can refresh its cost display after each AI action without a full
+// page reload. Safe to call with no session context — returns zeros on error.
+router.get('/session/usage', (req, res) => {
+  try { res.json(getSessionUsage()); }
+  catch (_) { res.json({ usd: 0, tokIn: 0, tokOut: 0 }); }
 });
 
 module.exports = router;

@@ -254,7 +254,7 @@ describe('agents/cvWriter', () => {
     });
     try {
       const html = fs.readFileSync(result.filePath, 'utf8');
-      expect(html).toContain('AI cost for this CV: $1.23');
+      expect(html).toContain('AI cost: $1.2345');
     } finally {
       fs.rmSync(result.filePath, { force: true });
     }

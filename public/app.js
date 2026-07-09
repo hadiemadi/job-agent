@@ -851,8 +851,34 @@ function buildSteps(defs) {
       <div class="step-icon wait" id="si${i}">${i+1}</div>
       <div class="step-label">${d}</div>
       <div class="step-detail" id="sd${i}"></div>
+      <div class="step-cost" id="sc${i}" style="font-size:0.68rem;opacity:0.55;margin-top:2px;min-height:0;"></div>
     </div>
   `).join('');
+}
+
+// ── AI cost/token helpers (Item 8) ────────────────────────────────────────────
+function fmtTok(n) { return (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n)); }
+
+function formatStageUsage(u) {
+  if (!u || (!u.tokIn && !u.tokOut)) return '';
+  return '$' + Number(u.usd || 0).toFixed(4) + ' · ' + fmtTok(u.tokIn || 0) + '+' + fmtTok(u.tokOut || 0) + ' tok';
+}
+
+function updateCostTracker(u) {
+  if (!u) return;
+  const body = el('costTrackerBody');
+  if (!body) return;
+  body.innerHTML =
+    '$' + Number(u.usd || 0).toFixed(4) + '<br>' +
+    'In: ' + (u.tokIn || 0).toLocaleString() + ' tok<br>' +
+    'Out: ' + (u.tokOut || 0).toLocaleString() + ' tok';
+  show('costTracker');
+  const pc = el('progressCost');
+  if (pc) {
+    pc.textContent = 'Running total: $' + Number(u.usd || 0).toFixed(4) +
+      ' (' + (u.tokIn || 0).toLocaleString() + ' in / ' + (u.tokOut || 0).toLocaleString() + ' out)';
+    show('progressCost');
+  }
 }
 
 // Maps an error kind to the correct step state. 'rate' and 'validation' use 'warn' (neutral,
@@ -1376,6 +1402,8 @@ function startPolling(jobId, isResume, kind) {
           // Contact handling: logged-in users skip the popup — their details live in the
           // left-column #yourDetailsCard (ld-* fields). Guests still see the popup.
           setStep(0, 'ok', 'CV ready');
+          if (result.stageUsage) { const sc = el('sc0'); if (sc) sc.textContent = formatStageUsage(result.stageUsage); }
+          updateCostTracker(data.sessionUsage);
           setTimeout(async () => {
             hide('progressCard');
             const cvData = result.cvData || {};
@@ -1429,6 +1457,8 @@ function startPolling(jobId, isResume, kind) {
           }
           _currentJob = result.job;
           setStep(1, 'ok', (_currentJob.job_title || 'Job') + (_currentJob.employer_name ? ' at ' + _currentJob.employer_name : ''));
+          if (result.stageUsage) { const sc = el('sc1'); if (sc) sc.textContent = formatStageUsage(result.stageUsage); }
+          updateCostTracker(data.sessionUsage);
           // Cascade: parsing done → kick off HR review (step 2) immediately.
           setStep(2, 'run');
           (async () => {
@@ -1462,6 +1492,8 @@ function startPolling(jobId, isResume, kind) {
           _hrReview = result.hrReview;
           if (result.currentJob) _currentJob = result.currentJob;
           setStep(2, 'ok', (result.hrReview.overall_match || 'Moderate') + ' match');
+          if (result.stageUsage) { const sc = el('sc2'); if (sc) sc.textContent = formatStageUsage(result.stageUsage); }
+          updateCostTracker(data.sessionUsage);
           setTimeout(() => { hide('progressCard'); showChanges(result.hrReview); }, 600);
           return;
         }
@@ -1480,6 +1512,8 @@ function startPolling(jobId, isResume, kind) {
           return;
         }
         setStep(3, 'ok', 'CV tailored');
+        if (result.stageUsage) { const sc = el('sc3'); if (sc) sc.textContent = formatStageUsage(result.stageUsage); }
+        updateCostTracker(data.sessionUsage);
         setTimeout(() => { hide('progressCard'); showComparison(_currentJob, result); }, 500);
       })
       .catch(() => {
