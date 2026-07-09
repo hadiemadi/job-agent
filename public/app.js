@@ -361,10 +361,10 @@ async function deleteMyCV(cvId) {
 
 const MODEL_OPTIONS = [
   { id: 'claude-fable-5',   provider: 'Anthropic', label: 'Fable 5',         accuracy: 'Highest accuracy',    speed: 'Slower',   inputPer1M: 10,    outputPer1M: 50   },
-  { id: 'claude-opus-4-8',  provider: 'Anthropic', label: 'Opus 4.8',        accuracy: 'High accuracy',       speed: 'Moderate', inputPer1M: 5,     outputPer1M: 25   },
-  { id: 'claude-sonnet-5',  provider: 'Anthropic', label: 'Sonnet 5',        accuracy: 'Strong accuracy',     speed: 'Balanced', inputPer1M: 2,     outputPer1M: 10   },
-  { id: 'claude-haiku-4-5', provider: 'Anthropic', label: 'Haiku 4.5',       accuracy: 'Reasonable accuracy', speed: 'Fastest',  inputPer1M: 1,     outputPer1M: 5    },
-  { id: 'deepseek-chat',    provider: 'DeepSeek',  label: 'DeepSeek V4 Pro', accuracy: 'Strong accuracy',     speed: 'Balanced', inputPer1M: 0.435, outputPer1M: 0.87 },
+  { id: 'claude-opus-4-8',  provider: 'Anthropic', label: 'Opus 4.8',        accuracy: 'High accuracy',       speed: 'Moderate speed', inputPer1M: 5,     outputPer1M: 25   },
+  { id: 'claude-sonnet-5',  provider: 'Anthropic', label: 'Sonnet 5',        accuracy: 'Strong accuracy',     speed: 'Balanced speed', inputPer1M: 2,     outputPer1M: 10   },
+  { id: 'claude-haiku-4-5', provider: 'Anthropic', label: 'Haiku 4.5',       accuracy: 'Reasonable accuracy', speed: 'Fastest',        inputPer1M: 1,     outputPer1M: 5    },
+  { id: 'deepseek-chat',    provider: 'DeepSeek',  label: 'DeepSeek V4 Pro', accuracy: 'Strong accuracy',     speed: 'Balanced speed', inputPer1M: 0.435, outputPer1M: 0.87 },
 ];
 
 // Fixed pipeline assumptions for cost estimate: 4 pipeline steps (read CV, parse job,
