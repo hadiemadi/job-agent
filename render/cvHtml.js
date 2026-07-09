@@ -29,7 +29,11 @@ function renderCVPage(cv, job, opts = {}) {
     : `class="${cls}"`;
   const ml  = () => editable ? 'contenteditable="true" spellcheck="true"' : '';
 
-  const skills    = (cv.skills    || []).filter(s => s && String(s).trim());
+  const skills = (cv.skills || []).map(s => {
+    if (s && typeof s === 'object' && s.category && Array.isArray(s.items))
+      return s.category + ': ' + s.items.join(', ');
+    return s;
+  }).filter(s => s && String(s).trim());
   const education = (cv.education || []).filter(e => e.degree || e.school);
   const keyQuals  = (cv.key_qualifications  || []).filter(q => q && String(q).trim());
   const addlSecs  = (cv.additional_sections || []).filter(s =>

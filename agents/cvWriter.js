@@ -295,7 +295,7 @@ async function rewriteCVWithChanges(cvText, job, autoChanges, confirmedChanges, 
     sections.includes('key_qualifications') ? `"key_qualifications": ["one bullet per line — plain strings only"]` : null,
     `"experience": [{ "role": "", "company": "", "period": "", "bullets": [""] }]`,
     `"education": [{ "degree": "", "school": "", "year": "" }]`,
-    sections.includes('skills')             ? `"skills": ["plain string per skill — NO objects"]` : null,
+    sections.includes('skills')             ? `"skills": [{ "category": "Category Name", "items": ["skill1", "skill2", "skill3"] }]` : null,
     customSections.length                   ? `"additional_sections": [{ "title": "", "items": [""] }]` : null,
   ].filter(Boolean).join(',\n    ');
 
@@ -327,7 +327,7 @@ Return JSON only:
   "modified_sections": []
 }
 
-IMPORTANT: skills and key_qualifications must be flat arrays of plain strings only — no objects, no nested arrays.`;
+IMPORTANT: skills must use the {category, items}[] format — group all skills into 3-5 named categories, with each category's skills as a comma-separated list in "items". key_qualifications must remain a flat array of plain strings. No other fields may use nested objects.`;
 
   const messages = [...thread, { role: 'user', content: userMessage }];
   let message, raw;
@@ -383,7 +383,7 @@ IMPORTANT: skills and key_qualifications must be flat arrays of plain strings on
     if (cvData.linkedin) cvData.linkedin = normalizeLinkedin(cvData.linkedin);
   }
 
-  flattenStringArrayFields(cvData, ['skills', 'key_qualifications']);
+  flattenStringArrayFields(cvData, ['key_qualifications']);
 
   // Pre-populates the editable CV page's HR sidebar so it never starts empty — built from
   // data already in scope, not a separate AI call. Appended to whatever sidebar history

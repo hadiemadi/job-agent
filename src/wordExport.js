@@ -95,6 +95,21 @@ function skillsSection(skills) {
     return [sectionHeading('CORE COMPETENCIES'), ...rows];
   }
 
+  // Parse "Category: item1, item2" flat strings produced by the HTML round-trip
+  // (category names are short — colon position < 35 distinguishes them from regular skills)
+  const flatCatPattern = /^(.{1,34}): (.+)$/;
+  const parsed = skills.map(s => {
+    const m = flatCatPattern.exec(typeof s === 'string' ? s : String(s));
+    return m ? { category: m[1].trim(), items: m[2].split(', ').map(i => i.trim()).filter(Boolean) } : null;
+  });
+  if (parsed.every(p => p !== null)) {
+    const rows = parsed.map(cat => new Paragraph({
+      children: [run(cat.category + ': ', { bold: true }), run(cat.items.join(', '))],
+      spacing: { after: 60 },
+    }));
+    return [sectionHeading('CORE COMPETENCIES'), ...rows];
+  }
+
   return [sectionHeading('SKILLS'), ...skills.map(s => bullet(typeof s === 'string' ? s : String(s)))];
 }
 
