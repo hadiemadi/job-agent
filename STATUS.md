@@ -5,11 +5,17 @@
 
 **Last updated:** 2026-07-09
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 446/446 green · **origin/main HEAD:** `a106f84`
+**Tests:** 446/446 green · **origin/main HEAD:** `2ddff82`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **fix(hotfix): commit missing §8 session-usage implementations** (`2ddff82`) —
+  `services/session.js`, `core/claude.js`, `routes/hr.routes.js`, `routes/jobs.routes.js`
+  were modified locally for build-batch §8 but never staged. Render deployed `cv.routes.js`
+  calling `resetSessionUsage()` against a `session.js` that didn't export it → ERR-CV-002
+  crash on every CV upload. All four files now committed and pushed. 446/446 green.
 
 - **feat(ui): build-batch §12 — swap Preferences and Advanced options boxes between columns** —
   Pure `index.html` change: the "Preferences" card (AI instructions textarea + tone slider)
