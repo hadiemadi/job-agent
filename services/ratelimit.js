@@ -16,11 +16,12 @@ const RATE_LIMIT_WINDOW_MIN = envNumber('RATE_LIMIT_WINDOW_MIN', 15);
 // in 15 min; 300/15min gives 6× headroom above that worst case.
 const RATE_LIMIT_MAX        = envNumber('RATE_LIMIT_MAX', 300);
 
-// Raised 20 → 60: claude-sonnet-4-6 costs ~$0.03/call avg; $3/day cap ÷ $0.03 = 100 safe
-// calls/day. 60/hr lets a burst of 60 calls ($1.80) run in one hour — within the daily cap —
-// while a single full 4-step pipeline uses only ~6-8 AI calls (7-10 runs/hr supported).
-// Previously 20/hr was shared with /job/:id/status polling, causing false trips.
-const AI_RATE_LIMIT_MAX     = envNumber('AI_RATE_LIMIT_MAX', 60);
+// Raised 20→60→150: spend cap ($5/day) is the real cost control — rate limit should only
+// catch scripted abuse, never a real user doing thorough work. Realistic worst case: 10 gaps
+// × 5 AI actions each (HR draft + 2 coach turns + redraft + review) = 50 calls; add initial
+// HR review + CV tailoring ≈ 60 total. 150/hr is 2.5× that headroom. Math: 150 calls ×
+// ~$0.014/call (Sonnet avg) = $2.10/hr — safely under the $5/day cap even in a max burst.
+const AI_RATE_LIMIT_MAX     = envNumber('AI_RATE_LIMIT_MAX', 150);
 
 // Polling (/job/:id/status) costs nothing — no Claude API calls. 300/hr = 1 poll every 12s;
 // the backoff cap is 10s so this only catches truly runaway loops (thousands of req/min).

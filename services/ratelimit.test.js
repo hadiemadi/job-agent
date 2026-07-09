@@ -206,10 +206,20 @@ test('globalLimiter window is 15 minutes (default)', () => {
   expect(RATE_LIMIT_WINDOW_MIN).toBe(15);
 });
 
-test('aiLimiter threshold is 60 req/hour — raised from 20, AI routes only', () => {
-  // Math: claude-sonnet-4-6 ~$0.03/call avg; $3/day ÷ $0.03 = 100 max calls/day.
-  // 60/hr allows a 1-hr burst of $1.80 — safely under the daily cap.
-  expect(AI_RATE_LIMIT_MAX).toBe(60);
+test('aiLimiter threshold is 150 req/hour — raised from 60, catches abuse not real sessions', () => {
+  // Math: 150 calls × ~$0.014/call avg = $2.10/hr max burst — under the $5/day cap.
+  // Real worst case ≈ 60 calls (10 gaps × 5 actions + initial review + tailoring).
+  expect(AI_RATE_LIMIT_MAX).toBe(150);
+});
+
+test('realistic heavy session (10 gaps × 5 AI actions = 50 calls) is within aiLimiter', () => {
+  const heavySession = 10 * 5; // 10 gaps, each needing draft + 2 coach turns + redraft + review
+  expect(heavySession).toBeLessThan(AI_RATE_LIMIT_MAX);
+});
+
+test('abusive scripted volume (200 calls/hour) exceeds aiLimiter and gets rate-limited', () => {
+  const abuseVolume = 200;
+  expect(abuseVolume).toBeGreaterThan(AI_RATE_LIMIT_MAX);
 });
 
 test('pollLimiter threshold is 600 req/hour — poll routes only, no AI cost', () => {
