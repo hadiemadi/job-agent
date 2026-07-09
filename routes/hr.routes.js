@@ -64,9 +64,8 @@ router.post('/review-cv', async (req, res) => {
 
     // Snapshot immutable inputs before response ends the request scope.
     const cvText = appSession.cvText;
-    // #29/#31: lastGenHrCount tracks sidebar entries as of the last full generation — capture
-    // the current length now so a later /rewrite knows which sidebar exchanges are new.
-    const initialLastGenHrCount = (appSession.hrDisplayHistory || []).length;
+    // hrDisplayHistory resets in the background job (item 5) — do not capture the old
+    // count here; lastGenHrCount is set to 0 inside the job after the reset.
 
     const jobId = await createJob('hr_review');
     // Capture the session id before res.json() so the background task can re-pin it via
@@ -116,10 +115,13 @@ router.post('/review-cv', async (req, res) => {
           })),
         };
 
+        // Reset display history so the summary block on the tailored CV page shows
+        // only exchanges from the current tailoring session, not prior sessions.
+        appSession.hrDisplayHistory = [];
         appSession.currentJob = job;
         appSession.hrReview = fullReview;
         appSession.hrThread = thread;
-        appSession.lastGenHrCount = initialLastGenHrCount;
+        appSession.lastGenHrCount = 0;
         appSession.field = field || null;
 
         // Store everything needed to restore state after a tab-close/reload — the
@@ -135,7 +137,7 @@ router.post('/review-cv', async (req, res) => {
             hrThread: thread,
             currentJob: job,
             field: field || null,
-            lastGenHrCount: initialLastGenHrCount,
+            lastGenHrCount: 0,
             gapRecords: appSession.gaps,
           },
         });

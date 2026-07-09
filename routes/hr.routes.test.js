@@ -26,8 +26,22 @@ jest.mock('../services/auth', () => ({
   listGapMemory:           jest.fn(),
 }));
 
+const fs = require('fs');
+const path = require('path');
+
 const { buildGapMemoryBlock } = require('./hr.routes');
 const { listGapMemory }        = require('../services/auth');
+
+describe('Item 5 — /review-cv background job resets hrDisplayHistory', () => {
+  test('hrDisplayHistory is reset to [] in the /review-cv background job — scopes summary to current session', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'hr.routes.js'), 'utf8');
+    // The reset must appear inside the background job (after the als.run call) so it fires
+    // for every new tailoring session, not just on first load.
+    expect(src).toMatch(/appSession\.hrDisplayHistory\s*=\s*\[\]/);
+    // lastGenHrCount must also be reset to 0 (not the old captured count) to match.
+    expect(src).toMatch(/appSession\.lastGenHrCount\s*=\s*0/);
+  });
+});
 
 describe('buildGapMemoryBlock', () => {
   beforeEach(() => jest.clearAllMocks());

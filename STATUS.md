@@ -11,6 +11,14 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **feat(session): build-batch §5 — HR summary scoped to current tailoring session** —
+  `/review-cv` background job now resets `appSession.hrDisplayHistory = []` and
+  `appSession.lastGenHrCount = 0` at the start of each new tailoring session. This scopes
+  the summary display on the tailored CV page to the current session only — prior sessions
+  no longer bleed into the summary block. HR Expert Q&A context (via `hrThread` and cross-
+  session `gap_memory`) is unaffected. Test: source assertion confirms the reset and the
+  `lastGenHrCount = 0` are present in the background job. 422/422 green.
+
 - **feat(ui): build-batch §4 — enlarge job description textarea to 15 rows** —
   `#jobText` `rows` attribute changed from `9` → `15` in `public/index.html`. No JS or
   CSS changes needed — the resize handle and scroll behavior are unchanged. 421/421 green.
