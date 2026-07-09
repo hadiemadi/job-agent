@@ -1,19 +1,19 @@
 'use strict';
 
-// Item 6 — idle session timeout (60 minutes)
+// Item 6 — idle session timeout (originally 60 min; item 13 raised to 180 min)
 // Tests that sessions idle longer than IDLE_LIMIT_MS are dropped by the sweep,
-// and that the limit itself is 60 minutes.
+// and that the limit is now 180 minutes.
 // Item 8 — AI cost/token tracker: per-session token accumulation and snapshot helpers.
 
 const { als, getSession, IDLE_LIMIT_MS, sweepSessions,
   addSessionTokens, getSessionUsage, resetSessionUsage, snapshotSessionUsage } = require('./session');
 
-describe('Item 6 — idle session timeout', () => {
-  test('IDLE_LIMIT_MS is exactly 60 minutes', () => {
-    expect(IDLE_LIMIT_MS).toBe(60 * 60 * 1000);
+describe('Item 6/13 — idle session timeout', () => {
+  test('IDLE_LIMIT_MS is exactly 180 minutes (item 13: raised from 60)', () => {
+    expect(IDLE_LIMIT_MS).toBe(180 * 60 * 1000);
   });
 
-  test('session idle past 60 minutes is dropped by sweepSessions and treated as fresh on next access', done => {
+  test('session idle past 180 minutes is dropped by sweepSessions and treated as fresh on next access', done => {
     // Run inside ALS so getSession() has a stable session ID to work with.
     const sid = 'test-idle-' + Date.now();
     als.run(sid, () => {

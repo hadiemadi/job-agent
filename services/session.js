@@ -232,10 +232,10 @@ function requestScope(handler) {
   return (req, res) => als.run(null, () => handler(req, res));
 }
 
-// Drop sessions idle for 60 minutes — "idle" means no inbound requests (lastSeen not updated).
+// Drop sessions idle for 180 minutes — "idle" means no inbound requests (lastSeen not updated).
 // Single in-memory Map, single-process app; this also serves as the privacy boundary so stale
-// session data (CV text, HR review, etc.) doesn't persist longer than an hour of inactivity.
-const IDLE_LIMIT_MS = 60 * 60 * 1000;
+// session data (CV text, HR review, etc.) doesn't persist longer than 3 hours of inactivity.
+const IDLE_LIMIT_MS = 180 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 30 * 60 * 1000;
 
 // Generated CVs/cover letters/comparisons must not outlive this window even if the
