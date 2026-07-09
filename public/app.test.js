@@ -816,11 +816,11 @@ describe('Model picker — initModelPicker', () => {
     expect(selected.id).toBe('model-opt-claude-opus-4-8');
   });
 
-  test('defaults to claude-sonnet-5 when null is passed', async () => {
+  test('defaults to deepseek-chat when null is passed (item 6: new default)', async () => {
     window.initModelPicker(null);
     const selected = document.querySelector('.model-option.selected');
     expect(selected).not.toBeNull();
-    expect(selected.id).toBe('model-opt-claude-sonnet-5');
+    expect(selected.id).toBe('model-opt-deepseek-chat');
   });
 
   test('selectModel() changes the selected class to the new model', async () => {
@@ -1191,16 +1191,18 @@ describe('Item 10 — model picker enhancements', () => {
     });
   });
 
-  test('Sonnet 5 is tagged "Recommended" (not "(default)")', () => {
-    window.initModelPicker('claude-sonnet-5');
-    const safeId = 'claude-sonnet-5'.replace(/[^a-zA-Z0-9]/g, '-');
+  test('DeepSeek V4 Pro is tagged "Recommended" (item 6: new default)', () => {
+    window.initModelPicker('deepseek-chat');
+    const safeId = 'deepseek-chat'.replace(/[^a-zA-Z0-9]/g, '-');
     const optEl = document.getElementById('model-opt-' + safeId);
     expect(optEl.innerHTML).toContain('Recommended');
-    expect(optEl.innerHTML).not.toContain('(default)');
+    // Sonnet 5 no longer tagged
+    const sonnetEl = document.getElementById('model-opt-claude-sonnet-5');
+    expect(sonnetEl.innerHTML).not.toContain('Recommended');
   });
 
   test('each model option renders accuracy and speed scoreboard rows', () => {
-    window.initModelPicker('claude-sonnet-5');
+    window.initModelPicker('deepseek-chat');
     // Spot-check known scoreboard values for Fable 5 and Haiku
     const fableEl = document.getElementById('model-opt-claude-fable-5');
     expect(fableEl.innerHTML).toContain('Highest accuracy');
@@ -1208,6 +1210,11 @@ describe('Item 10 — model picker enhancements', () => {
     const haikuEl = document.getElementById('model-opt-claude-haiku-4-5');
     expect(haikuEl.innerHTML).toContain('Reasonable accuracy');
     expect(haikuEl.innerHTML).toContain('Fastest');
+    // item 7: ambiguous speed labels now explicitly say "speed"
+    const opusEl = document.getElementById('model-opt-claude-opus-4-8');
+    expect(opusEl.innerHTML).toContain('Moderate speed');
+    const sonnetEl = document.getElementById('model-opt-claude-sonnet-5');
+    expect(sonnetEl.innerHTML).toContain('Balanced speed');
   });
 
   test('_updateModelPickerCurrent shows "Provider — Label" in the header button', () => {

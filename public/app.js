@@ -376,7 +376,7 @@ const _COST_OUTPUT_TOKENS = 600;
 const _COST_PIPELINE_STEPS = 4;
 const _COST_BUFFER = 1.2;
 
-let _selectedModel = 'claude-sonnet-5';
+let _selectedModel = 'deepseek-chat';
 let _prefillProfile = null; // profile preferences fetched from DB on login; null for guests/first-time users
 
 function calcTokenEstimate(jobTextLength) {
@@ -417,12 +417,12 @@ function toggleModelPicker() {
 }
 
 function initModelPicker(preferredModel) {
-  _selectedModel = preferredModel || 'claude-sonnet-5';
+  _selectedModel = preferredModel || 'deepseek-chat';
   const container = el('modelOptions');
   if (!container) return;
   container.innerHTML = MODEL_OPTIONS.map(m => {
     const safeId = m.id.replace(/[^a-zA-Z0-9]/g, '-');
-    const isRecommended = m.id === 'claude-sonnet-5';
+    const isRecommended = m.id === 'deepseek-chat';
     const tag = isRecommended
       ? ' <span class="model-opt-default">Recommended</span>'
       : '';
@@ -548,7 +548,7 @@ async function loadPrefillData() {
     if (data.lastJobText && el('jobText') && !el('jobText').value.trim()) {
       el('jobText').value = data.lastJobText;
     }
-    initModelPicker(data.preferredModel || 'claude-sonnet-5');
+    initModelPicker(data.preferredModel || 'deepseek-chat');
     // Cache profile preferences for use when the contact form is shown after CV upload.
     // If the form is already visible (mid-session login), apply immediately.
     _prefillProfile = data.profilePreferences || null;
