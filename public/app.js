@@ -490,6 +490,10 @@ function applyProfilePrefill(profile) {
     el('ci-title').value = profile.title;
     if (el('ld-title')) el('ld-title').value = profile.title;
   }
+  if (profile.email      !== undefined) {
+    el('ci-email').value = profile.email;
+    if (el('ld-email')) el('ld-email').value = profile.email;
+  }
   if (profile.phone      !== undefined) {
     el('ci-phone').value = profile.phone;
     if (el('ld-phone')) el('ld-phone').value = profile.phone;
@@ -1003,7 +1007,7 @@ async function confirmContact() {
     // Logged-in: read contact fields from ld-* (left column box). Guests: ci-* (popup).
     name:     usePanel ? (el('ld-name')     ? el('ld-name').value.trim()     : '') : el('ci-name').value.trim(),
     title:    usePanel ? (el('ld-title')    ? el('ld-title').value.trim()    : '') : el('ci-title').value.trim(),
-    email:    el('ci-email').value.trim(),
+    email:    usePanel ? (el('ld-email')    ? el('ld-email').value.trim()    : el('ci-email').value.trim()) : el('ci-email').value.trim(),
     phone:    usePanel ? (el('ld-phone')    ? el('ld-phone').value.trim()    : '') : el('ci-phone').value.trim(),
     location: usePanel ? (el('ld-location') ? el('ld-location').value.trim() : '') : el('ci-location').value.trim(),
     linkedin: usePanel ? (el('ld-linkedin') ? el('ld-linkedin').value.trim() : '') : el('ci-linkedin').value.trim(),
@@ -1455,15 +1459,17 @@ function startPolling(jobId, isResume, kind) {
               // (first-time user with no saved profile). DB profile always wins over extraction.
               const ldName     = el('ld-name');
               const ldTitle    = el('ld-title');
+              const ldEmail    = el('ld-email');
               const ldPhone    = el('ld-phone');
               const ldLocation = el('ld-location');
               const ldLinkedin = el('ld-linkedin');
               if (ldName     && !ldName.value.trim())     ldName.value     = cvData.name     || '';
               if (ldTitle    && !ldTitle.value.trim())    ldTitle.value    = cvData.title    || '';
+              if (ldEmail    && !ldEmail.value.trim())    ldEmail.value    = cvData.email    || '';
               if (ldPhone    && !ldPhone.value.trim())    ldPhone.value    = cvData.phone    || '';
               if (ldLocation && !ldLocation.value.trim()) ldLocation.value = cvData.location || '';
               if (ldLinkedin && !ldLinkedin.value.trim()) ldLinkedin.value = cvData.linkedin || '';
-              // Also keep ci-* email in sync (needed by confirmContact for both paths)
+              // Also keep ci-* email in sync (fallback for confirmContact if ld-email absent)
               if (!el('ci-email').value.trim()) el('ci-email').value = cvData.email || '';
               // Skip popup — proceed directly
               await confirmContact();

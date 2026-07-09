@@ -374,6 +374,8 @@ input[type="range"] { width:100%; cursor:pointer; accent-color:var(--accent); }
 .workspace-data-buttons { display:flex; gap:var(--space-3); margin-bottom:var(--space-5); flex-wrap:wrap; }
 .ws-section-btn { display:flex; align-items:center; gap:var(--space-3); background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-md); padding:var(--space-3) var(--space-4); text-align:left; flex:1 1 180px; min-width:0; cursor:pointer; transition:border-color 0.15s, background 0.15s; }
 .ws-section-btn:hover { background:#F0F0EE; border-color:var(--accent); }
+/* tooltip on history buttons: keep pointer cursor (override [data-tooltip]'s cursor:help) */
+.ws-section-btn[data-tooltip] { cursor:pointer; }
 .ws-section-icon { font-size:20px; flex-shrink:0; line-height:1; }
 .ws-section-text { display:flex; flex-direction:column; gap:2px; min-width:0; }
 .ws-section-label { font-size:12px; font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

@@ -636,17 +636,43 @@ describe('Login/sign-out toggle + workspace panel', () => {
     expect(document.getElementById('mainLayout').classList.contains('three-col')).toBe(false);
   });
 
-  test('left column contains the 3 history section buttons', async () => {
+  test('right column contains the 3 history section buttons (moved from left in item 3)', async () => {
     window.fetch = jest.fn(() => Promise.resolve({
       ok: true,
       json: () => Promise.resolve({ user: { id: 'usr-001', email: 'hadi@example.com' } }),
     }));
     loadAppInDom();
     await new Promise(resolve => setTimeout(resolve, 0));
-    const colLeft = document.getElementById('colLeft');
-    expect(colLeft.innerHTML).toContain('Previous CV');
-    expect(colLeft.innerHTML).toContain('Coach conversations');
-    expect(colLeft.innerHTML).toContain('Discipline');
+    const colRight = document.getElementById('colRight');
+    expect(colRight.innerHTML).toContain('Previous CV');
+    expect(colRight.innerHTML).toContain('Coach conversations');
+    expect(colRight.innerHTML).toContain('Discipline');
+  });
+
+  test('item 1: #yourDetailsCard has ld-email field and vertical layout (no form-row)', () => {
+    loadAppInDom();
+    const card = document.getElementById('yourDetailsCard');
+    expect(card).toBeTruthy();
+    expect(document.getElementById('ld-email')).toBeTruthy();
+    // vertical layout: no form-row grid wrappers around the fields
+    expect(card.querySelectorAll('.form-row').length).toBe(0);
+  });
+
+  test('item 1: applyProfilePrefill sets ld-email', () => {
+    loadAppInDom();
+    window.applyProfilePrefill({ name: 'Jane', email: 'jane@example.com' });
+    expect(document.getElementById('ld-email').value).toBe('jane@example.com');
+  });
+
+  test('item 4: history buttons have data-tooltip instead of visible desc text', () => {
+    loadAppInDom();
+    const colRight = document.getElementById('colRight');
+    const buttons = colRight.querySelectorAll('.ws-section-btn');
+    expect(buttons.length).toBe(3);
+    buttons.forEach(btn => {
+      expect(btn.getAttribute('data-tooltip')).toBeTruthy();
+      expect(btn.querySelector('.ws-section-desc')).toBeNull();
+    });
   });
 });
 

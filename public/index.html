@@ -66,64 +66,48 @@
        Logged-out: only col-center is visible — inputCard takes full container width. -->
   <div id="mainLayout" class="main-layout">
 
-    <!-- Left column: Your Details (top) → history cards → Advanced options (logged-in only) -->
+    <!-- Left column: Your Details (top) → Advanced options (with model picker) (logged-in only) -->
     <div id="colLeft" class="col-side">
       <!-- ── Your Details — logged-in contact fields (top of left column) ── -->
       <div class="card prefs-side-card" id="yourDetailsCard">
         <div class="prefs-box-label">Your Details</div>
         <p class="contact-hint" style="margin:0 0 10px;">Used on every tailored CV — edit and they save automatically.</p>
-        <div class="form-row">
-          <div class="form-group" style="margin-bottom:8px;">
-            <label>Full name</label>
-            <input type="text" id="ld-name" placeholder="Jane Smith" />
-          </div>
-          <div class="form-group" style="margin-bottom:8px;">
-            <label>Job title</label>
-            <input type="text" id="ld-title" placeholder="Senior Engineer" />
-          </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label>Full name</label>
+          <input type="text" id="ld-name" placeholder="Jane Smith" />
         </div>
-        <div class="form-row">
-          <div class="form-group" style="margin-bottom:8px;">
-            <label>Phone</label>
-            <input type="tel" id="ld-phone" placeholder="+1 555 000 0000" />
-          </div>
-          <div class="form-group" style="margin-bottom:8px;">
-            <label>Location</label>
-            <input type="text" id="ld-location" placeholder="San Francisco, CA" />
-          </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label>Job title</label>
+          <input type="text" id="ld-title" placeholder="Senior Engineer" />
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label>Email <span class="opt">(on CV — may differ from login email)</span></label>
+          <input type="email" id="ld-email" placeholder="jane@example.com" />
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label>Phone</label>
+          <input type="tel" id="ld-phone" placeholder="+1 555 000 0000" />
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label>Location</label>
+          <input type="text" id="ld-location" placeholder="San Francisco, CA" />
         </div>
         <div class="form-group" style="margin:0;">
           <label>LinkedIn URL</label>
           <input type="text" id="ld-linkedin" placeholder="https://www.linkedin.com/in/username" />
         </div>
       </div>
+      <!-- Advanced options — includes AI model picker at top, then toggles -->
       <div class="card prefs-side-card">
-        <div class="workspace-account" id="workspaceAccountInfo"></div>
-        <div class="workspace-data-buttons">
-          <button class="btn ws-section-btn" onclick="openSection('cv')">
-            <span class="ws-section-icon">📄</span>
-            <div class="ws-section-text">
-              <span class="ws-section-label">Previous CV &amp; job info</span>
-              <span class="ws-section-desc">Your saved CVs and last job description</span>
-            </div>
+        <!-- Model picker (item 2: moved inside Advanced options) -->
+        <div class="model-picker-section" style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border,#e5e7eb);">
+          <button class="model-picker-toggle" id="modelPickerToggle" onclick="toggleModelPicker()" type="button">
+            <span class="model-picker-title">AI model</span>
+            <span id="modelPickerCurrent" class="model-picker-current"></span>
+            <span class="model-picker-chevron">▾</span>
           </button>
-          <button class="btn ws-section-btn" onclick="openSection('coach')">
-            <span class="ws-section-icon">💬</span>
-            <div class="ws-section-text">
-              <span class="ws-section-label">Coach conversations</span>
-              <span class="ws-section-desc">Your career coaching history</span>
-            </div>
-          </button>
-          <button class="btn ws-section-btn" onclick="openSection('discipline')">
-            <span class="ws-section-icon">🧠</span>
-            <div class="ws-section-text">
-              <span class="ws-section-label">Discipline &amp; HR notes</span>
-              <span class="ws-section-desc">Skills data and HR review history</span>
-            </div>
-          </button>
+          <div id="modelOptions" class="model-options" style="display:none;"></div>
         </div>
-      </div>
-      <div class="card prefs-side-card">
         <div class="prefs-box-label">Advanced options</div>
         <div class="form-group" style="margin-bottom:12px;">
           <label>HR Review — gaps to show <span class="opt">(up to 20 total)</span></label>
@@ -203,16 +187,30 @@
       </div><!-- /inputCard -->
     </div><!-- /col-center -->
 
-    <!-- Right column: AI model picker stacked above Preferences (logged-in only) -->
+    <!-- Right column: account/history box (item 3: moved from left) → Preferences (logged-in only) -->
     <div id="colRight" class="col-side">
+      <!-- Account + history section buttons (item 3: moved to top-right) -->
       <div class="card prefs-side-card">
-        <div class="model-picker-section">
-          <button class="model-picker-toggle" id="modelPickerToggle" onclick="toggleModelPicker()" type="button">
-            <span class="model-picker-title">AI model</span>
-            <span id="modelPickerCurrent" class="model-picker-current"></span>
-            <span class="model-picker-chevron">▾</span>
+        <div class="workspace-account" id="workspaceAccountInfo"></div>
+        <div class="workspace-data-buttons">
+          <button class="btn ws-section-btn" onclick="openSection('cv')" data-tooltip="Your saved CVs and last job description">
+            <span class="ws-section-icon">📄</span>
+            <div class="ws-section-text">
+              <span class="ws-section-label">Previous CV &amp; job info</span>
+            </div>
           </button>
-          <div id="modelOptions" class="model-options" style="display:none;"></div>
+          <button class="btn ws-section-btn" onclick="openSection('coach')" data-tooltip="Your career coaching history">
+            <span class="ws-section-icon">💬</span>
+            <div class="ws-section-text">
+              <span class="ws-section-label">Coach conversations</span>
+            </div>
+          </button>
+          <button class="btn ws-section-btn" onclick="openSection('discipline')" data-tooltip="Skills data and HR review history">
+            <span class="ws-section-icon">🧠</span>
+            <div class="ws-section-text">
+              <span class="ws-section-label">Discipline &amp; HR notes</span>
+            </div>
+          </button>
         </div>
       </div>
       <div class="card prefs-side-card">
