@@ -225,8 +225,13 @@ async function analyzeJobFit(cvText, jobs, countryCode = 'GB') {
 // conclusion Coach reached; keeps the candidate's own words from being re-litigated or quoted
 // out of context by a different agent persona.
 async function refineWithHR(cvText, job, hrReview, gap, coachFinalStatement, thread, preferences, sharedContext) {
-  const coachNote = coachFinalStatement
-    ? `Coach's takeaway on this gap: ${coachFinalStatement}`
+  // Truncate long coach replies: the final verdict rarely needs more than ~300 chars to convey
+  // the relevant judgment; injecting the full turn bloats the prompt and cuts into max_tokens.
+  const coachSnippet = coachFinalStatement
+    ? (coachFinalStatement.length > 350 ? coachFinalStatement.slice(0, 347) + '…' : coachFinalStatement)
+    : null;
+  const coachNote = coachSnippet
+    ? `Coach's takeaway on this gap: ${coachSnippet}`
     : "The candidate hasn't discussed this gap with their coach — that's normal, not a reason to refuse drafting.";
 
   // WARNING: HR must only use evidence actually present in the candidate's CV.
@@ -276,7 +281,7 @@ clause, never a full sentence with subordinate clauses, never a paragraph.`;
         : messages;
     response = await client.messages.create({
       model: MODEL,
-      max_tokens: 400,
+      max_tokens: 800,
       system: hrSystemPrompt(cvText, job, preferences),
       messages: msgs,
     });
