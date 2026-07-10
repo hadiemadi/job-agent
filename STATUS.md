@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-07-10
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 466/466 green · **origin/main HEAD:** `pending push`
+**Tests:** 466/466 green · **origin/main HEAD:** `4cd2afc`
 
 ---
 
