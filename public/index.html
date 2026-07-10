@@ -99,6 +99,7 @@
       </div>
       <!-- Advanced options — includes AI model picker at top, then toggles -->
       <div class="card prefs-side-card">
+        <div class="prefs-box-label">Advanced options</div>
         <!-- Model picker (item 2: moved inside Advanced options) -->
         <div class="model-picker-section" style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border,#e5e7eb);">
           <button class="model-picker-toggle" id="modelPickerToggle" onclick="toggleModelPicker()" type="button">
@@ -107,15 +108,6 @@
             <span class="model-picker-chevron">▾</span>
           </button>
           <div id="modelOptions" class="model-options" style="display:none;"></div>
-        </div>
-        <div class="prefs-box-label">Preferences</div>
-        <div class="form-group" style="margin-bottom:12px;">
-          <label>HR Review — gaps to show <span class="opt">(up to 20 total)</span></label>
-          <div class="severity-checks">
-            <label class="sev-check"><input type="checkbox" id="side-sev-major" checked /> <span class="gap-severity major">major</span></label>
-            <label class="sev-check"><input type="checkbox" id="side-sev-mild" /> <span class="gap-severity mild">mild</span></label>
-            <label class="sev-check"><input type="checkbox" id="side-sev-minor" /> <span class="gap-severity minor">minor</span></label>
-          </div>
         </div>
         <label class="toggle-row">
           <input type="checkbox" id="side-extensive-search" class="toggle-input" />
@@ -132,6 +124,14 @@
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
           <span class="toggle-label-text">Test mode <span class="opt">(Haiku · 3 gaps max)</span></span>
         </label>
+        <div class="form-group" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border,#e5e7eb);margin-bottom:0;">
+          <label class="tone-label-row">
+            Tone — how direct should feedback be?
+            <span class="tooltip-anchor" data-tooltip="Controls HOW BLUNTLY the AI delivers feedback, not what it tells you. Level 1: softer phrasing ('this could be strengthened by…'). Level 5: direct ('this is a real weakness…'). The underlying assessment doesn't change, only delivery style.">ⓘ</span>
+          </label>
+          <input type="range" id="side-tone" min="1" max="5" value="4" oninput="el('side-tone-label').textContent = ['Very neutral','Calm','Balanced','Direct (default)','Very blunt'][this.value-1]">
+          <div class="opt" id="side-tone-label" style="text-align:center;">Direct (default)</div>
+        </div>
       </div>
       <!-- AI cost tracker — shown once any stage completes, updated by updateCostTracker() -->
       <div class="card prefs-side-card" id="costTracker" style="display:none;font-size:0.8rem;">
@@ -214,18 +214,18 @@
         </div>
       </div>
       <div class="card prefs-side-card">
-        <div class="prefs-box-label">Advanced options</div>
-        <div class="form-group" style="margin:0 0 14px;">
-          <label>Anything you'd like the AI to know? <span class="opt">(optional)</span></label>
-          <textarea id="side-instructions" rows="4" placeholder="e.g. emphasize my leadership experience, avoid mentioning my current employer by name…"></textarea>
+        <div class="prefs-box-label">Preferences</div>
+        <div class="form-group" style="margin-bottom:12px;">
+          <label>HR Review — gaps to show <span class="opt">(up to 20 total)</span></label>
+          <div class="severity-checks">
+            <label class="sev-check"><input type="checkbox" id="side-sev-major" checked /> <span class="gap-severity major">major</span></label>
+            <label class="sev-check"><input type="checkbox" id="side-sev-mild" /> <span class="gap-severity mild">mild</span></label>
+            <label class="sev-check"><input type="checkbox" id="side-sev-minor" /> <span class="gap-severity minor">minor</span></label>
+          </div>
         </div>
         <div class="form-group" style="margin:0;">
-          <label class="tone-label-row">
-            Tone — how direct should feedback be?
-            <span class="tooltip-anchor" data-tooltip="Controls HOW BLUNTLY the AI delivers feedback, not what it tells you. Level 1: softer phrasing ('this could be strengthened by…'). Level 5: direct ('this is a real weakness…'). The underlying assessment doesn't change, only delivery style.">ⓘ</span>
-          </label>
-          <input type="range" id="side-tone" min="1" max="5" value="4" oninput="el('side-tone-label').textContent = ['Very neutral','Calm','Balanced','Direct (default)','Very blunt'][this.value-1]">
-          <div class="opt" id="side-tone-label" style="text-align:center;">Direct (default)</div>
+          <label>Anything you'd like the AI to know? <span class="opt">(optional)</span></label>
+          <textarea id="side-instructions" rows="4" placeholder="e.g. emphasize my leadership experience, avoid mentioning my current employer by name…"></textarea>
         </div>
       </div>
     </div>
