@@ -18,7 +18,7 @@ function buildProfilePrefs(session) {
   const p = session.clientPreferences || {};
   return {
     name: c.name || '', title: c.title || '', phone: c.phone || '',
-    location: c.location || '', linkedin: c.linkedin || '',
+    location: c.location || '', linkedin: c.linkedin || '', email: c.email || '',
     customInstructions: p.customInstructions || '',
     tone: p.tone || 4,
     gapSeverities: p.gapSeverities || ['major'],

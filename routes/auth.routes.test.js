@@ -726,11 +726,11 @@ describe('POST /confirm-contact — Profile & Preferences DB persistence', () =>
     expect(calledPrefs).toMatchObject({
       name: 'Hadi Emadi', title: 'Sr TPM', phone: '+1 555 0000',
       location: 'San Jose, CA', linkedin: 'linkedin.com/in/hadi',
+      email: 'hadi@example.com',
       customInstructions: 'Keep it concise', tone: 4,
       gapSeverities: ['major'], extensiveSearch: false, refreshDiscipline: false,
     });
-    // email and model are intentionally excluded from the profile prefs blob
-    expect(calledPrefs).not.toHaveProperty('email');
+    // model is stored separately via POST /auth/preferences
     expect(calledPrefs).not.toHaveProperty('model');
   });
 

@@ -407,6 +407,15 @@ function _updateModelPickerCurrent() {
   cur.textContent = m ? (m.provider + ' — ' + m.label) : _selectedModel;
 }
 
+function toggleAdvOptions() {
+  const body = el('advOptionsBody');
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : '';
+  const btn = el('advOptsToggle');
+  if (btn) btn.classList.toggle('open', !open);
+}
+
 function toggleModelPicker() {
   const opts = el('modelOptions');
   const toggle = el('modelPickerToggle');

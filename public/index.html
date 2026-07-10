@@ -97,40 +97,45 @@
           <input type="text" id="ld-linkedin" placeholder="https://www.linkedin.com/in/username" />
         </div>
       </div>
-      <!-- Advanced options — includes AI model picker at top, then toggles -->
+      <!-- Advanced options — collapsible, collapsed by default -->
       <div class="card prefs-side-card">
-        <div class="prefs-box-label">Advanced options</div>
-        <!-- Model picker (item 2: moved inside Advanced options) -->
-        <div class="model-picker-section" style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border,#e5e7eb);">
-          <button class="model-picker-toggle" id="modelPickerToggle" onclick="toggleModelPicker()" type="button">
-            <span class="model-picker-title">AI model</span>
-            <span id="modelPickerCurrent" class="model-picker-current"></span>
-            <span class="model-picker-chevron">▾</span>
-          </button>
-          <div id="modelOptions" class="model-options" style="display:none;"></div>
-        </div>
-        <label class="toggle-row">
-          <input type="checkbox" id="side-extensive-search" class="toggle-input" />
-          <span class="toggle-track"><span class="toggle-thumb"></span></span>
-          <span class="toggle-label-text" data-tooltip="Runs live web research for CV conventions (country/industry norms) and gives the Coach access to your full prior conversation history instead of the summary only. Adds ~30 s.">Deep research mode</span>
-        </label>
-        <label class="toggle-row" style="margin-top:8px;">
-          <input type="checkbox" id="side-refresh-discipline" class="toggle-input" />
-          <span class="toggle-track"><span class="toggle-thumb"></span></span>
-          <span class="toggle-label-text">Refresh discipline knowledge <span class="opt">(slower)</span></span>
-        </label>
-        <label class="toggle-row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border,#e5e7eb);">
-          <input type="checkbox" id="side-test-mode" class="toggle-input" />
-          <span class="toggle-track"><span class="toggle-thumb"></span></span>
-          <span class="toggle-label-text">Test mode <span class="opt">(Haiku · 3 gaps max)</span></span>
-        </label>
-        <div class="form-group" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border,#e5e7eb);margin-bottom:0;">
-          <label class="tone-label-row">
-            Tone — how direct should feedback be?
-            <span class="tooltip-anchor" data-tooltip="Controls HOW BLUNTLY the AI delivers feedback, not what it tells you. Level 1: softer phrasing ('this could be strengthened by…'). Level 5: direct ('this is a real weakness…'). The underlying assessment doesn't change, only delivery style.">ⓘ</span>
+        <button class="adv-opts-toggle" id="advOptsToggle" onclick="toggleAdvOptions()" type="button">
+          <span>Advanced options</span>
+          <span class="adv-opts-chevron">▾</span>
+        </button>
+        <div id="advOptionsBody" style="display:none;">
+          <!-- Model picker -->
+          <div class="model-picker-section" style="margin-top:12px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border,#e5e7eb);">
+            <button class="model-picker-toggle" id="modelPickerToggle" onclick="toggleModelPicker()" type="button">
+              <span class="model-picker-title">AI model</span>
+              <span id="modelPickerCurrent" class="model-picker-current"></span>
+              <span class="model-picker-chevron">▾</span>
+            </button>
+            <div id="modelOptions" class="model-options" style="display:none;"></div>
+          </div>
+          <label class="toggle-row">
+            <input type="checkbox" id="side-extensive-search" class="toggle-input" />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            <span class="toggle-label-text" data-tooltip="Runs live web research for CV conventions (country/industry norms) and gives the Coach access to your full prior conversation history instead of the summary only. Adds ~30 s.">Deep research mode</span>
           </label>
-          <input type="range" id="side-tone" min="1" max="5" value="4" oninput="el('side-tone-label').textContent = ['Very neutral','Calm','Balanced','Direct (default)','Very blunt'][this.value-1]">
-          <div class="opt" id="side-tone-label" style="text-align:center;">Direct (default)</div>
+          <label class="toggle-row" style="margin-top:8px;">
+            <input type="checkbox" id="side-refresh-discipline" class="toggle-input" />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            <span class="toggle-label-text">Refresh discipline knowledge <span class="opt">(slower)</span></span>
+          </label>
+          <label class="toggle-row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border,#e5e7eb);">
+            <input type="checkbox" id="side-test-mode" class="toggle-input" />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            <span class="toggle-label-text">Test mode <span class="opt">(Haiku · 3 gaps max)</span></span>
+          </label>
+          <div class="form-group" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border,#e5e7eb);margin-bottom:0;">
+            <label class="tone-label-row">
+              Tone — how direct should feedback be?
+              <span class="tooltip-anchor" data-tooltip="Controls HOW BLUNTLY the AI delivers feedback, not what it tells you. Level 1: softer phrasing ('this could be strengthened by…'). Level 5: direct ('this is a real weakness…'). The underlying assessment doesn't change, only delivery style.">ⓘ</span>
+            </label>
+            <input type="range" id="side-tone" min="1" max="5" value="4" oninput="el('side-tone-label').textContent = ['Very neutral','Calm','Balanced','Direct (default)','Very blunt'][this.value-1]">
+            <div class="opt" id="side-tone-label" style="text-align:center;">Direct (default)</div>
+          </div>
         </div>
       </div>
       <!-- AI cost tracker — shown once any stage completes, updated by updateCostTracker() -->

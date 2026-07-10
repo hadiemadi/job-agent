@@ -134,12 +134,12 @@ router.post('/confirm-contact', async (req, res) => {
 
   // Persist for returning users: DB data wins over re-extraction on next login.
   // Fire-and-forget — a DB write failure must not break the confirm step for guests or users
-  // without a DB connection. Intentionally excludes email (lives on users table) and model
-  // (stored separately via POST /auth/preferences from the model picker).
+  // without a DB connection. Model stored separately via POST /auth/preferences.
   if (appSession.userId) {
     const profilePrefs = {
       name: name || '', title: title || '', phone: phone || '',
       location: location || '', linkedin: linkedin || '',
+      email: (appSession.confirmedContact && appSession.confirmedContact.email) || '',
       customInstructions: customInstructions || '',
       tone: tone || 4,
       gapSeverities: validSeverities.length ? validSeverities : ['major'],
