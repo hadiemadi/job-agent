@@ -1364,7 +1364,41 @@ career-shift titles · **#7** semantic embeddings. Touches `agents/researcher.js
 **Phase 2 — login / user_id:** The `user_id TEXT` column is now on the `jobs` table (nullable).
 Once basic auth lands, set it from the session and queries can be scoped to real users.
 
-**Noted, not built:** GDPR "delete my data" path · move to EU region someday.
+**Noted, not built:** GDPR "delete my data" path · move to EU region (see EU/GDPR item below).
+
+**Deferred — investigate before accounts grow large:**
+- **Token cost scaling with account history** — As accounts accumulate more `gap_memory` rows
+  over time, AI cost per new tailoring job may grow unbounded. Both Coach's prior-gap-history
+  injection and HR Expert's cross-run summary pull from `gap_memory` with no confirmed per-request
+  cap on how many rows are included. Risk: (a) real cost per job increases over an account's
+  lifetime purely from context growth, not job complexity; (b) the model picker's fixed token
+  estimate increasingly understates actual cost for established accounts. Action: confirm whether
+  a cap already exists; if not, add one (e.g. last N most-relevant gaps only); then update the
+  cost estimate to factor in account history size once a cap is defined.
+
+- **Missing `gap_description` column** — `gap_memory` has `gap_slogan` but no separate
+  `gap_description` column. The original spec called for both; currently the full description
+  text is stored in `gap_slogan` as a workaround (call sites pass `gap.description` into
+  `gapSlogan`). Low priority — revisit only if a real feature needs the distinction or the
+  dual-use causes confusion; not urgent.
+
+- **Model picker — confirm `#13b` status** — A prior backlog item `#13b` ("model picker blocked
+  externally") may have been resolved by the DeepSeek V4 Pro integration (provider abstraction
+  layer, multi-provider picker). Needs a quick check: is there still an actual blocker, or was
+  this fully addressed? If resolved, close it out; if not, clarify what remains and why.
+
+- **EU/GDPR data residency** — All data lives in US/Oregon (Render Postgres). No EU data
+  residency option exists, and no GDPR-specific data deletion pathway beyond the existing
+  general account-deletion has been built. Deferred — no timeline; revisit if/when EU users
+  or compliance requirements become a real concern.
+
+- **Stripe live-mode donations** — Donations are wired with Stripe TEST-mode keys; the full
+  flow has been verified to work in test mode (confirmed in Build.txt item 3). To go live:
+  (a) swap Render env vars `STRIPE_SECRET_KEY`/`STRIPE_PUBLISHABLE_KEY` from `sk_test_`/`pk_test_`
+  to `sk_live_`/`pk_live_` obtained from the Stripe dashboard, (b) confirm Stripe account
+  activation requirements are complete (business details, bank account), (c) perform one real
+  small end-to-end donation to confirm the live flow. No webhook needed (nothing server-side
+  unlocks on payment — confirmed by design).
 
 ---
 
