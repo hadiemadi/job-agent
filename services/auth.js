@@ -193,35 +193,42 @@ async function getProfilePreferences(userId) {
 // other fields use latest non-null value. Linked by gap_slogan so the same gap topic is
 // recognised across different job applications for the same user.
 
-async function upsertGapMemory(userId, { gapSlogan, coachConversation, coachVerdict, hrStatement, userDecision }) {
+async function upsertGapMemory(userId, { gapSlogan, coachConversation, coachVerdict, hrStatement, userDecision, tailoringRunId = 'legacy' }) {
   const pool = getPool();
   if (!pool) throw new Error('Database unavailable');
   const id = genId();
+  const runId = tailoringRunId || 'legacy';
   await pool.query(
-    `INSERT INTO gap_memory (id, user_id, gap_slogan, coach_conversation, coach_verdict, hr_statement, user_decision)
-     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
-     ON CONFLICT (user_id, gap_slogan) DO UPDATE SET
+    `INSERT INTO gap_memory (id, user_id, gap_slogan, tailoring_run_id, coach_conversation, coach_verdict, hr_statement, user_decision)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
+     ON CONFLICT (user_id, gap_slogan, tailoring_run_id) DO UPDATE SET
        coach_conversation = gap_memory.coach_conversation || EXCLUDED.coach_conversation,
        coach_verdict      = COALESCE(EXCLUDED.coach_verdict,   gap_memory.coach_verdict),
        hr_statement       = COALESCE(EXCLUDED.hr_statement,    gap_memory.hr_statement),
        user_decision      = COALESCE(EXCLUDED.user_decision,   gap_memory.user_decision),
        updated_at         = now()`,
     [
-      id, userId, gapSlogan,
+      id, userId, gapSlogan, runId,
       JSON.stringify(coachConversation || []),
-      coachVerdict   || null,
-      hrStatement    || null,
-      userDecision   || null,
+      coachVerdict || null,
+      hrStatement  || null,
+      userDecision || null,
     ]
   );
 }
 
-async function findGapMemoryBySlogan(userId, gapSlogan) {
+// Returns the most recent prior-run row for this gap (excludes the current run so Coach
+// only sees history, not the empty row that would exist if the current run wrote first).
+async function findGapMemoryBySlogan(userId, gapSlogan, excludeRunId = null) {
   const pool = getPool();
   if (!pool) return null;
   const { rows } = await pool.query(
-    'SELECT gap_slogan, coach_conversation, coach_verdict FROM gap_memory WHERE user_id = $1 AND gap_slogan = $2',
-    [userId, gapSlogan]
+    `SELECT gap_slogan, coach_conversation, coach_verdict
+     FROM gap_memory
+     WHERE user_id = $1 AND gap_slogan = $2
+       AND ($3::text IS NULL OR tailoring_run_id IS DISTINCT FROM $3)
+     ORDER BY updated_at DESC LIMIT 1`,
+    [userId, gapSlogan, excludeRunId || null]
   );
   return rows[0] || null;
 }
@@ -230,7 +237,7 @@ async function listGapMemory(userId) {
   const pool = getPool();
   if (!pool) return [];
   const { rows } = await pool.query(
-    `SELECT id, gap_slogan, coach_verdict, hr_statement, user_decision, updated_at
+    `SELECT id, gap_slogan, tailoring_run_id, coach_verdict, hr_statement, user_decision, updated_at
      FROM gap_memory WHERE user_id = $1 ORDER BY updated_at DESC`,
     [userId]
   );

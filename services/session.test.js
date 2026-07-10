@@ -6,7 +6,8 @@
 // Item 8 — AI cost/token tracker: per-session token accumulation and snapshot helpers.
 
 const { als, getSession, IDLE_LIMIT_MS, sweepSessions,
-  addSessionTokens, getSessionUsage, resetSessionUsage, snapshotSessionUsage } = require('./session');
+  addSessionTokens, getSessionUsage, resetSessionUsage, snapshotSessionUsage,
+  generateTailoringRunId } = require('./session');
 
 describe('Item 6/13 — idle session timeout', () => {
   test('IDLE_LIMIT_MS is exactly 180 minutes (item 13: raised from 60)', () => {
@@ -81,6 +82,37 @@ describe('Item 8 — AI cost/token tracker', () => {
       expect(u).toHaveProperty('usd');
       expect(u).toHaveProperty('tokIn');
       expect(u).toHaveProperty('tokOut');
+      done();
+    });
+  });
+});
+
+describe('generateTailoringRunId', () => {
+  test('format is YYYYMMDD#### (12 chars, date prefix, 4-digit suffix)', () => {
+    const id = generateTailoringRunId();
+    expect(id).toMatch(/^\d{8}\d{4}$/);   // 8-digit date + 4-digit seq
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    expect(id.slice(0, 8)).toBe(today);    // date prefix is today
+    const seq = Number(id.slice(8));
+    expect(seq).toBeGreaterThan(0);
+    expect(seq).toBeLessThanOrEqual(9999);
+  });
+
+  test('successive calls within the same day produce strictly increasing sequence numbers', () => {
+    const a = generateTailoringRunId();
+    const b = generateTailoringRunId();
+    const seqA = Number(a.slice(8));
+    const seqB = Number(b.slice(8));
+    expect(seqB).toBe(seqA + 1);
+    expect(a.slice(0, 8)).toBe(b.slice(0, 8));
+  });
+
+  test('tailoringRunId field is present (null before first tailor) in a fresh session', done => {
+    const sid = 'test-runid-' + Date.now();
+    als.run(sid, () => {
+      const session = getSession();
+      expect(Object.prototype.hasOwnProperty.call(session, 'tailoringRunId')).toBe(true);
+      expect(session.tailoringRunId).toBeNull();
       done();
     });
   });

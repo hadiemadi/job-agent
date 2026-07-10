@@ -5,11 +5,44 @@
 
 **Last updated:** 2026-07-10
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 455/455 green · **origin/main HEAD:** `3c0291b`
+**Tests:** 466/466 green · **origin/main HEAD:** `pending push`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **feat(gap-memory): tailoringRunId isolates HR history per Tailor-my-CV run** —
+  Root cause of "Ask your HR Expert shows all history": `gap_memory` had no way to
+  distinguish one "Tailor my CV" run from another. `buildGapMemoryBlock` dumped every
+  historical row into every HR chat session, including the active one, so the expert
+  always saw its own in-progress notes as "prior history".
+
+  **Architecture:** New `tailoring_run_id TEXT NOT NULL DEFAULT 'legacy'` column on
+  `gap_memory` with format `YYYYMMDD####` (date prefix + 4-digit sequential counter).
+  Pre-migration rows get sentinel value `'legacy'`. Unique constraint changes from
+  `(user_id, gap_slogan)` → `(user_id, gap_slogan, tailoring_run_id)` so multiple
+  runs for the same gap accumulate instead of clobbering each other.
+
+  **Generator:** `generateTailoringRunId()` in `services/session.js` — in-memory daily
+  counter (`_runSeq`), resets at midnight/restart, zero-padded to 4 digits. New field
+  `tailoringRunId: null` added to `createSession()`.
+
+  **Threading:** `routes/cv.routes.js` generates and stamps the run ID at the start of
+  `/rewrite` and `/regenerate-cv` (before `createJob()`). All three gap_memory write
+  paths pass it through: `routes/coach.routes.js` (`upsertGapMemory`),
+  `routes/hr.routes.js` (`/hr/refine`, `/gap-decision`).
+
+  **Read-path isolation:** `buildGapMemoryBlock(userId, currentRunId)` filters out the
+  current run's rows — only cross-session history reaches the HR Expert.
+  `findGapMemoryBySlogan(userId, slogan, excludeRunId)` uses `IS DISTINCT FROM $3` so
+  Coach also sees prior-session history only. Old `'legacy'` rows are treated as
+  historical (always included) — backwards compatible.
+
+  **Tests added** (+11): `generateTailoringRunId` format + strictly-increasing sequence
+  + `tailoringRunId: null` in fresh session; current run excluded from HR block + all
+  rows when null + two-run no-leak; source-level threading assertions for coach.routes.js,
+  hr.routes.js (×2 call sites), cv.routes.js. Fixed pre-existing `test.ui.js` assertion
+  to expect 3-arg `findGapMemoryBySlogan` call. 466/466 green.
 
 - **fix(cv-page): `\n` in template literal → SyntaxError kills all buttons** (`render/cvHtml.js`) —
   Root cause (regression from batch item 9 commit `24e10df`): `applyConcernChange()` used

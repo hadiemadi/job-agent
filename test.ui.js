@@ -1272,7 +1272,7 @@ describe('Read/relevance — prior gap history injected into first coach turn', 
     findGapMemoryBySlogan.mockResolvedValueOnce(null); // no prior history
     await priorAgent.post('/coach/discuss').send({ message: 'First message.', gapId: priorGapId });
     expect(findGapMemoryBySlogan).toHaveBeenCalledTimes(1);
-    expect(findGapMemoryBySlogan).toHaveBeenCalledWith('test-user-42', MOCK_GAPS[0].description);
+    expect(findGapMemoryBySlogan).toHaveBeenCalledWith('test-user-42', MOCK_GAPS[0].description, null);
   });
 
   test('when prior history exists, chatWithCoach receives it as priorGapHistory arg', async () => {

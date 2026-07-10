@@ -24,7 +24,7 @@ router.post('/coach/discuss', async (req, res) => {
     let priorGapHistory = null;
     if (appSession.userId && gap && gap.coachConversation.length === 0) {
       try {
-        const prior = await findGapMemoryBySlogan(appSession.userId, gap.description);
+        const prior = await findGapMemoryBySlogan(appSession.userId, gap.description, appSession.tailoringRunId);
         if (prior && (
           (Array.isArray(prior.coach_conversation) && prior.coach_conversation.length > 0) ||
           prior.hr_statement || prior.user_decision
@@ -55,6 +55,7 @@ router.post('/coach/discuss', async (req, res) => {
         coachVerdict: lastCoachTurn ? lastCoachTurn.content : null,
         hrStatement: null,
         userDecision: null,
+        tailoringRunId: appSession.tailoringRunId,
       }).catch(e => console.warn('[upsertGapMemory/coach] write failed:', e.message));
     }
     if (appSession.userId) {

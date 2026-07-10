@@ -31,11 +31,14 @@ function buildProfilePrefs(session) {
 // HR statements across every gap they have ever discussed. HR Expert is permitted to read
 // both fields. The block is appended to the shared context sent to chatWithHRExpert so the
 // sidebar agent stays consistent with prior judgments across sessions.
-async function buildGapMemoryBlock(userId) {
+// currentRunId excludes the active tailoring run's rows — those are already surfaced via
+// buildSharedGapContext (in-memory session.gaps). Only prior-run data belongs here.
+async function buildGapMemoryBlock(userId, currentRunId = null) {
   if (!userId) return '';
   let rows;
   try { rows = await listGapMemory(userId); } catch (_) { return ''; }
   const lines = (rows || [])
+    .filter(r => r.tailoring_run_id !== currentRunId)  // exclude current run
     .filter(r => r.coach_verdict || r.hr_statement)
     .map(r => {
       const parts = [`Gap: "${r.gap_slogan}"`];
@@ -288,6 +291,7 @@ router.post('/hr/refine', async (req, res) => {
         coachVerdict: null,
         hrStatement,
         userDecision: null,
+        tailoringRunId: appSession.tailoringRunId,
       }).catch(e => console.warn('[upsertGapMemory/hr] write failed:', e.message));
     }
     res.json({
@@ -319,6 +323,7 @@ router.post('/gap-decision', (req, res) => {
       coachVerdict: null,
       hrStatement: null,
       userDecision: gap.userDecision,
+      tailoringRunId: appSession.tailoringRunId,
     }).catch(e => console.warn('[upsertGapMemory/decision] write failed:', e.message));
   }
   res.json({ ok: true, userDecision: gap.userDecision });
@@ -339,7 +344,7 @@ router.post('/hr/chat', async (req, res) => {
         (concern.isFirst ? '\n\n(This is the start of this discussion — first briefly quote or restate the excerpt above to confirm you understood what they\'re referring to, then respond to their point.)' : '');
     }
     const sessionCtx = buildSharedGapContext(null);
-    const memCtx     = await buildGapMemoryBlock(appSession.userId);
+    const memCtx     = await buildGapMemoryBlock(appSession.userId, appSession.tailoringRunId);
     const sharedCtx  = [sessionCtx, memCtx].filter(Boolean).join('\n\n');
     const { reply, thread } = await chatWithHRExpert(
       appSession.cvText, appSession.currentJob, appSession.hrThread, finalMessage, model, appSession.clientPreferences,

@@ -7,7 +7,7 @@ const { readCV, parseCVStructure, adjustLanguageLevel, classify, generateCompari
 const { generateWordCV, generateWordCVAlt } = require('../src/wordExport');
 const { generateWordFromTemplate } = require('../src/wordTemplateExport');
 const { upload, templateUpload } = require('../services/uploads');
-const { getSession, setSession, registerOutputFile, purgeSessionData, als, getTraceId, resetSessionUsage, getSessionUsage, snapshotSessionUsage } = require('../services/session');
+const { getSession, setSession, registerOutputFile, purgeSessionData, als, getTraceId, resetSessionUsage, getSessionUsage, snapshotSessionUsage, generateTailoringRunId } = require('../services/session');
 const { saveProfilePreferences, saveCv } = require('../services/auth');
 const { getGaps } = require('../services/gapStore');
 const { tailorCvWithReview } = require('../services/workflows');
@@ -201,6 +201,7 @@ router.post('/rewrite', async (req, res) => {
       timeSinceHrReviewMs: appSession.stepTimestamps?.hrReviewCompletedAt
         ? Date.now() - appSession.stepTimestamps.hrReviewCompletedAt : null,
     });
+    appSession.tailoringRunId = generateTailoringRunId();
     const jobId = await createJob();
     // Capture the session ID so the background task can re-establish the ALS context —
     // registerOutputFile() inside the pipeline uses als.getStore() to name the output file,
@@ -337,6 +338,8 @@ router.post('/regenerate-cv', async (req, res) => {
     const { job, languageLevel } = req.body;
     const targetJob = job || appSession.lastTailoredJob || appSession.currentJob;
     if (!targetJob) return sendError(res, '/regenerate-cv', 'ERR-GEN-002');
+    // Each regeneration is a new tailoring run — gap decisions made afterward belong to this run.
+    appSession.tailoringRunId = generateTailoringRunId();
     if (languageLevel) {
       appSession.clientPreferences = { ...appSession.clientPreferences, languageLevel };
     }

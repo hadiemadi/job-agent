@@ -105,21 +105,24 @@ const COACH_MEMORY_TABLE_SQL = `CREATE TABLE IF NOT EXISTS coach_memory (
 
 // Per-user, per-gap persistent memory — accumulates coach conversation, HR statement, and
 // user decision across multiple CV-tailor sessions for the same account.
-// ⚠ Known future concern: no row-count cap per user. A highly active user who reviews many
-// different jobs with large gap lists could accumulate many rows. Retention/pruning strategy
-// (e.g. keep last N rows per user, or prune rows older than X days) deferred — track this
-// before real-user traffic is significant.
+// tailoring_run_id (YYYYMMDD####) scopes each row to one "Tailor my CV" run so the HR
+// Expert sidebar only receives cross-session history, not the current run's own data.
+// Rows from before this column was added carry tailoring_run_id = 'legacy' (see migration
+// in ensureTables) and are treated as historical context, not the current run.
+// ⚠ Known future concern: no row-count cap per user. Retention/pruning is simple once the
+// date prefix exists — WHERE tailoring_run_id < 'YYYYMMDD' drops everything before that day.
 const GAP_MEMORY_TABLE_SQL = `CREATE TABLE IF NOT EXISTS gap_memory (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   gap_slogan TEXT NOT NULL,
+  tailoring_run_id TEXT NOT NULL DEFAULT 'legacy',
   coach_conversation JSONB NOT NULL DEFAULT '[]',
   coach_verdict TEXT,
   hr_statement TEXT,
   user_decision TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(user_id, gap_slogan)
+  UNIQUE(user_id, gap_slogan, tailoring_run_id)
 )`;
 
 // User-submitted error feedback — message + optional contact email, linked to the session
@@ -173,6 +176,23 @@ async function ensureTables(p) {
   await p.query(COACH_MEMORY_TABLE_SQL);
   await p.query(GAP_MEMORY_TABLE_SQL);
   await p.query(`CREATE INDEX IF NOT EXISTS gap_memory_user_id_idx ON gap_memory(user_id)`);
+  // Migration: add tailoring_run_id to existing live tables (NOT NULL DEFAULT 'legacy' fills
+  // old rows atomically so cross-session history is preserved as 'legacy'-tagged rows).
+  await p.query(`ALTER TABLE IF EXISTS gap_memory ADD COLUMN IF NOT EXISTS tailoring_run_id TEXT NOT NULL DEFAULT 'legacy'`);
+  // Drop the old 2-col unique constraint; the new 3-col one (below) replaces it.
+  await p.query(`ALTER TABLE IF EXISTS gap_memory DROP CONSTRAINT IF EXISTS gap_memory_user_id_gap_slogan_key`);
+  // Add 3-col unique constraint (idempotent: skip if already present).
+  await p.query(`DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conname = 'gap_memory_user_gap_run_key'
+        AND conrelid = 'gap_memory'::regclass
+    ) THEN
+      ALTER TABLE gap_memory ADD CONSTRAINT gap_memory_user_gap_run_key
+        UNIQUE (user_id, gap_slogan, tailoring_run_id);
+    END IF;
+  END $$`);
+  await p.query(`CREATE INDEX IF NOT EXISTS gap_memory_run_idx ON gap_memory(user_id, tailoring_run_id)`);
   await p.query(FEEDBACK_TABLE_SQL);
   await p.query(DIAGNOSTIC_LOG_TABLE_SQL);
   await p.query(`CREATE INDEX IF NOT EXISTS diagnostic_log_label_idx ON diagnostic_log(label)`);

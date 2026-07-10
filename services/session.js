@@ -56,6 +56,11 @@ function createSession() {
     // for this flow (via core/logger.js's getTraceId()) so a full flow's diagnostic timeline
     // can be pulled from diagnostic_log by a single WHERE data_json->>'traceId' = '...' query.
     traceId: null,
+    // Scopes gap_memory writes to one "Tailor my CV" run. Format: YYYYMMDD#### where #### is
+    // a per-day sequential counter (resets on process restart — rare mid-day restarts produce
+    // a gap in the sequence but never a uniqueness collision, because the constraint key is
+    // (user_id, gap_slogan, tailoring_run_id), not tailoring_run_id alone).
+    tailoringRunId: null,
   };
 }
 
@@ -75,6 +80,17 @@ function setSession(next) {
   next.lastSeen = Date.now();
   sessions.set(sid, next);
   return next;
+}
+
+// Generates a YYYYMMDD#### tailoring run ID. The date prefix makes age-based filtering
+// trivial (WHERE tailoring_run_id < 'YYYYMMDD'). The 4-digit suffix is a per-day
+// sequential counter that resets at midnight (or on process restart).
+let _runSeq = { date: '', n: 0 };
+function generateTailoringRunId() {
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
+  if (_runSeq.date !== date) _runSeq = { date, n: 0 };
+  _runSeq.n++;
+  return `${date}${String(_runSeq.n).padStart(4, '0')}`;
 }
 
 // Side-effect-free traceId reader for core/logger.js's logDiagnostic. Does NOT call
@@ -269,7 +285,7 @@ if (sweepInterval.unref) sweepInterval.unref();
 module.exports = {
   getSession, setSession, als, sessionMiddleware, requestScope, createSession,
   registerOutputFile, isOwnedOutputFile, getOutputDownloadName, purgeSessionData,
-  addSessionSpend, getSessionSpend, getTraceId,
+  addSessionSpend, getSessionSpend, getTraceId, generateTailoringRunId,
   IDLE_LIMIT_MS, sweepSessions,
   addSessionTokens, getSessionUsage, resetSessionUsage, snapshotSessionUsage,
 };

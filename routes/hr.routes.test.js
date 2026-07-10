@@ -54,8 +54,8 @@ describe('buildGapMemoryBlock', () => {
 
   it('includes coach_verdict and hr_statement across multiple gaps', async () => {
     listGapMemory.mockResolvedValue([
-      { gap_slogan: 'cloud-experience', coach_verdict: 'Strong AWS background', hr_statement: 'good fit for the role' },
-      { gap_slogan: 'leadership',       coach_verdict: 'Led a 5-person team',   hr_statement: 'meets senior bar' },
+      { gap_slogan: 'cloud-experience', tailoring_run_id: 'legacy', coach_verdict: 'Strong AWS background', hr_statement: 'good fit for the role' },
+      { gap_slogan: 'leadership',       tailoring_run_id: 'legacy', coach_verdict: 'Led a 5-person team',   hr_statement: 'meets senior bar' },
     ]);
     const block = await buildGapMemoryBlock('user-123');
     expect(listGapMemory).toHaveBeenCalledWith('user-123');
@@ -67,8 +67,8 @@ describe('buildGapMemoryBlock', () => {
 
   it('excludes gaps that have neither coach_verdict nor hr_statement', async () => {
     listGapMemory.mockResolvedValue([
-      { gap_slogan: 'active-gap', coach_verdict: 'some verdict', hr_statement: null },
-      { gap_slogan: 'empty-gap',  coach_verdict: null,           hr_statement: null },
+      { gap_slogan: 'active-gap', tailoring_run_id: 'legacy', coach_verdict: 'some verdict', hr_statement: null },
+      { gap_slogan: 'empty-gap',  tailoring_run_id: 'legacy', coach_verdict: null,           hr_statement: null },
     ]);
     const block = await buildGapMemoryBlock('user-456');
     expect(block).toContain('some verdict');
@@ -76,13 +76,84 @@ describe('buildGapMemoryBlock', () => {
   });
 
   it('returns empty string when all gaps have no verdict or statement', async () => {
-    listGapMemory.mockResolvedValue([{ gap_slogan: 'x', coach_verdict: null, hr_statement: null }]);
+    listGapMemory.mockResolvedValue([{ gap_slogan: 'x', tailoring_run_id: 'legacy', coach_verdict: null, hr_statement: null }]);
     expect(await buildGapMemoryBlock('user-789')).toBe('');
   });
 
   it('returns empty string when listGapMemory throws', async () => {
     listGapMemory.mockRejectedValue(new Error('DB down'));
     expect(await buildGapMemoryBlock('user-fail')).toBe('');
+  });
+});
+
+describe('tailoringRunId isolation — buildGapMemoryBlock', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('excludes rows belonging to the current tailoring run (they are in buildSharedGapContext instead)', async () => {
+    listGapMemory.mockResolvedValue([
+      { gap_slogan: 'agile',      tailoring_run_id: '202607100001', coach_verdict: 'current run verdict',  hr_statement: null },
+      { gap_slogan: 'leadership', tailoring_run_id: '202607090003', coach_verdict: 'prior run verdict',    hr_statement: 'prior statement' },
+      { gap_slogan: 'cloud',      tailoring_run_id: 'legacy',       coach_verdict: 'legacy verdict',       hr_statement: null },
+    ]);
+    const block = await buildGapMemoryBlock('user-1', '202607100001');
+    expect(block).not.toContain('current run verdict');   // current run excluded
+    expect(block).toContain('prior run verdict');          // prior run included
+    expect(block).toContain('legacy verdict');             // legacy rows included
+  });
+
+  it('includes all rows when currentRunId is null (no active run — e.g. guest or pre-tailor)', async () => {
+    listGapMemory.mockResolvedValue([
+      { gap_slogan: 'agile', tailoring_run_id: '202607100001', coach_verdict: 'some verdict', hr_statement: null },
+    ]);
+    const block = await buildGapMemoryBlock('user-2', null);
+    expect(block).toContain('some verdict');
+  });
+
+  it('two different runs for same user+gap do not leak into each other', async () => {
+    // Run A finishes; run B starts. Run B's HR chat should NOT see run A's rows as "current".
+    const runA = '202607100001';
+    const runB = '202607100002';
+    listGapMemory.mockResolvedValue([
+      { gap_slogan: 'cloud', tailoring_run_id: runA, coach_verdict: 'run A verdict', hr_statement: 'run A statement' },
+      { gap_slogan: 'cloud', tailoring_run_id: runB, coach_verdict: 'run B verdict', hr_statement: null },
+    ]);
+    // From run B's perspective: run A is historical, run B is current (excluded)
+    const blockForRunB = await buildGapMemoryBlock('user-3', runB);
+    expect(blockForRunB).toContain('run A verdict');      // historical — visible
+    expect(blockForRunB).not.toContain('run B verdict'); // current run — excluded
+  });
+});
+
+describe('tailoringRunId threading — source-level assertions', () => {
+  test('coach.routes.js passes tailoringRunId to findGapMemoryBySlogan (excludes current run from cross-session lookup)', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'routes', 'coach.routes.js'), 'utf8');
+    // findGapMemoryBySlogan must be called with 3 args: userId, gap.description, AND tailoringRunId
+    expect(src).toMatch(/findGapMemoryBySlogan\s*\(\s*appSession\.userId\s*,\s*gap\.description\s*,\s*appSession\.tailoringRunId\s*\)/);
+  });
+
+  test('coach.routes.js passes tailoringRunId to upsertGapMemory', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'routes', 'coach.routes.js'), 'utf8');
+    expect(src).toMatch(/tailoringRunId\s*:\s*appSession\.tailoringRunId/);
+  });
+
+  test('hr.routes.js passes tailoringRunId to both upsertGapMemory call sites', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'hr.routes.js'), 'utf8');
+    const matches = src.match(/tailoringRunId\s*:\s*appSession\.tailoringRunId/g) || [];
+    expect(matches.length).toBeGreaterThanOrEqual(2); // /hr/refine + /gap-decision
+  });
+
+  test('hr.routes.js passes tailoringRunId to buildGapMemoryBlock', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'hr.routes.js'), 'utf8');
+    expect(src).toMatch(/buildGapMemoryBlock\s*\(\s*appSession\.userId\s*,\s*appSession\.tailoringRunId\s*\)/);
+  });
+
+  test('cv.routes.js sets appSession.tailoringRunId before createJob() in /rewrite', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'cv.routes.js'), 'utf8');
+    // tailoringRunId must be assigned before the job is created
+    const runIdIdx   = src.indexOf('appSession.tailoringRunId = generateTailoringRunId()');
+    const createJobIdx = src.indexOf('createJob()');
+    expect(runIdIdx).toBeGreaterThan(-1);
+    expect(runIdIdx).toBeLessThan(createJobIdx);
   });
 });
 
