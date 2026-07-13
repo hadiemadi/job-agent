@@ -887,7 +887,7 @@ function fmtTok(n) { return (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n)
 
 function formatStageUsage(u) {
   if (!u || (!u.tokIn && !u.tokOut)) return '';
-  return '$' + Number(u.usd || 0).toFixed(4) + ' · ' + fmtTok(u.tokIn || 0) + '+' + fmtTok(u.tokOut || 0) + ' tok';
+  return fmtTok(u.tokIn || 0) + '+' + fmtTok(u.tokOut || 0) + ' tok';
 }
 
 function updateElapsedDisplay() {
@@ -908,12 +908,6 @@ function updateCostTracker(u) {
     'In: ' + (u.tokIn || 0).toLocaleString() + ' tok<br>' +
     'Out: ' + (u.tokOut || 0).toLocaleString() + ' tok';
   show('costTracker');
-  const pc = el('progressCost');
-  if (pc) {
-    pc.textContent = 'Running total: $' + Number(u.usd || 0).toFixed(4) +
-      ' (' + (u.tokIn || 0).toLocaleString() + ' in / ' + (u.tokOut || 0).toLocaleString() + ' out)';
-    show('progressCost');
-  }
 }
 
 // Maps an error kind to the correct step state. 'rate' and 'validation' use 'warn' (neutral,

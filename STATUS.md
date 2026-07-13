@@ -5,11 +5,16 @@
 
 **Last updated:** 2026-07-13
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 465/465 green · **origin/main HEAD:** `7985fec`
+**Tests:** 465/465 green · **origin/main HEAD:** `pending`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **fix(ui): progress popup token-only, tone label Coach-only, textarea 15 rows** —
+  `public/app.js`: `formatStageUsage` drops dollar cost — per-stage display now shows tokens only (`1.2k+0.3k tok`); `updateCostTracker` dead `progressCost` block removed.
+  `public/index.html`: `#progressCost` running-total div removed from progress popup. Tone slider label renamed from "Tone — how direct should feedback be?" → "Career Coach tone" (both side panel `#side-tone` and guest popup `#ci-tone`); tooltip updated to say HR is always direct regardless. Level labels updated: "Very neutral/Calm/Balanced/Direct (default)/Very blunt" → "Gentle/Encouraging/Balanced/Direct/Challenging". Deep research mode tooltip rewritten to describe what it actually does (live web research for CV norms, fed to HR Expert). "Refresh discipline knowledge" marked "(coming soon)" with tooltip explaining it is not yet active.
+  `public/style.css`: `#jobText { height:300px }` — overrides global `textarea { height:100px }` so the job description textarea shows ~15 lines by default. 465/465 green.
 
 - **Phase 5 — Profile page UI** —
   `routes/cv.routes.js`: `GET /profile` serves `public/profile.html`; `GET /api/profile` returns the logged-in user's profile; `PATCH /profile/category` saves one category's bullet list (auto-save from inline editor, cap 8 per category).

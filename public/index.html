@@ -116,12 +116,12 @@
           <label class="toggle-row">
             <input type="checkbox" id="side-extensive-search" class="toggle-input" />
             <span class="toggle-track"><span class="toggle-thumb"></span></span>
-            <span class="toggle-label-text" data-tooltip="Runs live web research for CV conventions (country/industry norms) and gives the Coach access to your full prior conversation history instead of the summary only. Adds ~30 s.">Deep research mode</span>
+            <span class="toggle-label-text" data-tooltip="Searches the web for CV formatting norms in your target industry and location. The HR Expert uses these findings to give more specific, market-relevant feedback. Adds ~30 s to the process.">Deep research mode</span>
           </label>
           <label class="toggle-row" style="margin-top:8px;">
             <input type="checkbox" id="side-refresh-discipline" class="toggle-input" />
             <span class="toggle-track"><span class="toggle-thumb"></span></span>
-            <span class="toggle-label-text">Refresh discipline knowledge <span class="opt">(slower)</span></span>
+            <span class="toggle-label-text" data-tooltip="Not yet active — planned to re-fetch the AI's knowledge about your target discipline from the web to ensure up-to-date norms.">Refresh discipline knowledge <span class="opt">(coming soon)</span></span>
           </label>
           <label class="toggle-row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border,#e5e7eb);">
             <input type="checkbox" id="side-test-mode" class="toggle-input" />
@@ -130,11 +130,11 @@
           </label>
           <div class="form-group" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border,#e5e7eb);margin-bottom:0;">
             <label class="tone-label-row">
-              Tone — how direct should feedback be?
-              <span class="tooltip-anchor" data-tooltip="Controls HOW BLUNTLY the AI delivers feedback, not what it tells you. Level 1: softer phrasing ('this could be strengthened by…'). Level 5: direct ('this is a real weakness…'). The underlying assessment doesn't change, only delivery style.">ⓘ</span>
+              Career Coach tone
+              <span class="tooltip-anchor" data-tooltip="Sets how bluntly the Career Coach speaks to you. Level 1: encouraging and gentle ('this could be stronger…'). Level 5: direct and challenging ('this is a real gap…'). HR feedback is always direct regardless of this setting.">ⓘ</span>
             </label>
-            <input type="range" id="side-tone" min="1" max="5" value="4" oninput="el('side-tone-label').textContent = ['Very neutral','Calm','Balanced','Direct (default)','Very blunt'][this.value-1]">
-            <div class="opt" id="side-tone-label" style="text-align:center;">Direct (default)</div>
+            <input type="range" id="side-tone" min="1" max="5" value="4" oninput="el('side-tone-label').textContent = ['Gentle','Encouraging','Balanced','Direct','Challenging'][this.value-1]">
+            <div class="opt" id="side-tone-label" style="text-align:center;">Direct</div>
           </div>
         </div>
       </div>
@@ -298,12 +298,12 @@
           <label class="toggle-row">
             <input type="checkbox" id="ci-extensive-search" class="toggle-input" />
             <span class="toggle-track"><span class="toggle-thumb"></span></span>
-            <span class="toggle-label-text" data-tooltip="Runs live web research for CV conventions (country/industry norms) and gives the Coach access to your full prior conversation history instead of the summary only. Adds ~30 s.">Deep research mode</span>
+            <span class="toggle-label-text" data-tooltip="Searches the web for CV formatting norms in your target industry and location. The HR Expert uses these findings to give more specific, market-relevant feedback. Adds ~30 s to the process.">Deep research mode</span>
           </label>
           <label class="toggle-row">
             <input type="checkbox" id="ci-refresh-discipline" class="toggle-input" />
             <span class="toggle-track"><span class="toggle-thumb"></span></span>
-            <span class="toggle-label-text">Refresh discipline knowledge from web <span class="opt">(slower)</span></span>
+            <span class="toggle-label-text" data-tooltip="Not yet active — planned to re-fetch the AI's knowledge about your target discipline from the web to ensure up-to-date norms.">Refresh discipline knowledge <span class="opt">(coming soon)</span></span>
           </label>
           <!-- Future: LLM model picker — once each search/call has a visible price tag
                (see core/claude.js's spend metering), let the user choose which model runs
@@ -311,9 +311,9 @@
         </div>
       </div>
       <div class="form-group" style="margin-bottom:14px;">
-        <label>Tone — how direct should feedback be?</label>
-        <input type="range" id="ci-tone" min="1" max="5" value="4" oninput="el('ci-tone-label').textContent = ['Very neutral','Calm','Balanced','Direct (default)','Very blunt'][this.value-1]">
-        <div class="opt" id="ci-tone-label" style="text-align:center;">Direct (default)</div>
+        <label>Career Coach tone</label>
+        <input type="range" id="ci-tone" min="1" max="5" value="4" oninput="el('ci-tone-label').textContent = ['Gentle','Encouraging','Balanced','Direct','Challenging'][this.value-1]">
+        <div class="opt" id="ci-tone-label" style="text-align:center;">Direct</div>
       </div>
       <button class="btn btn-go" onclick="confirmContact()" style="margin-top:14px;">Confirm &amp; continue →</button>
       <div id="contactStatus" style="display:none;margin-top:8px;"></div>
@@ -324,7 +324,6 @@
   <div class="modal-overlay" id="progressCard" style="display:none;">
     <div class="card modal-box">
       <div class="steps" id="steps"></div>
-      <div id="progressCost" style="display:none;text-align:center;font-size:0.72rem;color:var(--ink);opacity:0.6;margin-top:8px;"></div>
       <!-- Cancel is UI-only: stops polling but backend AI calls finish in the background -->
       <div style="text-align:center;margin-top:14px;">
         <button id="cancelProgressBtn" class="btn" style="font-size:0.8rem;padding:5px 16px;background:transparent;border:1px solid var(--ink);opacity:0.5;" onclick="cancelProgress()">Cancel</button>

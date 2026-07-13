@@ -114,6 +114,7 @@ input[type="file"], input[type="text"], input[type="email"], input[type="tel"], 
 }
 input:focus, select:focus, textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(24,95,165,0.12); }
 textarea { resize:vertical; height:100px; }
+#jobText { height:300px; }
 input[type="range"] { width:100%; cursor:pointer; accent-color:var(--accent); }
 .opt { font-weight:400; color:var(--muted-light); text-transform:none; letter-spacing:0; font-size:11px; }
 
