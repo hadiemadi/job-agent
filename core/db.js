@@ -74,7 +74,16 @@ const USER_PREFERENCES_TABLE_SQL = `CREATE TABLE IF NOT EXISTS user_preferences 
 
 // conversation_history and coach_memory were write-only (display-only in My Data UI) and
 // were never injected into any agent prompt. Dropped in Phase 0c — user_profiles (Phase 1)
-// will own cross-session agent context instead.
+// owns cross-session agent context instead.
+
+// Compact, categorized career profile — built once from the CV, updated each tailoring run.
+// HR and Coach inject the profile block into their system prompt instead of replaying raw
+// conversation turns. One row per user; JSONB schema versioned (profile.version).
+const USER_PROFILES_TABLE_SQL = `CREATE TABLE IF NOT EXISTS user_profiles (
+  user_id    TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  profile    JSONB NOT NULL DEFAULT '{}',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)`;
 
 // Per-user, per-gap persistent memory — accumulates coach conversation, HR statement, and
 // user decision across multiple CV-tailor sessions for the same account.
@@ -149,6 +158,8 @@ async function ensureTables(p) {
   await p.query('DROP TABLE IF EXISTS conversation_history CASCADE');
   await p.query('DROP TABLE IF EXISTS coach_memory CASCADE');
   await p.query(GAP_MEMORY_TABLE_SQL);
+  // Phase 1: persistent career profile — one row per user, injected into agent prompts.
+  await p.query(USER_PROFILES_TABLE_SQL);
   await p.query(`CREATE INDEX IF NOT EXISTS gap_memory_user_id_idx ON gap_memory(user_id)`);
   // Migration: add tailoring_run_id to existing live tables (NOT NULL DEFAULT 'legacy' fills
   // old rows atomically so cross-session history is preserved as 'legacy'-tagged rows).

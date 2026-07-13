@@ -145,6 +145,31 @@ async function getProfilePreferences(userId) {
   return getUserPreference(userId, 'profile_preferences');
 }
 
+// ── User profile — persistent career profile for cross-session agent context ──
+// One row per user, JSONB schema versioned (profile.version). Agents inject a
+// compact formatted block from this instead of replaying raw conversation turns.
+
+async function saveUserProfile(userId, profile) {
+  const pool = getPool();
+  if (!pool) return;
+  await pool.query(
+    `INSERT INTO user_profiles (user_id, profile, updated_at)
+     VALUES ($1, $2, now())
+     ON CONFLICT (user_id) DO UPDATE SET profile = $2, updated_at = now()`,
+    [userId, JSON.stringify(profile)]
+  );
+}
+
+async function getUserProfile(userId) {
+  const pool = getPool();
+  if (!pool) return null;
+  const { rows } = await pool.query(
+    'SELECT profile FROM user_profiles WHERE user_id = $1',
+    [userId]
+  );
+  return rows[0]?.profile ?? null;
+}
+
 // ── Gap memory — per user, per gap slogan ─────────────────────────────────────
 // Accumulates across CV-tailor sessions: coach conversation is APPENDED (never replaced),
 // other fields use latest non-null value. Linked by gap_slogan so the same gap topic is
@@ -216,6 +241,7 @@ module.exports = {
   saveCv, listSavedCvs, deleteSavedCv,
   getLatestSavedCv,
   saveProfilePreferences, getProfilePreferences,
+  saveUserProfile, getUserProfile,
   upsertGapMemory, findGapMemoryBySlogan, listGapMemory,
   deleteUserAccount,
 };

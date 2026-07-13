@@ -16,6 +16,8 @@ jest.mock('../services/auth', () => ({
   getLatestSavedCv:           jest.fn(),
   saveProfilePreferences:     jest.fn(),
   getProfilePreferences:      jest.fn(),
+  saveUserProfile:            jest.fn(),
+  getUserProfile:             jest.fn(),
   upsertGapMemory:            jest.fn(),
   findGapMemoryBySlogan:      jest.fn(),
   listGapMemory:              jest.fn(),

@@ -11,6 +11,13 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **Phase 1 — user_profiles table + buildProfileFromCv** —
+  `core/db.js`: `user_profiles` table added (one row per user, JSONB profile, versioned).
+  `services/auth.js`: `saveUserProfile` / `getUserProfile` added.
+  `src/ai.js` (new): `buildProfileFromCv(cvText)` — Haiku extraction, 7 categories, max 8 bullets × 15 words, no PII.
+  `routes/cv.routes.js`: fires profile build fire-and-forget on first `/upload-cv` for logged-in users (skipped if profile already exists).
+  Tests: `./src/ai` mock added to `test.ui.js`; `saveUserProfile`/`getUserProfile` added to both test mocks. 465/465 green.
+
 - **Phase 0 — agent consolidation + table drop** —
   `agents/coach.js`: `coachAgent(intent, params)` added — unified entry point for all 5 coach intents (`analyze-gaps`, `suggest-roles`, `match-market`, `build-path`, `chat`). All intents share `coachThread` (`appSession.coachHistory`) so the coach remembers gap analysis when the user later opens the Career Coach tab.
   `agents/recruiter.js`: `hrAgent(intent, params)` added — wraps `reviewCV`, `refineWithHR`, `chatWithHRExpert`, `draftFromSidebarDiscussion`, `researchCvConventions`. Both agents exported via `agent.js` barrel.

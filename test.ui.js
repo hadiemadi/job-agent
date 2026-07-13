@@ -52,6 +52,7 @@ jest.mock('./agents/coach', () => ({
 }));
 
 jest.mock('./src/cv',       () => ({ readCV: jest.fn() }));
+jest.mock('./src/ai',       () => ({ buildProfileFromCv: jest.fn().mockResolvedValue(null) }));
 jest.mock('./src/jobs',     () => ({ searchAllLocations: jest.fn() }));
 jest.mock('./src/scraper',  () => ({ scrapeJobPage: jest.fn() }));
 jest.mock('./render/cvHtml', () => ({
@@ -88,6 +89,8 @@ jest.mock('./services/auth', () => ({
   getLatestSavedCv:         jest.fn().mockResolvedValue(null),
   saveProfilePreferences:   jest.fn().mockResolvedValue(undefined),
   getProfilePreferences:    jest.fn().mockResolvedValue(null),
+  saveUserProfile:          jest.fn().mockResolvedValue(undefined),
+  getUserProfile:           jest.fn().mockResolvedValue(null),
   upsertGapMemory:          jest.fn().mockResolvedValue(undefined),
   findGapMemoryBySlogan:    jest.fn().mockResolvedValue(null),
   listGapMemory:            jest.fn().mockResolvedValue([]),

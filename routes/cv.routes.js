@@ -8,7 +8,8 @@ const { generateWordCV, generateWordCVAlt } = require('../src/wordExport');
 const { generateWordFromTemplate } = require('../src/wordTemplateExport');
 const { upload, templateUpload } = require('../services/uploads');
 const { getSession, setSession, registerOutputFile, purgeSessionData, als, getTraceId, resetSessionUsage, getSessionUsage, snapshotSessionUsage, generateTailoringRunId } = require('../services/session');
-const { saveProfilePreferences, saveCv } = require('../services/auth');
+const { saveProfilePreferences, saveCv, saveUserProfile, getUserProfile } = require('../services/auth');
+const { buildProfileFromCv } = require('../src/ai');
 const { getGaps } = require('../services/gapStore');
 const { tailorCvWithReview } = require('../services/workflows');
 const { createJob, updateJob, getJob } = require('../services/jobQueue');
@@ -69,6 +70,17 @@ router.post('/upload-cv', upload.single('cv'), async (req, res) => {
         appSession.cvText = cvText;
         appSession.cvPath = null;
         appSession.cvData = cvData;
+        // Phase 1: build career profile for logged-in users on first CV upload.
+        // Fire-and-forget — profile will be ready by the time the user reaches gap review.
+        if (appSession.userId) {
+          getUserProfile(appSession.userId).then(existing => {
+            if (!existing) {
+              return buildProfileFromCv(cvText).then(profile => {
+                if (profile) return saveUserProfile(appSession.userId, profile);
+              });
+            }
+          }).catch(e => console.warn('[profile] build failed (non-fatal):', e.message));
+        }
         const after = snapshotSessionUsage();
         const stageUsage = { usd: after.usd - before.usd, tokIn: after.tokIn - before.tokIn, tokOut: after.tokOut - before.tokOut };
         await updateJob(jobId, { status: 'done', current_step: '', result: { cvData, stageUsage } });
