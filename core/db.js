@@ -72,36 +72,9 @@ const USER_PREFERENCES_TABLE_SQL = `CREATE TABLE IF NOT EXISTS user_preferences 
   UNIQUE(user_id, key)
 )`;
 
-// Hybrid digest+raw conversation store designed so #43 (Coach long-term memory) can slot
-// in without a migration. gap_topic and relevance_score support per-gap and cross-session
-// relevance queries.
-const CONVERSATION_HISTORY_TABLE_SQL = `CREATE TABLE IF NOT EXISTS conversation_history (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  agent TEXT NOT NULL,
-  session_id_hash TEXT,
-  digest_summary TEXT,
-  raw_log JSONB,
-  relevance_score FLOAT NOT NULL DEFAULT 1.0,
-  gap_topic TEXT,
-  last_referenced_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-)`;
-
-// Coach's per-user long-term learning store — separate from conversation_history because
-// it evolves over many sessions (the "you mentioned earlier…" callback pattern for #43).
-// HR long-term memory (#43b) is explicitly NOT stored here — use a separate table when
-// that feature is built so the tables stay cleanly separated.
-const COACH_MEMORY_TABLE_SQL = `CREATE TABLE IF NOT EXISTS coach_memory (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  gap_topic TEXT NOT NULL,
-  digest_summary TEXT NOT NULL DEFAULT '',
-  raw_log JSONB,
-  relevance_score FLOAT NOT NULL DEFAULT 1.0,
-  last_referenced_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-)`;
+// conversation_history and coach_memory were write-only (display-only in My Data UI) and
+// were never injected into any agent prompt. Dropped in Phase 0c — user_profiles (Phase 1)
+// will own cross-session agent context instead.
 
 // Per-user, per-gap persistent memory — accumulates coach conversation, HR statement, and
 // user decision across multiple CV-tailor sessions for the same account.
@@ -172,8 +145,9 @@ async function ensureTables(p) {
   await p.query(USERS_TABLE_SQL);
   await p.query(SAVED_CVS_TABLE_SQL);
   await p.query(USER_PREFERENCES_TABLE_SQL);
-  await p.query(CONVERSATION_HISTORY_TABLE_SQL);
-  await p.query(COACH_MEMORY_TABLE_SQL);
+  // Phase 0c: drop the write-only audit tables (never injected into prompts).
+  await p.query('DROP TABLE IF EXISTS conversation_history CASCADE');
+  await p.query('DROP TABLE IF EXISTS coach_memory CASCADE');
   await p.query(GAP_MEMORY_TABLE_SQL);
   await p.query(`CREATE INDEX IF NOT EXISTS gap_memory_user_id_idx ON gap_memory(user_id)`);
   // Migration: add tailoring_run_id to existing live tables (NOT NULL DEFAULT 'legacy' fills

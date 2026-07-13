@@ -468,8 +468,43 @@ Go through the checklist one item at a time. Return JSON only:
   return JSON.parse(raw);
 }
 
+// Unified HR agent — single entry point for all recruiter/HR interactions.
+// All intents share `hrThread` (appSession.hrThread) so the HR expert remembers context
+// across review → refine → chat within a session.
+// `profileBlock` is injected by Phase 4 (currently always empty string).
+async function hrAgent(intent, {
+  cvText, job, hrReview, hrThread = [], preferences = {}, profileBlock = '',
+  gap, coachNote, sharedContext, userMessage, model,
+}) {
+  switch (intent) {
+    case 'review-cv': {
+      const { review, field, thread } = await reviewCV(cvText, job, hrThread, preferences);
+      return { structured: review, thread, field };
+    }
+    case 'refine-gap': {
+      const { result, thread } = await refineWithHR(cvText, job, hrReview, gap, coachNote, hrThread, preferences, sharedContext);
+      return { structured: result, thread };
+    }
+    case 'chat': {
+      const { reply, thread } = await chatWithHRExpert(cvText, job, hrThread, userMessage, model, preferences, sharedContext);
+      return { reply, thread, structured: null };
+    }
+    case 'draft-sidebar': {
+      const result = await draftFromSidebarDiscussion(cvText, job, userMessage, preferences);
+      return { structured: result, thread: hrThread };
+    }
+    case 'research-conventions': {
+      const research = await researchCvConventions(job, cvText);
+      return { structured: research, thread: hrThread };
+    }
+    default:
+      throw new Error(`Unknown HR intent: ${intent}`);
+  }
+}
+
 module.exports = {
   reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions,
   hrSystemPrompt, stealthWritingDirective, pinDisciplineSkill, reviewTailoredCV, fieldBlock,
   draftFromSidebarDiscussion, EVIDENCE_HIERARCHY,
+  hrAgent,
 };

@@ -1,7 +1,8 @@
 const express = require('express');
 const {
-  reviewCV, analyzeGaps, selectTopGaps, researchCvConventions, pinDisciplineSkill,
+  reviewCV, selectTopGaps, researchCvConventions, pinDisciplineSkill,
   generateCoverLetter, generateInterviewQuestions, refineWithHR, chatWithHRExpert, applyConcernChange,
+  coachAgent,
 } = require('../agent');
 const { generateCoverLetterWord } = require('../src/wordExport');
 const { getSession, als, snapshotSessionUsage } = require('../services/session');
@@ -9,7 +10,7 @@ const { setGaps, getGap, proposeStatement, setUserDecision, buildSharedGapContex
 const { createJob, updateJob } = require('../services/jobQueue');
 const { sendError } = require('../core/respondError');
 const { logEvent, logDiagnostic } = require('../core/logger');
-const { saveProfilePreferences, getProfilePreferences, saveConversationHistory, upsertGapMemory, listGapMemory } = require('../services/auth');
+const { saveProfilePreferences, getProfilePreferences, upsertGapMemory, listGapMemory } = require('../services/auth');
 
 // Builds the profile-preferences snapshot from the current session state — used by both the
 // confirm-contact save and the HR-completion safety upsert to guarantee they write the same shape.
@@ -90,11 +91,15 @@ router.post('/review-cv', async (req, res) => {
           } catch (e) { /* best-effort — fall back to the model's own knowledge */ }
         }
 
-        // HR review and gap analysis run in parallel (same logic as the old sync route).
-        const [{ review, field, thread }, gaps] = await Promise.all([
+        // HR review and gap analysis run in parallel.
+        // Gap analysis goes through coachAgent so the result is stored in coachHistory —
+        // by the time the user opens the Career Coach tab, the coach already knows the gaps.
+        const [{ review, field, thread }, coachResult] = await Promise.all([
           reviewCV(cvText, job, [], appSession.clientPreferences),
-          analyzeGaps(cvText, job),
+          coachAgent('analyze-gaps', { cvText, job, coachThread: appSession.coachHistory }),
         ]);
+        const gaps = coachResult.structured;
+        appSession.coachHistory = coachResult.thread;
 
         // Apply discipline-bucket comment from the contact page once the field is known.
         const { routedInstruction, routedInstructionApplied } = appSession.clientPreferences || {};
@@ -352,14 +357,6 @@ router.post('/hr/chat', async (req, res) => {
     );
     appSession.hrThread = thread;
     appSession.hrDisplayHistory = [...appSession.hrDisplayHistory, { role: 'user', text: message }, { role: 'expert', text: reply }];
-    if (appSession.userId) {
-      saveConversationHistory(appSession.userId, {
-        agent: 'hr',
-        gapTopic: concern?.selectedText?.slice(0, 100) || null,
-        digestSummary: reply.slice(0, 300),
-        rawLog: { message, reply },
-      }).catch(e => console.warn('[saveConversationHistory] write failed:', e.message));
-    }
     res.json({ reply });
   } catch (err) {
     sendError(res, '/hr/chat', 'ERR-HR-007', err);

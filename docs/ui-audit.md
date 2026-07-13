@@ -11,8 +11,8 @@
 
 | Severity | Count | Fixed |
 |---|---|---|
-| High | 12 | 2 |
-| Medium | 18 | 0 |
+| High | 12 | 3 |
+| Medium | 18 | 2 |
 | Low | 12 | 0 |
 
 ---
@@ -189,14 +189,14 @@ No `aria-label` and no `aria-valuetext` update. Screen reader users hear only th
 
 ## 9. Architecture Mismatch (Current vs. New Plan)
 
-**9.1** `app.js:291–323` — My Data modal — **High**
-Renders `coachMemory` and `conversationHistory` as persistent cross-session records. Both tables (`conversation_history`, `coach_memory`) are being dropped in Phase 0c.
+**9.1** `app.js:291–323` — My Data modal — **High** ✅ fixed in Phase 0c (tables dropped; `/auth/my-data` no longer returns these fields)
+~~Renders `coachMemory` and `conversationHistory` as persistent cross-session records. Both tables (`conversation_history`, `coach_memory`) are being dropped in Phase 0c.~~
 
-**9.2** `hr.routes.js:356–361` — `/hr/chat` — **Medium**
-Still calls `saveConversationHistory()`. After Phase 0c drops the table, this will cause silent failures or uncaught errors on every HR chat turn.
+**9.2** `hr.routes.js:356–361` — `/hr/chat` — **Medium** ✅ fixed in Phase 0c (`saveConversationHistory` call removed)
+~~Still calls `saveConversationHistory()`. After Phase 0c drops the table, this will cause silent failures or uncaught errors on every HR chat turn.~~
 
-**9.3** `coach.routes.js:62–67` — `/coach/discuss` — **Medium**
-Still calls `saveCoachMemory()`. After Phase 0c the My Data "Career Coach History" section will always be empty with no explanation.
+**9.3** `coach.routes.js:62–67` — `/coach/discuss` — **Medium** ✅ fixed in Phase 0c (`saveCoachMemory` call removed; route fully rewritten)
+~~Still calls `saveCoachMemory()`. After Phase 0c the My Data "Career Coach History" section will always be empty with no explanation.~~
 
 **9.4** `index.html:404–439` — About modal — **Medium**
 Describes 7 distinct agents. New architecture has 2: `hrAgent(intent)` and `coachAgent(intent)`.

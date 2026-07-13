@@ -55,8 +55,8 @@ describe('agents/extractor', () => {
 
 describe('agents/recruiter', () => {
   const recruiter = require('./recruiter');
-  test('exports reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions, hrSystemPrompt, stealthWritingDirective, pinDisciplineSkill, reviewTailoredCV, draftFromSidebarDiscussion', () => {
-    ['reviewCV', 'analyzeJobFit', 'refineWithHR', 'chatWithHRExpert', 'researchCvConventions', 'hrSystemPrompt', 'stealthWritingDirective', 'pinDisciplineSkill', 'reviewTailoredCV', 'draftFromSidebarDiscussion']
+  test('exports reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions, hrSystemPrompt, stealthWritingDirective, pinDisciplineSkill, reviewTailoredCV, draftFromSidebarDiscussion, hrAgent', () => {
+    ['reviewCV', 'analyzeJobFit', 'refineWithHR', 'chatWithHRExpert', 'researchCvConventions', 'hrSystemPrompt', 'stealthWritingDirective', 'pinDisciplineSkill', 'reviewTailoredCV', 'draftFromSidebarDiscussion', 'hrAgent']
       .forEach(name => expect(typeof recruiter[name]).toBe('function'));
     expect(typeof recruiter.EVIDENCE_HIERARCHY).toBe('string');
   });
@@ -328,8 +328,8 @@ describe('Item 12 — wordExport.js skillsSection parses "Category: items" strin
 
 describe('agents/coach', () => {
   const coach = require('./coach');
-  test('exports analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps, chatWithCoach, CAREER_COACH_PERSONA', () => {
-    ['analyzeAndSuggestRoles', 'matchRolesToMarket', 'buildCareerPath', 'analyzeGaps', 'chatWithCoach']
+  test('exports analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps, chatWithCoach, coachAgent, CAREER_COACH_PERSONA', () => {
+    ['analyzeAndSuggestRoles', 'matchRolesToMarket', 'buildCareerPath', 'analyzeGaps', 'chatWithCoach', 'coachAgent']
       .forEach(name => expect(typeof coach[name]).toBe('function'));
     expect(typeof coach.selectTopGaps).toBe('function');
     expect(typeof coach.CAREER_COACH_PERSONA).toBe('string');

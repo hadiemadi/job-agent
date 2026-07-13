@@ -27,6 +27,7 @@ jest.mock('./agents/recruiter', () => ({
   pinDisciplineSkill:        jest.fn(),
   reviewTailoredCV:          jest.fn(),
   draftFromSidebarDiscussion: jest.fn(),
+  hrAgent:                   jest.fn(),
 }));
 
 jest.mock('./agents/inputRouter', () => ({
@@ -47,6 +48,7 @@ jest.mock('./agents/coach', () => ({
   analyzeGaps:            jest.fn(),
   selectTopGaps:          jest.fn(),
   chatWithCoach:          jest.fn(),
+  coachAgent:             jest.fn(),
 }));
 
 jest.mock('./src/cv',       () => ({ readCV: jest.fn() }));
@@ -69,8 +71,8 @@ jest.mock('fs-extra', () => ({
 jest.mock('pizzip', () => jest.fn().mockImplementation(() => ({})));
 
 // services/auth is mocked to prevent real DB calls during tests.
-// All write functions (saveCv, saveCoachMemory, saveConversationHistory) are
-// captured as jest spies so write-path tests can assert they are called correctly.
+// Write functions (saveCv, upsertGapMemory) are captured as jest spies so
+// write-path tests can assert they are called correctly.
 jest.mock('./services/auth', () => ({
   createUser:               jest.fn().mockResolvedValue({ id: 'test-user-42', email: 'writer@test.com', created_at: new Date().toISOString() }),
   findUserByEmail:          jest.fn().mockResolvedValue(null),
@@ -83,10 +85,6 @@ jest.mock('./services/auth', () => ({
   saveCv:                   jest.fn().mockResolvedValue(undefined),
   listSavedCvs:             jest.fn().mockResolvedValue([]),
   deleteSavedCv:            jest.fn().mockResolvedValue(true),
-  listConversationHistory:  jest.fn().mockResolvedValue([]),
-  saveConversationHistory:  jest.fn().mockResolvedValue(undefined),
-  listCoachMemory:          jest.fn().mockResolvedValue([]),
-  saveCoachMemory:          jest.fn().mockResolvedValue(undefined),
   getLatestSavedCv:         jest.fn().mockResolvedValue(null),
   saveProfilePreferences:   jest.fn().mockResolvedValue(undefined),
   getProfilePreferences:    jest.fn().mockResolvedValue(null),
@@ -143,7 +141,7 @@ const { parseCVStructure, rewriteCVWithChanges, adjustLanguageLevel, applyConcer
 const { reviewCV, refineWithHR, chatWithHRExpert, researchCvConventions, pinDisciplineSkill, reviewTailoredCV, draftFromSidebarDiscussion } = require('./agents/recruiter');
 const { parseJobFromText } = require('./agents/extractor');
 const { classify } = require('./agents/inputRouter');
-const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps, chatWithCoach } = require('./agents/coach');
+const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps, chatWithCoach, coachAgent } = require('./agents/coach');
 const { readCV }        = require('./src/cv');
 const { scrapeJobPage } = require('./src/scraper');
 const { generateWordCV, generateWordCVAlt } = require('./src/wordExport');
@@ -224,6 +222,45 @@ beforeEach(() => {
     reply: 'Highlight your RF work on 5G programs.',
     history: [...(history || []), { role: 'user', content: userMessage }, { role: 'assistant', content: 'Highlight your RF work on 5G programs.' }],
   }));
+  // coachAgent wraps coach functions — mirrors thread-growth for the 'chat' intent so the
+  // "thread persists across /review-cv calls" test remains meaningful.
+  coachAgent.mockImplementation((intent, params) => {
+    const thread = params.coachThread || [];
+    if (intent === 'analyze-gaps') {
+      return Promise.resolve({
+        structured: MOCK_GAPS,
+        thread: [...thread, { role: 'user', content: 'Analyze gaps.' }, { role: 'assistant', content: 'Found gaps.' }],
+        reply: 'Found gaps.',
+      });
+    }
+    if (intent === 'chat') {
+      const reply = 'Highlight your RF work on 5G programs.';
+      return Promise.resolve({
+        reply,
+        thread: [...thread, { role: 'user', content: params.userMessage || '' }, { role: 'assistant', content: reply }],
+        structured: null,
+      });
+    }
+    if (intent === 'suggest-roles') {
+      const result = {
+        profile: { current_level: 'Senior', key_strengths: ['RF'], domain_expertise: ['Hardware'], years_experience: 10, trajectory: 'Leadership' },
+        suggested_roles: [{ title: 'Director of Engineering', why_fit: 'Strong leadership track record', why_next_step: 'Natural progression', typical_in_market: true }],
+      };
+      return Promise.resolve({ structured: result, thread: [...thread], reply: 'Roles suggested.' });
+    }
+    if (intent === 'match-market') {
+      return Promise.resolve({ structured: [], thread: [...thread], reply: 'No strong matches.' });
+    }
+    if (intent === 'build-path') {
+      const path = {
+        key_challenges: ['Expanding team size beyond 5'], skill_gaps: ['P&L ownership'],
+        quick_wins: ['Get PMP certification'], success_at_6_months: 'Own a full product line',
+        success_at_12_months: 'Launched first product as director', long_term_trajectory: 'VP Engineering in 3 years',
+      };
+      return Promise.resolve({ structured: path, thread: [...thread], reply: 'Path built.' });
+    }
+    return Promise.reject(new Error(`Unknown coach intent: ${intent}`));
+  });
   refineWithHR.mockResolvedValue({
     result: { refined_description: 'Add PMP certification', rationale: 'JD prefers it', lean: 'add' },
     thread: [],
@@ -896,10 +933,11 @@ describe('Session-dependent endpoints (CV uploaded + HR review done)', () => {
     const secondGapId = await currentGapId();
     await agent.post('/coach/discuss').send({ message: 'Anything else I should mention?', gapId: secondGapId });
 
-    // The history passed into this last call would be [] if /review-cv still wiped
+    // The coachThread passed into this last call would be [] if /review-cv still wiped
     // appSession.coachHistory — instead it must carry over the first exchange.
-    const lastCallArgs = chatWithCoach.mock.calls[chatWithCoach.mock.calls.length - 1];
-    expect(lastCallArgs[3].length).toBeGreaterThan(0);
+    const coachChatCalls = coachAgent.mock.calls.filter(c => c[0] === 'chat');
+    const lastParams = coachChatCalls[coachChatCalls.length - 1][1];
+    expect(lastParams.coachThread.length).toBeGreaterThan(0);
   });
 });
 
@@ -1287,11 +1325,11 @@ describe('Read/relevance — prior gap history injected into first coach turn', 
     const reviewRes = await priorAgent.post('/review-cv').send({ job: MOCK_JOB });
     const job = await waitForJobWith(priorAgent, reviewRes.body.jobId);
     const freshGapId = job.result.hrReview.confirm_changes[0].id;
-    chatWithCoach.mockClear();
+    coachAgent.mockClear();
     await priorAgent.post('/coach/discuss').send({ message: 'Hello again.', gapId: freshGapId });
-    // chatWithCoach receives priorGapHistory as the 11th argument (index 10)
-    const callArgs = chatWithCoach.mock.calls[0];
-    expect(callArgs[10]).toEqual(priorData);
+    // coachAgent('chat', params) receives priorGapHistory in params.priorGapHistory
+    const callArgs = coachAgent.mock.calls[0];
+    expect(callArgs[1].priorGapHistory).toEqual(priorData);
   });
 
   test('findGapMemoryBySlogan NOT called for a guest on /coach/discuss', async () => {

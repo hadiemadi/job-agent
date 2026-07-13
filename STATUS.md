@@ -5,11 +5,20 @@
 
 **Last updated:** 2026-07-13
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 466/466 green · **origin/main HEAD:** `4cd2afc`
+**Tests:** 465/465 green · **origin/main HEAD:** `4cd2afc`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Phase 0 — agent consolidation + table drop** —
+  `agents/coach.js`: `coachAgent(intent, params)` added — unified entry point for all 5 coach intents (`analyze-gaps`, `suggest-roles`, `match-market`, `build-path`, `chat`). All intents share `coachThread` (`appSession.coachHistory`) so the coach remembers gap analysis when the user later opens the Career Coach tab.
+  `agents/recruiter.js`: `hrAgent(intent, params)` added — wraps `reviewCV`, `refineWithHR`, `chatWithHRExpert`, `draftFromSidebarDiscussion`, `researchCvConventions`. Both agents exported via `agent.js` barrel.
+  `routes/hr.routes.js`: background job `Promise.all` now calls `coachAgent('analyze-gaps', ...)` (was `analyzeGaps`) so gaps prime `appSession.coachHistory`; `saveConversationHistory` call removed.
+  `routes/coach.routes.js`: fully rewritten — all 3 routes (`/discuss`, `/analyze`, `/path`) call `coachAgent`; `saveCoachMemory` removed.
+  **Phase 0c — drop write-only tables:** `core/db.js` drops `conversation_history` and `coach_memory` on startup (CASCADE). `services/auth.js`: removed `saveConversationHistory`, `listConversationHistory`, `saveCoachMemory`, `listCoachMemory`. `routes/auth.routes.js`: `/auth/my-data` no longer returns those fields; imports cleaned up.
+  Tests: `test.ui.js` — `coachAgent` mock added (all 5 intents), 2 thread-persistence assertions updated; `auth.routes.test.js` — removed 1 test and all assertions for dropped fields; `agents.smoke.test.js` — `hrAgent`/`coachAgent` added to export checks.
+  `docs/agent-db-flow.html`: dropped tables section updated to "Phase 0c". `docs/ui-audit.md`: 9.1, 9.2, 9.3 marked fixed. 465/465 green.
 
 - **hotfix: XSS + model default** —
   `public/app.js`: all AI-generated strings injected into `innerHTML` now wrapped in `escapeHtml()` (strengths, auto_changes, gap card rationale/description/hrStatement, coach roles/market matches, career path bullets). `onclick` attribute injection replaced with `data-title` + `this.dataset.title` pattern to prevent attribute-breaking payloads (issue 1.9).

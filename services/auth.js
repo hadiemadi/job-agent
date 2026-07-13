@@ -122,49 +122,6 @@ async function deleteSavedCv(cvId, userId) {
   return rowCount > 0;
 }
 
-async function listConversationHistory(userId) {
-  const pool = getPool();
-  if (!pool) return [];
-  const { rows } = await pool.query(
-    `SELECT id, agent, gap_topic, digest_summary, created_at
-     FROM conversation_history WHERE user_id = $1 ORDER BY created_at DESC`,
-    [userId]
-  );
-  return rows;
-}
-
-async function saveConversationHistory(userId, { agent, gapTopic, digestSummary, rawLog }) {
-  const pool = getPool();
-  if (!pool) throw new Error('Database unavailable');
-  const id = genId();
-  await pool.query(
-    `INSERT INTO conversation_history (id, user_id, agent, gap_topic, digest_summary, raw_log)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [id, userId, agent || 'hr', gapTopic || null, digestSummary || '', JSON.stringify(rawLog || null)]
-  );
-}
-
-async function listCoachMemory(userId) {
-  const pool = getPool();
-  if (!pool) return [];
-  const { rows } = await pool.query(
-    'SELECT id, gap_topic, digest_summary, created_at FROM coach_memory WHERE user_id = $1 ORDER BY created_at DESC',
-    [userId]
-  );
-  return rows;
-}
-
-async function saveCoachMemory(userId, { gapTopic, digestSummary, rawLog }) {
-  const pool = getPool();
-  if (!pool) throw new Error('Database unavailable');
-  const id = genId();
-  await pool.query(
-    `INSERT INTO coach_memory (id, user_id, gap_topic, digest_summary, raw_log)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [id, userId, gapTopic || 'general', digestSummary || '', JSON.stringify(rawLog || null)]
-  );
-}
-
 async function getLatestSavedCv(userId) {
   const pool = getPool();
   if (!pool) return null;
@@ -244,8 +201,8 @@ async function listGapMemory(userId) {
   return rows;
 }
 
-// Hard-deletes the user row. All child tables (saved_cvs, user_preferences, conversation_history,
-// coach_memory, gap_memory) have ON DELETE CASCADE, so one DELETE clears the full account.
+// Hard-deletes the user row. All child tables (saved_cvs, user_preferences, gap_memory)
+// have ON DELETE CASCADE, so one DELETE clears the full account.
 async function deleteUserAccount(userId) {
   const pool = getPool();
   if (!pool) throw new Error('Database unavailable');
@@ -257,8 +214,6 @@ module.exports = {
   hashPassword, verifyPassword,
   setUserPreference, getUserPreference,
   saveCv, listSavedCvs, deleteSavedCv,
-  listConversationHistory, saveConversationHistory,
-  listCoachMemory, saveCoachMemory,
   getLatestSavedCv,
   saveProfilePreferences, getProfilePreferences,
   upsertGapMemory, findGapMemoryBySlogan, listGapMemory,

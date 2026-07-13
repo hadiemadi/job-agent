@@ -1,10 +1,11 @@
+'use strict';
 const express = require('express');
-const { chatWithCoach, analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath } = require('../agent');
+const { coachAgent } = require('../agent');
 const { getSession } = require('../services/session');
 const { getGap, appendGapMessage, buildSharedGapContext } = require('../services/gapStore');
 const { loadDiscipline } = require('../core/knowledge');
 const { sendError } = require('../core/respondError');
-const { saveCoachMemory, upsertGapMemory, findGapMemoryBySlogan } = require('../services/auth');
+const { upsertGapMemory, findGapMemoryBySlogan } = require('../services/auth');
 
 const router = express.Router();
 
@@ -14,13 +15,9 @@ router.post('/coach/discuss', async (req, res) => {
     if (!appSession.cvText) return sendError(res, '/coach/discuss', 'ERR-COACH-001');
     const { message, gapId } = req.body;
     const gap = getGap(gapId);
-    // Grounds the coach's reasoning in this candidate's discipline rubric (skills/keywords/
-    // red flags a great recruiter in this field would check) instead of just the gap slogan —
-    // a cheap sync file read (core/knowledge.js), no extra AI call.
     const disciplineStore = appSession.field ? loadDiscipline(appSession.field.field) : null;
     const sharedContext = buildSharedGapContext(gapId);
-    // Before the first coach reply in a NEW gap chat, check for prior history from previous
-    // sessions. The coach agent itself judges relevance — no hardcoded template forces a reference.
+    // On the first coach turn for a new gap, check for prior history from previous sessions.
     let priorGapHistory = null;
     if (appSession.userId && gap && gap.coachConversation.length === 0) {
       try {
@@ -33,20 +30,24 @@ router.post('/coach/discuss', async (req, res) => {
         }
       } catch (e) { /* best-effort — never block coach chat on DB errors */ }
     }
-    const { reply, history } = await chatWithCoach(
-      appSession.cvText, appSession.currentJob, appSession.hrReview,
-      appSession.coachHistory, message, gap?.description, appSession.clientPreferences,
-      appSession.field, disciplineStore, sharedContext, priorGapHistory
-    );
-    appSession.coachHistory = history;
-    // Persisted server-side (services/gapStore.js) so /hr/refine can read this conversation
-    // directly, instead of trusting a client-resubmitted transcript.
+    const { reply, thread } = await coachAgent('chat', {
+      cvText: appSession.cvText,
+      job: appSession.currentJob,
+      hrReview: appSession.hrReview,
+      coachThread: appSession.coachHistory,
+      userMessage: message,
+      gapDescription: gap?.description,
+      preferences: appSession.clientPreferences,
+      field: appSession.field,
+      disciplineStore,
+      sharedContext,
+      priorGapHistory,
+    });
+    appSession.coachHistory = thread;
     if (gap) {
       appendGapMessage(gapId, 'user', message);
       appendGapMessage(gapId, 'assistant', reply);
     }
-    // Persist the new turns to gap_memory (fire-and-forget — never blocks the response).
-    // Only the 2 new turns are written; the upsert APPENDS them to the stored conversation.
     if (appSession.userId && gap) {
       const lastCoachTurn = gap.coachConversation.slice().reverse().find(m => m.role === 'assistant');
       upsertGapMemory(appSession.userId, {
@@ -57,13 +58,6 @@ router.post('/coach/discuss', async (req, res) => {
         userDecision: null,
         tailoringRunId: appSession.tailoringRunId,
       }).catch(e => console.warn('[upsertGapMemory/coach] write failed:', e.message));
-    }
-    if (appSession.userId) {
-      saveCoachMemory(appSession.userId, {
-        gapTopic: gap?.description || 'coach',
-        digestSummary: reply.slice(0, 300),
-        rawLog: { message, reply },
-      }).catch(e => console.warn('[saveCoachMemory] write failed:', e.message));
     }
     res.json({ reply });
   } catch (err) {
@@ -77,18 +71,28 @@ router.post('/coach/analyze', async (req, res) => {
     if (!appSession.cvText) return sendError(res, '/coach/analyze', 'ERR-COACH-001');
     const { direction } = req.body;
     if (!direction) return sendError(res, '/coach/analyze', 'ERR-COACH-002');
-    const result = await analyzeAndSuggestRoles(appSession.cvText, direction);
-    if (!result) return sendError(res, '/coach/analyze', 'ERR-COACH-003');
+
+    const rolesResult = await coachAgent('suggest-roles', {
+      cvText: appSession.cvText,
+      coachThread: appSession.coachHistory,
+      direction,
+    });
+    if (!rolesResult.structured) return sendError(res, '/coach/analyze', 'ERR-COACH-003');
+    appSession.coachHistory = rolesResult.thread;
+    const result = rolesResult.structured;
+
     const rankedJobs = appSession.rankedJobs || [];
-    const marketMatches = rankedJobs.length > 0 ? await matchRolesToMarket(result.suggested_roles, rankedJobs) : [];
-    if (appSession.userId) {
-      const topRole = (result.suggested_roles || [])[0];
-      saveCoachMemory(appSession.userId, {
-        gapTopic: direction,
-        digestSummary: topRole ? topRole.title : direction,
-        rawLog: { direction, suggestedRoles: result.suggested_roles },
-      }).catch(e => console.warn('[saveCoachMemory] write failed:', e.message));
+    let marketMatches = [];
+    if (rankedJobs.length > 0) {
+      const matchResult = await coachAgent('match-market', {
+        coachThread: appSession.coachHistory,
+        suggestedRoles: result.suggested_roles,
+        rankedJobs,
+      });
+      appSession.coachHistory = matchResult.thread;
+      marketMatches = matchResult.structured || [];
     }
+
     res.json({ profile: result.profile, suggestedRoles: result.suggested_roles, marketMatches });
   } catch (err) {
     sendError(res, '/coach/analyze', 'ERR-COACH-003', err);
@@ -100,9 +104,14 @@ router.post('/coach/path', async (req, res) => {
     const appSession = getSession();
     if (!appSession.cvText) return sendError(res, '/coach/path', 'ERR-COACH-001');
     const { roleTitle } = req.body;
-    const path = await buildCareerPath(roleTitle, appSession.cvText);
-    if (!path) return sendError(res, '/coach/path', 'ERR-COACH-004');
-    res.json(path);
+    const pathResult = await coachAgent('build-path', {
+      cvText: appSession.cvText,
+      coachThread: appSession.coachHistory,
+      roleTitle,
+    });
+    if (!pathResult.structured) return sendError(res, '/coach/path', 'ERR-COACH-004');
+    appSession.coachHistory = pathResult.thread;
+    res.json(pathResult.structured);
   } catch (err) {
     sendError(res, '/coach/path', 'ERR-COACH-004', err);
   }

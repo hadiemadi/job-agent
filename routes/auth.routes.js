@@ -4,7 +4,7 @@ const passport = require('../core/passport');
 const { getSession, purgeSessionData } = require('../services/session');
 const {
   createUser, findUserByEmail, findUserById, hashPassword,
-  listSavedCvs, deleteSavedCv, listConversationHistory, listCoachMemory,
+  listSavedCvs, deleteSavedCv,
   setUserPreference, getUserPreference, getLatestSavedCv,
   getProfilePreferences, deleteUserAccount,
 } = require('../services/auth');
@@ -83,7 +83,7 @@ router.get('/auth/google/callback', (req, res, next) => {
 // ── POST /auth/logout — clear auth state AND all in-progress working data ──────
 // purgeSessionData() resets the session to a blank createSession() state (userId=null,
 // cvText=null, etc.) so the next person using the browser sees nothing from the previous
-// user's session. DB records (saved_cvs, coach_memory, etc.) are left intact — those
+// user's session. DB records (saved_cvs, gap_memory, etc.) are left intact — those
 // belong to the account and persist across logins by design.
 router.post('/auth/logout', (req, res) => {
   purgeSessionData();
@@ -103,18 +103,14 @@ router.get('/auth/my-data', async (req, res) => {
       return sendError(res, '/auth/my-data', 'ERR-AUTH-007');
     }
 
-    const [savedCvs, conversationHistory, coachMemory, lastJobText] = await Promise.all([
+    const [savedCvs, lastJobText] = await Promise.all([
       listSavedCvs(appSession.userId),
-      listConversationHistory(appSession.userId),
-      listCoachMemory(appSession.userId),
       getUserPreference(appSession.userId, 'last_job_text'),
     ]);
 
     res.json({
       account: { email: user.email, created_at: user.created_at },
       savedCvs,
-      conversationHistory,
-      coachMemory,
       lastJobText: lastJobText || null,
       disciplines: listDisciplines(),
     });
@@ -206,7 +202,7 @@ router.get('/auth/me', async (req, res) => {
 });
 
 // Hard-deletes the authenticated user's account and all associated data (saved_cvs,
-// coach_memory, conversation_history, user_preferences — cascade from users row).
+// user_preferences, gap_memory — cascade from users row).
 // Also purges the current session so the browser is immediately in a clean guest state.
 router.delete('/auth/account', async (req, res) => {
   try {

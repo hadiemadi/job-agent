@@ -277,7 +277,80 @@ KEEP THIS SHORT — this is a quick check on one specific gap, not an open-ended
   return { reply, history: [...messages, { role: 'assistant', content: reply }] };
 }
 
+// Unified coach agent — single entry point for all coach interactions in this session.
+// All intents share `coachThread` (appSession.coachHistory) so the coach remembers what
+// it found during gap analysis when the user later opens the Career Coach tab.
+// `profileBlock` is injected by Phase 4 (currently always empty string).
+async function coachAgent(intent, {
+  cvText, job, hrReview, coachThread = [], preferences = {}, profileBlock = '',
+  field = null, disciplineStore = null, sharedContext = null,
+  direction, suggestedRoles, rankedJobs,
+  roleTitle,
+  userMessage, gapDescription,
+  priorGapHistory = null,
+}) {
+  switch (intent) {
+    case 'analyze-gaps': {
+      const gaps = await analyzeGaps(cvText, job);
+      // Prime the coach thread with the gap analysis so Career Coach chat inherits this context.
+      const summary = gaps.length
+        ? `I've reviewed the CV against the job description and identified ${gaps.length} gap(s):\n` +
+          gaps.map((g, i) => `${i + 1}. [${g.severity}] ${g.description}: ${g.rationale}`).join('\n')
+        : 'I reviewed the CV against the job description and found no significant gaps.';
+      const thread = [
+        ...coachThread,
+        { role: 'user', content: 'Please analyze this CV against the job description and identify the key gaps to address.' },
+        { role: 'assistant', content: summary },
+      ];
+      return { structured: gaps, thread, reply: summary };
+    }
+    case 'suggest-roles': {
+      const result = await analyzeAndSuggestRoles(cvText, direction);
+      const summary = result
+        ? `Based on your CV and your ${direction} direction preference, here are ${(result.suggested_roles || []).length} suggested role(s).`
+        : 'Unable to generate role suggestions at this time.';
+      const thread = [...coachThread,
+        { role: 'user', content: `Suggest ideal roles for a ${direction} track.` },
+        { role: 'assistant', content: summary },
+      ];
+      return { structured: result, thread, reply: summary };
+    }
+    case 'match-market': {
+      const matches = await matchRolesToMarket(suggestedRoles, rankedJobs);
+      const summary = matches.length
+        ? `Found ${matches.length} market match(es) aligned with your ideal roles.`
+        : 'No strong market matches found for the suggested roles at this time.';
+      const thread = [...coachThread,
+        { role: 'user', content: 'Match my ideal roles to current market listings.' },
+        { role: 'assistant', content: summary },
+      ];
+      return { structured: matches, thread, reply: summary };
+    }
+    case 'build-path': {
+      const path = await buildCareerPath(roleTitle, cvText);
+      const summary = path
+        ? `Here is a career path overview for the "${roleTitle}" role.`
+        : 'Unable to build a career path at this time.';
+      const thread = [...coachThread,
+        { role: 'user', content: `Build a career path for the role: "${roleTitle}".` },
+        { role: 'assistant', content: summary },
+      ];
+      return { structured: path, thread, reply: summary };
+    }
+    case 'chat': {
+      const { reply, history } = await chatWithCoach(
+        cvText, job, hrReview, coachThread, userMessage, gapDescription,
+        preferences, field, disciplineStore, sharedContext, priorGapHistory
+      );
+      return { reply, thread: history, structured: null };
+    }
+    default:
+      throw new Error(`Unknown coach intent: ${intent}`);
+  }
+}
+
 module.exports = {
   analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps,
   chatWithCoach, CAREER_COACH_PERSONA, buildPriorGapBlock,
+  coachAgent,
 };

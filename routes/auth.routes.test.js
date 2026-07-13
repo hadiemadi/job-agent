@@ -13,10 +13,6 @@ jest.mock('../services/auth', () => ({
   saveCv:                     jest.fn(),
   listSavedCvs:               jest.fn(),
   deleteSavedCv:              jest.fn(),
-  listConversationHistory:    jest.fn(),
-  saveConversationHistory:    jest.fn(),
-  listCoachMemory:            jest.fn(),
-  saveCoachMemory:            jest.fn(),
   getLatestSavedCv:           jest.fn(),
   saveProfilePreferences:     jest.fn(),
   getProfilePreferences:      jest.fn(),
@@ -63,8 +59,7 @@ const request = require('supertest');
 const app     = require('../server');
 const {
   createUser, findUserByEmail, findUserById, hashPassword, verifyPassword,
-  listSavedCvs, deleteSavedCv, listConversationHistory, saveConversationHistory,
-  listCoachMemory, saveCoachMemory,
+  listSavedCvs, deleteSavedCv,
   setUserPreference, getUserPreference, getLatestSavedCv,
   saveProfilePreferences, getProfilePreferences, deleteUserAccount,
 } = require('../services/auth');
@@ -86,10 +81,6 @@ beforeEach(() => {
   verifyPassword.mockResolvedValue(false);
   listSavedCvs.mockResolvedValue([]);
   deleteSavedCv.mockResolvedValue(true);
-  listConversationHistory.mockResolvedValue([]);
-  saveConversationHistory.mockResolvedValue(undefined);
-  listCoachMemory.mockResolvedValue([]);
-  saveCoachMemory.mockResolvedValue(undefined);
   setUserPreference.mockResolvedValue(undefined);
   getUserPreference.mockResolvedValue(null);
   getLatestSavedCv.mockResolvedValue(null);
@@ -313,8 +304,6 @@ describe('POST /auth/logout', () => {
     // None of the DB write functions should be called — only in-memory session state is cleared.
     expect(listSavedCvs).not.toHaveBeenCalled();
     expect(deleteSavedCv).not.toHaveBeenCalled();
-    expect(listConversationHistory).not.toHaveBeenCalled();
-    expect(listCoachMemory).not.toHaveBeenCalled();
   });
 });
 
@@ -327,14 +316,12 @@ describe('GET /auth/my-data', () => {
     expect(res.body.error_code).toBe('ERR-AUTH-007');
   });
 
-  test('returns account info, savedCvs, conversationHistory, coachMemory for a logged-in user', async () => {
+  test('returns account info and savedCvs for a logged-in user', async () => {
     passport.authenticate.mockImplementation((strategy, opts, cb) => {
       return (req, res, next) => cb(null, MOCK_USER, null);
     });
     findUserById.mockResolvedValue(MOCK_USER);
     listSavedCvs.mockResolvedValue([{ id: 'cv-001', label: 'Test CV', created_at: new Date() }]);
-    listConversationHistory.mockResolvedValue([{ id: 'ch-001', gap_topic: 'Python', digest_summary: 'Discussed Python', created_at: new Date() }]);
-    listCoachMemory.mockResolvedValue([{ id: 'cm-001', gap_topic: 'leadership', digest_summary: 'Director track', created_at: new Date() }]);
 
     const agent = request.agent(app);
     await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
@@ -344,9 +331,7 @@ describe('GET /auth/my-data', () => {
     expect(res.body.account).toMatchObject({ email: 'hadi@example.com' });
     expect(res.body.savedCvs).toHaveLength(1);
     expect(res.body.savedCvs[0]).toMatchObject({ id: 'cv-001', label: 'Test CV' });
-    expect(res.body.conversationHistory).toHaveLength(1);
-    expect(res.body.coachMemory).toHaveLength(1);
-    expect(res.body.disciplines).toEqual([]); // Phase 5 placeholder
+    expect(res.body.disciplines).toEqual([]);
   });
 
   test('empty arrays returned when user has no stored data', async () => {
@@ -354,7 +339,6 @@ describe('GET /auth/my-data', () => {
       return (req, res, next) => cb(null, MOCK_USER, null);
     });
     findUserById.mockResolvedValue(MOCK_USER);
-    // All list mocks already default to [] in beforeEach
 
     const agent = request.agent(app);
     await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
@@ -362,8 +346,6 @@ describe('GET /auth/my-data', () => {
     const res = await agent.get('/auth/my-data');
     expect(res.status).toBe(200);
     expect(res.body.savedCvs).toEqual([]);
-    expect(res.body.conversationHistory).toEqual([]);
-    expect(res.body.coachMemory).toEqual([]);
   });
 
   test('response body never includes password_hash', async () => {
@@ -430,29 +412,6 @@ describe('GET /auth/my-data', () => {
     expect(res.body.savedCvs[0]).toMatchObject({ id: 'cv-100', label: 'Senior TPM at Apple' });
   });
 
-  test('returns coachMemory and conversationHistory after conversations are saved (item 4)', async () => {
-    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
-    findUserById.mockResolvedValue(MOCK_USER);
-    listCoachMemory.mockResolvedValue([{
-      id: 'cm-200', gap_topic: 'technical track', digest_summary: 'Director of Engineering fits your profile',
-      created_at: new Date().toISOString(),
-    }]);
-    listConversationHistory.mockResolvedValue([{
-      id: 'ch-200', agent: 'hr', gap_topic: null,
-      digest_summary: 'The RF section is strong; add measurable outcomes',
-      created_at: new Date().toISOString(),
-    }]);
-
-    const agent = request.agent(app);
-    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
-
-    const res = await agent.get('/auth/my-data');
-    expect(res.status).toBe(200);
-    expect(res.body.coachMemory).toHaveLength(1);
-    expect(res.body.coachMemory[0]).toMatchObject({ id: 'cm-200', gap_topic: 'technical track' });
-    expect(res.body.conversationHistory).toHaveLength(1);
-    expect(res.body.conversationHistory[0]).toMatchObject({ id: 'ch-200', agent: 'hr' });
-  });
 });
 
 // ── DELETE /auth/saved-cvs/:id ─────────────────────────────────────────────────

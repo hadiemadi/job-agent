@@ -1,9 +1,9 @@
 const { readCV } = require('./src/cv');
 const { searchAllLocations } = require('./src/jobs');
 const { extractJobTitles, parseJobFromText } = require('./agents/extractor');
-const { reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions, pinDisciplineSkill, reviewTailoredCV, draftFromSidebarDiscussion } = require('./agents/recruiter');
+const { reviewCV, analyzeJobFit, refineWithHR, chatWithHRExpert, researchCvConventions, pinDisciplineSkill, reviewTailoredCV, draftFromSidebarDiscussion, hrAgent } = require('./agents/recruiter');
 const { parseCVStructure, rewriteCVWithChanges, adjustLanguageLevel, applyConcernChange } = require('./agents/cvWriter');
-const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps, chatWithCoach } = require('./agents/coach');
+const { analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps, chatWithCoach, coachAgent } = require('./agents/coach');
 const { classify } = require('./agents/inputRouter');
 const { generateCoverLetter } = require('./tasks/coverLetter');
 const { generateInterviewQuestions } = require('./tasks/interviewPrep');
@@ -16,4 +16,5 @@ module.exports = {
   generateExecutiveTemplate, generateComparisonTemplate,
   analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps,
   classify, pinDisciplineSkill,
+  hrAgent, coachAgent,
 };
