@@ -11,6 +11,15 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **Phase 3 — Gap pre-check against profile** —
+  `src/ai.js`: `checkGapsAgainstProfile(profile, gaps)` added — Haiku call that identifies which gaps the user's profile already provides direct evidence for. Returns `[{index, evidence}]` for covered gaps.
+  `agents/coach.js`: `selectTopGaps` sorts profile-covered gaps to the top (within severity group) so the candidate sees easy wins first.
+  `services/gapStore.js`: `createGap` gains `profileEvidence: null` field, preserved through the gap lifecycle.
+  `routes/hr.routes.js`: after `coachAgent('analyze-gaps')`, runs `checkGapsAgainstProfile` (for logged-in users with a profile), merges `profileEvidence` into gap objects before `selectTopGaps`. `fullReview.confirm_changes` mapping includes `profileEvidence`.
+  `public/app.js`: `confirmBlock` rendering shows "✓ X gaps covered by profile" note; expanded and collapsed gap cards show green "✓ Profile covers this" badge + evidence text; `.gap-card--profile-covered` class applied.
+  `public/style.css`: `.gap-card--profile-covered`, `.profile-badge`, `.profile-evidence`, `.profile-covered-note` added.
+  `test.ui.js`: `checkGapsAgainstProfile` added to `src/ai` mock; `getUserProfile` mock in profile-injection test now set up twice (pre-check + coach-discuss). 465/465 green.
+
 - **Phase 4 — Replace cross-session gap_memory injection with user profile** —
   `services/profileBlock.js` (new): `buildProfileBlock(profile)` — formats the stored user profile as a compact text block for agent system prompts. Returns `''` when profile is null/empty.
   `agents/recruiter.js`: `hrSystemPrompt` accepts optional 6th param `profileBlock`; `chatWithHRExpert` accepts optional 8th param `profileBlock` and passes it to `hrSystemPrompt`.

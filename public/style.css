@@ -241,6 +241,12 @@ input[type="range"] { width:100%; cursor:pointer; accent-color:var(--accent); }
 .gap-rationale { font-size:11px; color:var(--muted-light); margin-top:2px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .gap-hr-line { font-size:11px; color:var(--muted-light); margin-top:2px; }
 .gap-hr-line.override { color:var(--danger); }
+/* Phase 3: profile-covered gap styling */
+.gap-card--profile-covered { border-left:3px solid var(--success); }
+.profile-badge { display:inline-block; background:#1a7a5a; color:#fff; font-size:10px; font-weight:600; border-radius:4px; padding:2px 7px; margin-bottom:4px; }
+.profile-badge--inline { margin-bottom:0; margin-right:6px; vertical-align:middle; }
+.profile-evidence { font-size:11px; color:#1a7a5a; margin-bottom:4px; }
+.profile-covered-note { font-size:11px; color:var(--success); margin-bottom:8px; }
 /* #30: HR's advice is always ONE fixed-shape line — "Add to your X section: ..." or
    "Leave this out — ...". Color signals the lean at a glance; no separate tag/reason/
    drafted-statement lines to scan anymore. */

@@ -25,6 +25,7 @@ function createGap(raw) {
     description: raw.description || '',
     rationale: raw.rationale || '',
     severity: VALID_SEVERITIES.includes(raw.severity) ? raw.severity : 'major',
+    profileEvidence: raw.profileEvidence || null, // string | null — set when the user's profile already covers this gap
     status: 'open',
     coachConversation: [],
     proposedStatement: null,

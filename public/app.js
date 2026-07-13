@@ -1102,9 +1102,11 @@ function showChanges(review) {
 
   _gaps = (review.confirm_changes || []).map(c => ({ ...c, expanded: c.userDecision === 'undecided' }));
 
+  const _coveredCount = _gaps.filter(g => g.profileEvidence).length;
   el('confirmBlock').innerHTML = _gaps.length ? `
     <div class="changes-section-title">Your input needed</div>
     <p class="changes-hint">These go beyond your current CV — discuss with your coach (optional), ask HR to draft a sentence, then add it to your CV or leave it out:</p>
+    ${_coveredCount > 0 ? `<p class="profile-covered-note">✓ ${_coveredCount} gap${_coveredCount > 1 ? 's' : ''} already covered by your profile — shown first.</p>` : ''}
     ${_gaps.map((g, i) => renderGapCard(i)).join('')}
   ` : '';
 
@@ -1138,8 +1140,9 @@ function renderGapCard(i) {
 function renderCollapsedGapCard(i) {
   const g = _gaps[i];
   return `
-    <div class="confirm-change collapsed" id="cc-${i}" onclick="expandGapCard(${i})">
+    <div class="confirm-change collapsed${g.profileEvidence ? ' gap-card--profile-covered' : ''}" id="cc-${i}" onclick="expandGapCard(${i})">
       <div class="confirm-change-text">
+        ${g.profileEvidence ? '<span class="profile-badge profile-badge--inline">✓ Profile</span>' : ''}
         <div class="gap-slogan ${gapDecisionClass(g)}">${g.description}</div>
         ${g.proposedStatement ? `<div class="gap-hr-line${gapIsOverride(g) ? ' override' : ''}">${g.proposedStatement}</div>` : ''}
       </div>
@@ -1157,9 +1160,11 @@ function renderExpandedGapCard(i) {
   const hasDraft = !!g.proposedStatement;
   const leanClass = g.hrConclusion && g.hrConclusion.lean === 'add' ? 'lean-add' : 'lean-leave-out';
   const hrStatement = (g.hrConclusion && g.hrConclusion.statement) || g.hrStatement || '';
+  const profileBadge = g.profileEvidence ? `<div class="profile-badge">✓ Profile covers this</div><div class="profile-evidence">${escapeHtml(g.profileEvidence)}</div>` : '';
   return `
-    <div class="confirm-change expanded" id="cc-${i}">
+    <div class="confirm-change expanded${g.profileEvidence ? ' gap-card--profile-covered' : ''}" id="cc-${i}">
       <div class="confirm-change-text">
+        ${profileBadge}
         <div class="gap-slogan ${gapDecisionClass(g)}" id="cc-desc-${i}">${escapeHtml(g.description)}${severityTag}</div>
         <div class="confirm-rationale gap-rationale" id="cc-rationale-${i}">${escapeHtml(g.rationale)}</div>
         ${hasDraft ? `

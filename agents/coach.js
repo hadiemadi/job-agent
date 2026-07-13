@@ -207,7 +207,14 @@ with very few genuine gaps, return fewer items rather than inventing weak ones.`
 function selectTopGaps(gaps, severities = ['major', 'mild', 'minor'], minCount = 5, maxCount = 20) {
   const order = { major: 0, mild: 1, minor: 2 };
   const filtered = (gaps || []).filter(g => severities.includes(g.severity));
-  const sorted = filtered.sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3));
+  // Profile-covered gaps float to the top (within their severity group) so the candidate
+  // sees their easy wins first — gaps they can confirm without a discussion round.
+  const sorted = filtered.sort((a, b) => {
+    const aHas = a.profileEvidence ? 1 : 0;
+    const bHas = b.profileEvidence ? 1 : 0;
+    if (aHas !== bHas) return bHas - aHas; // covered first
+    return (order[a.severity] ?? 3) - (order[b.severity] ?? 3);
+  });
   const count = Math.min(Math.max(minCount, sorted.length), maxCount);
   return sorted.slice(0, count);
 }

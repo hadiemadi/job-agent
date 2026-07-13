@@ -53,4 +53,47 @@ ${cvText.slice(0, 3000)}`,
   }
 }
 
-module.exports = { buildProfileFromCv, PROFILE_CATEGORIES };
+// Checks which of the provided gaps are already evidenced by the candidate's profile.
+// Returns an array of { index, evidence } for covered gaps only — never stretches:
+// only returns gaps where the profile contains a specific fact that directly addresses it.
+// Uses Haiku (cheap, fast) since this is a pattern-matching task, not creative reasoning.
+async function checkGapsAgainstProfile(profile, gaps) {
+  if (!profile || !profile.categories || !gaps || gaps.length === 0) return [];
+  const profileSummary = Object.entries(profile.categories)
+    .filter(([, bullets]) => Array.isArray(bullets) && bullets.length > 0)
+    .map(([cat, bullets]) => `${cat}: ${bullets.join('; ')}`)
+    .join('\n');
+  let message;
+  try {
+    message = await client.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 600,
+      messages: [{
+        role: 'user',
+        content: `Given a candidate's confirmed profile and a list of CV gaps identified by HR, identify which gaps the profile already provides direct evidence for.
+Only include a gap if the profile contains a SPECIFIC fact that directly addresses it. Do not stretch — vague or indirect coverage is not enough.
+
+CANDIDATE PROFILE:
+${profileSummary}
+
+GAPS (index: description — rationale):
+${gaps.map((g, i) => `${i}: "${g.description}" — ${g.rationale}`).join('\n')}
+
+Return JSON only:
+{"covered":[{"index":0,"evidence":"one specific profile fact that covers this gap"}]}
+Return an empty covered array if nothing is strongly evidenced.`,
+      }],
+    });
+  } catch (e) {
+    return [];
+  }
+  try {
+    const raw = extractJSON(firstText(message));
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed.covered) ? parsed.covered : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+module.exports = { buildProfileFromCv, checkGapsAgainstProfile, PROFILE_CATEGORIES };

@@ -52,7 +52,10 @@ jest.mock('./agents/coach', () => ({
 }));
 
 jest.mock('./src/cv',       () => ({ readCV: jest.fn() }));
-jest.mock('./src/ai',       () => ({ buildProfileFromCv: jest.fn().mockResolvedValue(null) }));
+jest.mock('./src/ai',       () => ({
+  buildProfileFromCv:      jest.fn().mockResolvedValue(null),
+  checkGapsAgainstProfile: jest.fn().mockResolvedValue([]),
+}));
 jest.mock('./src/jobs',     () => ({ searchAllLocations: jest.fn() }));
 jest.mock('./src/scraper',  () => ({ scrapeJobPage: jest.fn() }));
 jest.mock('./render/cvHtml', () => ({
@@ -1324,7 +1327,10 @@ describe('Read/relevance — user profile injected into coach turns', () => {
         Certifications: ['PMP 2022'],
       },
     };
-    getUserProfile.mockResolvedValueOnce(mockProfile);
+    // /review-cv background job calls getUserProfile for the gap pre-check (Phase 3);
+    // /coach/discuss calls it again for profile injection (Phase 4) — set up both.
+    getUserProfile.mockResolvedValueOnce(mockProfile); // consumed by /review-cv pre-check
+    getUserProfile.mockResolvedValueOnce(mockProfile); // consumed by /coach/discuss
     // Re-run review to get a fresh gap
     const reviewRes = await priorAgent.post('/review-cv').send({ job: MOCK_JOB });
     const job = await waitForJobWith(priorAgent, reviewRes.body.jobId);

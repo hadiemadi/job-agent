@@ -12,6 +12,7 @@ const { sendError } = require('../core/respondError');
 const { logEvent, logDiagnostic } = require('../core/logger');
 const { saveProfilePreferences, getProfilePreferences, upsertGapMemory, listGapMemory, getUserProfile } = require('../services/auth');
 const { buildProfileBlock } = require('../services/profileBlock');
+const { checkGapsAgainstProfile } = require('../src/ai');
 
 // Builds the profile-preferences snapshot from the current session state — used by both the
 // confirm-contact save and the HR-completion safety upsert to guarantee they write the same shape.
@@ -102,6 +103,19 @@ router.post('/review-cv', async (req, res) => {
         const gaps = coachResult.structured;
         appSession.coachHistory = coachResult.thread;
 
+        // Profile pre-check: mark any gap the user's profile already evidences.
+        // Runs for logged-in users only; errors are non-fatal.
+        if (appSession.userId && Array.isArray(gaps) && gaps.length > 0) {
+          try {
+            const profile = await getUserProfile(appSession.userId);
+            if (profile) {
+              const covered = await checkGapsAgainstProfile(profile, gaps);
+              const coveredMap = new Map((covered || []).map(c => [c.index, c.evidence]));
+              gaps.forEach((g, i) => { g.profileEvidence = coveredMap.get(i) || null; });
+            }
+          } catch (e) { /* non-fatal — gaps shown without profile context */ }
+        }
+
         // Apply discipline-bucket comment from the contact page once the field is known.
         const { routedInstruction, routedInstructionApplied } = appSession.clientPreferences || {};
         if (field?.field && routedInstruction?.bucket === 'discipline' && routedInstruction.text && !routedInstructionApplied) {
@@ -118,6 +132,7 @@ router.post('/review-cv', async (req, res) => {
           ...review,
           confirm_changes: gapRecords.map(g => ({
             id: g.id, description: g.description, rationale: g.rationale, severity: g.severity,
+            profileEvidence: g.profileEvidence || null,
             status: g.status, proposedStatement: g.proposedStatement,
             userDecision: g.userDecision, hrConclusion: g.hrConclusion,
             targetSection: g.hrConclusion ? g.hrConclusion.targetSection : null,
