@@ -276,7 +276,14 @@ router.post('/hr/refine', async (req, res) => {
     if (!gap) return sendError(res, '/hr/refine', 'ERR-HR-004');
     // HR only ever sees Coach's FINAL takeaway for this gap (the last assistant turn) — never
     // the raw back-and-forth. Coach's own full conversation stays visible to Coach only.
-    const lastCoachTurn = [...(gap.coachConversation || [])].reverse().find(m => m.role === 'assistant');
+    // IMPORTANT: only pass a coachFinalStatement when the candidate actually replied to Coach.
+    // An unanswered Coach opening question is a hypothesis, not evidence. Passing it as a
+    // "statement" causes HR to treat the Coach's guess as confirmed fact and fabricate CV claims.
+    const coachConv = gap.coachConversation || [];
+    const candidateReplied = coachConv.some(m => m.role === 'user');
+    const lastCoachTurn = candidateReplied
+      ? [...coachConv].reverse().find(m => m.role === 'assistant')
+      : null;
     const coachFinalStatement = lastCoachTurn ? lastCoachTurn.content : null;
     const sharedContext = buildSharedGapContext(gapId);
     // Diagnostic: capture input state at /hr/refine call time to isolate ERR-HR-005 root causes.

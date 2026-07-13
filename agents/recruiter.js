@@ -266,9 +266,15 @@ Return JSON only:
   "targetSection": ""
 }
 
-lean: "add" if the statement's CLAIM traces to Tier 1 evidence, "leave-out" if it would overclaim
-or isn't well-supported. rationale is the one-clause reason for that lean — a single short
-clause, never a full sentence with subordinate clauses, never a paragraph.`;
+lean: "add" ONLY when the claim traces directly to Tier 1 evidence AND the connection is close
+enough that a recruiter at THIS specific company would accept it without follow-up scrutiny.
+lean "leave-out" when: (a) you are stretching adjacent-field experience into a different domain
+(e.g. RF waveguides cited as optical networking — these are different physics and a specialist
+interviewer will know), (b) the connection requires inferring across field boundaries the
+recruiter would immediately challenge, or (c) no candidate reply was received so the Coach note
+above is an unconfirmed hypothesis not a verified fact. When leaning "leave-out", the rationale
+must name the specific stretch or gap — never a vague phrase like "not well-supported". rationale
+is one short clause only, never a full sentence with subordinate clauses.`;
 
   const messages = [...thread, { role: 'user', content: userMessage }];
   let response, raw;

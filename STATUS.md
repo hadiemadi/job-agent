@@ -11,6 +11,11 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **fix(hr): block fabricated CV claims from unanswered Coach questions + tighten lean rule** —
+  Root cause: `/hr/refine` was passing Coach's unanswered opening question as `coachFinalStatement` to HR. HR treated the Coach's hypothesis ("do you have photonics coursework?") as a confirmed fact and drafted a CV statement based on it — fabricating credentials the candidate never claimed.
+  `routes/hr.routes.js`: `coachFinalStatement` is now `null` when the candidate has not replied to Coach for this gap (`gap.coachConversation.some(m => m.role === 'user')` gate). An unanswered Coach question is a hypothesis, not evidence.
+  `agents/recruiter.js`: `lean` rule tightened — must be `leave-out` when stretching adjacent-field experience across domain boundaries (e.g. RF waveguides ≠ optical waveguides), and rationale must name the specific stretch rather than a vague phrase. 465/465 green.
+
 - **fix(profile): exhaustive CV extraction + silent re-upload backfill** —
   `src/ai.js` `buildProfileFromCv`: CV text limit 3k → 8k chars; `max_tokens` 800 → 1600; prompt updated to say "be exhaustive — capture every distinct fact." `computeProfileAdditions`: CV text limit 2k → 8k; prompt tightened — "a fact is already in the profile if the same underlying information exists in any form, even if worded differently; only return concepts completely absent."
   `routes/cv.routes.js`: on re-upload for logged-in users (profile already exists), runs `computeProfileAdditions` fire-and-forget and auto-merges any missing facts into the stored profile without showing a popup. First upload unchanged (full `buildProfileFromCv`). Net effect: profile becomes complete after first or second CV upload; the "Update your profile?" popup at "Tailor my CV" should find nothing (or almost nothing) to add when the same CV is uploaded again. 465/465 green.
