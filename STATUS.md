@@ -5,11 +5,15 @@
 
 **Last updated:** 2026-07-13
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render Starter, always-on, US/Oregon)
-**Tests:** 465/465 green · **origin/main HEAD:** `9c46bfc`
+**Tests:** 465/465 green · **origin/main HEAD:** `pending`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **feat(ui): profile update popup — bullet text now editable before saving** —
+  `public/app.js`: `showProfileUpdatePopup` renders each addition as an `<input type="text">` (`#pa-input-N`) pre-filled with the AI-suggested bullet, replacing the previous read-only `<span>`. `confirmProfileAdditions` reads live input values (not the stale array) and filters out any blank entries. Users can now edit or correct a suggested fact before it's written to their profile. 465/465 green.
+
 
 - **fix(ui): progress popup token-only, tone label Coach-only, textarea 15 rows** —
   `public/app.js`: `formatStageUsage` drops dollar cost — per-stage display now shows tokens only (`1.2k+0.3k tok`); `updateCostTracker` dead `progressCost` block removed.

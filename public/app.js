@@ -1594,11 +1594,13 @@ function showProfileUpdatePopup(additions) {
   _profileAdditions = additions.map((a, i) => ({ ...a, _i: i, _kept: true }));
   el('profileAdditionsList').innerHTML = _profileAdditions.map((a) => `
     <div id="pa-${a._i}" style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;">
-      <button onclick="removeProfileAddition(${a._i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;flex-shrink:0;">&times;</button>
+      <button onclick="removeProfileAddition(${a._i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;flex-shrink:0;margin-top:6px;">&times;</button>
       <div style="flex:1;">
-        <span class="profile-badge" style="margin-right:6px;">${escapeHtml(a.category)}</span>
-        <span style="font-size:10px;color:var(--muted);margin-right:6px;">${a.source === 'session' ? 'from discussion' : 'from CV'}</span>
-        <span style="font-size:13px;">${escapeHtml(a.bullet)}</span>
+        <div style="margin-bottom:4px;">
+          <span class="profile-badge" style="margin-right:6px;">${escapeHtml(a.category)}</span>
+          <span style="font-size:10px;color:var(--muted);">${a.source === 'session' ? 'from discussion' : 'from CV'}</span>
+        </div>
+        <input id="pa-input-${a._i}" type="text" value="${escapeHtml(a.bullet)}" style="width:100%;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--ink);">
       </div>
     </div>`).join('');
   show('profileUpdateModal');
@@ -1611,7 +1613,12 @@ function removeProfileAddition(i) {
 }
 async function confirmProfileAdditions() {
   hide('profileUpdateModal');
-  if (_profileResolve) _profileResolve(_profileAdditions.map(({ category, bullet }) => ({ category, bullet })));
+  if (_profileResolve) {
+    const kept = _profileAdditions
+      .map(({ category, _i }) => ({ category, bullet: (document.getElementById('pa-input-' + _i) || {}).value || '' }))
+      .filter(a => a.bullet.trim());
+    _profileResolve(kept);
+  }
   _profileResolve = null;
 }
 function skipProfileAdditions() {
