@@ -4,8 +4,8 @@
 > Code (see CLAUDE.md). Update the date whenever it changes.
 
 **Last updated:** 2026-07-13
-**Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 465/465 green · **origin/main HEAD:** `pending`
+**Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render Starter, always-on, US/Oregon)
+**Tests:** 465/465 green · **origin/main HEAD:** `9c46bfc`
 
 ---
 
