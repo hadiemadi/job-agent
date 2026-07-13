@@ -53,8 +53,10 @@ jest.mock('./agents/coach', () => ({
 
 jest.mock('./src/cv',       () => ({ readCV: jest.fn() }));
 jest.mock('./src/ai',       () => ({
-  buildProfileFromCv:      jest.fn().mockResolvedValue(null),
-  checkGapsAgainstProfile: jest.fn().mockResolvedValue([]),
+  buildProfileFromCv:        jest.fn().mockResolvedValue(null),
+  checkGapsAgainstProfile:   jest.fn().mockResolvedValue([]),
+  computeProfileAdditions:   jest.fn().mockResolvedValue([]),
+  PROFILE_CATEGORIES: ['TechnicalSkills', 'Certifications', 'Experience', 'DomainKnowledge', 'Leadership', 'Education', 'Projects'],
 }));
 jest.mock('./src/jobs',     () => ({ searchAllLocations: jest.fn() }));
 jest.mock('./src/scraper',  () => ({ scrapeJobPage: jest.fn() }));

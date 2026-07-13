@@ -9,7 +9,7 @@ const { generateWordFromTemplate } = require('../src/wordTemplateExport');
 const { upload, templateUpload } = require('../services/uploads');
 const { getSession, setSession, registerOutputFile, purgeSessionData, als, getTraceId, resetSessionUsage, getSessionUsage, snapshotSessionUsage, generateTailoringRunId } = require('../services/session');
 const { saveProfilePreferences, saveCv, saveUserProfile, getUserProfile } = require('../services/auth');
-const { buildProfileFromCv } = require('../src/ai');
+const { buildProfileFromCv, computeProfileAdditions, PROFILE_CATEGORIES } = require('../src/ai');
 const { getGaps } = require('../services/gapStore');
 const { tailorCvWithReview } = require('../services/workflows');
 const { createJob, updateJob, getJob } = require('../services/jobQueue');
@@ -469,6 +469,51 @@ router.post('/upload-template', templateUpload.single('template'), async (req, r
 router.get('/session/usage', (req, res) => {
   try { res.json(getSessionUsage()); }
   catch (_) { res.json({ usd: 0, tokIn: 0, tokOut: 0 }); }
+});
+
+// Profile update popup (Phase 2): computes additions to propose before tailoring starts.
+// Compares the current profile against the CV + any session coach insights.
+// Non-fatal — returns empty additions on any error so tailoring always proceeds.
+router.post('/profile/compute-additions', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.userId) return res.json({ additions: [] });
+    const profile = await getUserProfile(appSession.userId) || { categories: {} };
+    const insights = (appSession.gaps || [])
+      .filter(g => Array.isArray(g.coachConversation) && g.coachConversation.length > 0)
+      .map(g => {
+        const lastAssistant = g.coachConversation.slice().reverse().find(m => m.role === 'assistant');
+        return lastAssistant ? { gapDescription: g.description, coachVerdict: lastAssistant.content } : null;
+      })
+      .filter(Boolean);
+    const additions = await computeProfileAdditions(profile, appSession.cvText, insights);
+    res.json({ additions: additions || [] });
+  } catch (e) {
+    res.json({ additions: [] });
+  }
+});
+
+// Saves the user-confirmed profile additions from the popup.
+router.post('/profile/confirm-additions', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.userId) return res.json({ ok: false });
+    const { additions } = req.body;
+    if (!Array.isArray(additions) || additions.length === 0) return res.json({ ok: true });
+    const profile = await getUserProfile(appSession.userId) || { version: 1, categories: {} };
+    if (!profile.categories) profile.categories = {};
+    for (const { category, bullet } of additions) {
+      if (!PROFILE_CATEGORIES.includes(category) || !bullet) continue;
+      const arr = Array.isArray(profile.categories[category]) ? profile.categories[category] : [];
+      if (!arr.includes(bullet)) arr.push(bullet);
+      profile.categories[category] = arr.slice(0, 8);
+    }
+    profile.updatedAt = new Date().toISOString();
+    await saveUserProfile(appSession.userId, profile);
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
 });
 
 module.exports = router;

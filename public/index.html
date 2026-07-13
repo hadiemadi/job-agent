@@ -446,5 +446,18 @@
 <script>if(window.SpeechRecognition||window.webkitSpeechRecognition)document.body.classList.add('voice-supported');</script>
 <script src="/app.js"></script>
 
+<!-- ── Profile update popup (Phase 2) ─────────────────── -->
+<div class="modal-overlay" id="profileUpdateModal" style="display:none;">
+  <div class="card modal-box" style="max-width:500px;">
+    <h2>Update your profile?</h2>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">We found new facts from your CV and this session's discussions. Add them to your profile so future sessions start with better context.</p>
+    <div id="profileAdditionsList"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn btn-go" style="flex:1;" onclick="confirmProfileAdditions()">Save &amp; continue</button>
+      <button class="btn" style="flex:1;" onclick="skipProfileAdditions()">Skip</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

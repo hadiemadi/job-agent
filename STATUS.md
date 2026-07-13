@@ -11,6 +11,13 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **Phase 2 — Profile update popup at "Tailor my CV"** —
+  `src/ai.js`: `computeProfileAdditions(profile, cvText, coachInsights)` — Haiku call comparing the current profile against CV + session coach insights; returns up to 8 new `{category, bullet, source}` additions.
+  `routes/cv.routes.js`: `POST /profile/compute-additions` (computes for logged-in users, non-fatal) and `POST /profile/confirm-additions` (merges user-confirmed bullets into `user_profiles`, caps at 8 per category, updates `updatedAt`).
+  `public/index.html`: profile update modal (`#profileUpdateModal`) with list of additions, Save/Skip buttons.
+  `public/app.js`: `applyChanges()` intercepted for logged-in users — calls `/profile/compute-additions`, shows popup if additions found, calls `/profile/confirm-additions` on save, then proceeds to `/rewrite`. Popup helpers: `showProfileUpdatePopup`, `removeProfileAddition`, `confirmProfileAdditions`, `skipProfileAdditions`.
+  `test.ui.js`: `computeProfileAdditions` added to `src/ai` mock. 465/465 green.
+
 - **Phase 3 — Gap pre-check against profile** —
   `src/ai.js`: `checkGapsAgainstProfile(profile, gaps)` added — Haiku call that identifies which gaps the user's profile already provides direct evidence for. Returns `[{index, evidence}]` for covered gaps.
   `agents/coach.js`: `selectTopGaps` sorts profile-covered gaps to the top (within severity group) so the candidate sees easy wins first.

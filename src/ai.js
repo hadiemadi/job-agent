@@ -96,4 +96,49 @@ Return an empty covered array if nothing is strongly evidenced.`,
   }
 }
 
-module.exports = { buildProfileFromCv, checkGapsAgainstProfile, PROFILE_CATEGORIES };
+// Computes proposed profile additions by comparing the current profile against the CV
+// and any insights the coach gathered during this session's gap review. Returns at most
+// 8 new bullet-point additions. Uses Haiku — cheap extraction task.
+async function computeProfileAdditions(profile, cvText, coachInsights = []) {
+  const profileSummary = Object.entries((profile && profile.categories) || {})
+    .filter(([, bullets]) => Array.isArray(bullets) && bullets.length > 0)
+    .map(([cat, bullets]) => `${cat}: ${bullets.join('; ')}`)
+    .join('\n') || '(empty)';
+  const insightBlock = coachInsights.length > 0
+    ? '\n\nSESSION INSIGHTS (candidate clarified during gap review):\n' +
+      coachInsights.map(i => `Gap: ${i.gapDescription}\nCoach verdict: ${i.coachVerdict}`).join('\n\n')
+    : '';
+  let message;
+  try {
+    message = await client.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 600,
+      messages: [{
+        role: 'user',
+        content: `Compare the current profile against the CV and session insights to find genuinely NEW facts not yet in the profile. Return ONLY facts that are clearly new and specific. Max 8 additions. Each bullet max 15 words. No PII.
+
+CURRENT PROFILE:
+${profileSummary}
+
+CV (excerpt):
+${(cvText || '').slice(0, 2000)}${insightBlock}
+
+Return JSON only:
+{"additions":[{"category":"TechnicalSkills","bullet":"specific new fact","source":"cv"}]}
+Valid categories: ${PROFILE_CATEGORIES.join(', ')}. Source is "cv" or "session".
+Return empty additions array if nothing is genuinely new.`,
+      }],
+    });
+  } catch (e) {
+    return [];
+  }
+  try {
+    const raw = extractJSON(firstText(message));
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed.additions) ? parsed.additions.slice(0, 8) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+module.exports = { buildProfileFromCv, checkGapsAgainstProfile, computeProfileAdditions, PROFILE_CATEGORIES };

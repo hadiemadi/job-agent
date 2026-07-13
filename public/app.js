@@ -1590,8 +1590,59 @@ function startPolling(jobId, isResume, kind) {
 
 function startTailorTimer() { _tailorStartTime = Date.now(); }
 
+// Profile update popup state
+let _profileAdditions = [];
+let _profileResolve = null;
+
+// Shows the profile update popup and returns a promise that resolves when the user
+// clicks "Save & continue" (with the kept additions) or "Skip" (with []).
+function showProfileUpdatePopup(additions) {
+  _profileAdditions = additions.map((a, i) => ({ ...a, _i: i, _kept: true }));
+  el('profileAdditionsList').innerHTML = _profileAdditions.map((a) => `
+    <div id="pa-${a._i}" style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;">
+      <button onclick="removeProfileAddition(${a._i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;flex-shrink:0;">&times;</button>
+      <div style="flex:1;">
+        <span class="profile-badge" style="margin-right:6px;">${escapeHtml(a.category)}</span>
+        <span style="font-size:10px;color:var(--muted);margin-right:6px;">${a.source === 'session' ? 'from discussion' : 'from CV'}</span>
+        <span style="font-size:13px;">${escapeHtml(a.bullet)}</span>
+      </div>
+    </div>`).join('');
+  show('profileUpdateModal');
+  return new Promise(resolve => { _profileResolve = resolve; });
+}
+function removeProfileAddition(i) {
+  _profileAdditions = _profileAdditions.filter(a => a._i !== i);
+  const el_ = document.getElementById('pa-' + i);
+  if (el_) el_.remove();
+}
+async function confirmProfileAdditions() {
+  hide('profileUpdateModal');
+  if (_profileResolve) _profileResolve(_profileAdditions.map(({ category, bullet }) => ({ category, bullet })));
+  _profileResolve = null;
+}
+function skipProfileAdditions() {
+  hide('profileUpdateModal');
+  if (_profileResolve) _profileResolve([]);
+  _profileResolve = null;
+}
+
 async function applyChanges() {
   startTailorTimer(); // start elapsed timer from "Apply changes" click
+
+  // For logged-in users, check if the profile should be updated before tailoring starts.
+  if (_currentUserId) {
+    try {
+      const res = await fetch('/profile/compute-additions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const data = await res.json();
+      if (data.additions && data.additions.length > 0) {
+        const confirmed = await showProfileUpdatePopup(data.additions);
+        if (confirmed && confirmed.length > 0) {
+          await fetch('/profile/confirm-additions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ additions: confirmed }) });
+        }
+      }
+    } catch (e) { /* non-fatal — proceed to tailoring */ }
+  }
+
   // Stop any running poll loop (e.g. hr_review) BEFORE the async POST to /rewrite.
   // An in-flight poll fetch can set _pollTimer after startPolling('cv_tailor') runs,
   // which would create a ghost loop alongside the cv_tailor loop and double the
