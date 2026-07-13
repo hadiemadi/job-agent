@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Profile — JobSeeker</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
+    h1 { font-size: 22px; margin-bottom: 4px; }
+    .back-link { font-size: 13px; color: var(--accent); text-decoration: none; display: inline-block; margin-bottom: 20px; }
+    .back-link:hover { text-decoration: underline; }
+    .profile-intro { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+    .category-section { margin-bottom: 24px; }
+    .category-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin-bottom: 8px; }
+    .bullet-list { list-style: none; padding: 0; margin: 0; }
+    .bullet-item { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .bullet-text { flex: 1; font-size: 13px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; background: var(--surface); color: var(--ink); }
+    .bullet-text:focus { outline: none; border-color: var(--accent); }
+    .bullet-remove { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; flex-shrink: 0; }
+    .bullet-remove:hover { color: var(--danger); }
+    .add-bullet-btn { font-size: 12px; color: var(--accent); background: none; border: 1px dashed var(--border); border-radius: 6px; padding: 5px 12px; cursor: pointer; margin-top: 2px; }
+    .add-bullet-btn:hover { border-color: var(--accent); }
+    .save-status { font-size: 11px; color: var(--success); margin-left: 8px; opacity: 0; transition: opacity 0.3s; }
+    .save-status.visible { opacity: 1; }
+    .not-logged-in { text-align: center; padding: 48px 16px; color: var(--muted); }
+    .not-logged-in a { color: var(--accent); }
+    .no-profile-yet { text-align: center; padding: 24px 0; color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-link">← Back to Job Agent</a>
+  <h1>My Profile</h1>
+  <p class="profile-intro">Your confirmed career facts — built from your CV and refined through sessions. HR and Coach use this to give you better, faster feedback.</p>
+  <div id="profileContent">
+    <div class="no-profile-yet">Loading…</div>
+  </div>
+
+  <script>
+    const CATEGORIES = ['TechnicalSkills','Certifications','Experience','DomainKnowledge','Leadership','Education','Projects'];
+    const LABELS = {
+      TechnicalSkills: 'Technical Skills', Certifications: 'Certifications',
+      Experience: 'Experience', DomainKnowledge: 'Domain Knowledge',
+      Leadership: 'Leadership', Education: 'Education', Projects: 'Projects',
+    };
+    let _profile = null;
+    let _saveTimers = {};
+
+    async function loadProfile() {
+      const res = await fetch('/api/profile');
+      const data = await res.json();
+      if (!data.profile) {
+        document.getElementById('profileContent').innerHTML =
+          '<div class="not-logged-in">You need to be <a href="/">signed in</a> and have uploaded a CV to build a profile.</div>';
+        return;
+      }
+      _profile = data.profile;
+      renderProfile();
+    }
+
+    function renderProfile() {
+      const html = CATEGORIES.map(cat => {
+        const bullets = (_profile.categories && _profile.categories[cat]) || [];
+        return `<div class="category-section" id="cat-${cat}">
+          <div class="category-label">${LABELS[cat] || cat} <span class="save-status" id="status-${cat}">Saved</span></div>
+          <ul class="bullet-list" id="list-${cat}">
+            ${bullets.map((b, i) => bulletItem(cat, b, i)).join('')}
+          </ul>
+          <button class="add-bullet-btn" onclick="addBullet('${cat}')">+ Add</button>
+        </div>`;
+      }).join('');
+      document.getElementById('profileContent').innerHTML = html || '<div class="no-profile-yet">No profile data yet. Upload a CV to build one.</div>';
+    }
+
+    function bulletItem(cat, text, i) {
+      return `<li class="bullet-item" id="bullet-${cat}-${i}">
+        <input class="bullet-text" value="${escHtml(text)}" data-cat="${cat}" data-i="${i}"
+          oninput="scheduleSave('${cat}')" onblur="scheduleSave('${cat}')"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();scheduleSave('${cat}');}">
+        <button class="bullet-remove" onclick="removeBullet('${cat}', ${i})" title="Remove">&times;</button>
+      </li>`;
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function getBullets(cat) {
+      const inputs = document.querySelectorAll(`#list-${cat} .bullet-text`);
+      return Array.from(inputs).map(i => i.value.trim()).filter(Boolean);
+    }
+
+    function scheduleSave(cat) {
+      clearTimeout(_saveTimers[cat]);
+      _saveTimers[cat] = setTimeout(() => saveCategory(cat), 800);
+    }
+
+    async function saveCategory(cat) {
+      const bullets = getBullets(cat);
+      if (!_profile.categories) _profile.categories = {};
+      _profile.categories[cat] = bullets;
+      try {
+        const res = await fetch('/profile/category', {
+          method: 'PATCH', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ category: cat, bullets }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          const status = document.getElementById('status-' + cat);
+          if (status) { status.classList.add('visible'); setTimeout(() => status.classList.remove('visible'), 1500); }
+        }
+      } catch (e) { /* non-fatal */ }
+    }
+
+    function addBullet(cat) {
+      if (!_profile.categories) _profile.categories = {};
+      const arr = _profile.categories[cat] || [];
+      if (arr.length >= 8) return;
+      const newText = '';
+      const i = arr.length;
+      arr.push(newText);
+      _profile.categories[cat] = arr;
+      const li = document.createElement('li');
+      li.className = 'bullet-item';
+      li.id = `bullet-${cat}-${i}`;
+      li.innerHTML = bulletItem(cat, newText, i).match(/<li[^>]*>([\s\S]*)<\/li>/)?.[1] || '';
+      document.getElementById('list-' + cat).appendChild(li);
+      const input = li.querySelector('.bullet-text');
+      if (input) { input.focus(); }
+    }
+
+    function removeBullet(cat, i) {
+      const li = document.getElementById(`bullet-${cat}-${i}`);
+      if (li) li.remove();
+      scheduleSave(cat);
+    }
+
+    loadProfile();
+  </script>
+</body>
+</html>

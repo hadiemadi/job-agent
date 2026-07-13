@@ -11,6 +11,12 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **Phase 5 — Profile page UI** —
+  `routes/cv.routes.js`: `GET /profile` serves `public/profile.html`; `GET /api/profile` returns the logged-in user's profile; `PATCH /profile/category` saves one category's bullet list (auto-save from inline editor, cap 8 per category).
+  `public/profile.html` (new): standalone profile editor page — 7 categories, each bullet inline-editable (input with auto-save on blur/Enter), add/remove per bullet, "Saved" flash on success.
+  `public/index.html`: "My Profile" link button added to the right sidebar workspace section (4th `.ws-section-btn`).
+  `public/app.test.js`: updated `.ws-section-btn` count assertion from 3 → 4. 465/465 green.
+
 - **Phase 2 — Profile update popup at "Tailor my CV"** —
   `src/ai.js`: `computeProfileAdditions(profile, cvText, coachInsights)` — Haiku call comparing the current profile against CV + session coach insights; returns up to 8 new `{category, bullet, source}` additions.
   `routes/cv.routes.js`: `POST /profile/compute-additions` (computes for logged-in users, non-fatal) and `POST /profile/confirm-additions` (merges user-confirmed bullets into `user_profiles`, caps at 8 per category, updates `updatedAt`).

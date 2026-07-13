@@ -668,7 +668,7 @@ describe('Login/sign-out toggle + workspace panel', () => {
     loadAppInDom();
     const colRight = document.getElementById('colRight');
     const buttons = colRight.querySelectorAll('.ws-section-btn');
-    expect(buttons.length).toBe(3);
+    expect(buttons.length).toBe(4); // CV, Coach, Discipline, My Profile
     buttons.forEach(btn => {
       expect(btn.getAttribute('data-tooltip')).toBeTruthy();
       expect(btn.querySelector('.ws-section-desc')).toBeNull();

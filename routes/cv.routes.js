@@ -471,6 +471,42 @@ router.get('/session/usage', (req, res) => {
   catch (_) { res.json({ usd: 0, tokIn: 0, tokOut: 0 }); }
 });
 
+// Profile page (Phase 5) — serve the static profile editor.
+router.get('/profile', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'profile.html'));
+});
+
+// Returns the current user's profile for the profile editor page.
+router.get('/api/profile', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.userId) return res.json({ profile: null });
+    const profile = await getUserProfile(appSession.userId);
+    res.json({ profile: profile || null });
+  } catch (e) {
+    res.json({ profile: null });
+  }
+});
+
+// Saves one category's bullet list from the profile editor (inline-edit auto-save).
+router.patch('/profile/category', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.userId) return res.status(401).json({ ok: false, error: 'Not logged in' });
+    const { category, bullets } = req.body;
+    if (!PROFILE_CATEGORIES.includes(category)) return res.status(400).json({ ok: false, error: 'Unknown category' });
+    if (!Array.isArray(bullets)) return res.status(400).json({ ok: false, error: 'bullets must be an array' });
+    const profile = await getUserProfile(appSession.userId) || { version: 1, categories: {} };
+    if (!profile.categories) profile.categories = {};
+    profile.categories[category] = bullets.filter(b => typeof b === 'string' && b.trim()).map(b => b.trim()).slice(0, 8);
+    profile.updatedAt = new Date().toISOString();
+    await saveUserProfile(appSession.userId, profile);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Profile update popup (Phase 2): computes additions to propose before tailoring starts.
 // Compares the current profile against the CV + any session coach insights.
 // Non-fatal — returns empty additions on any error so tailoring always proceeds.
