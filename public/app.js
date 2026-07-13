@@ -1086,7 +1086,7 @@ function showChanges(review) {
 
   el('strengthsBlock').innerHTML = (review.strengths || []).length ? `
     <div class="changes-section-title">Strengths</div>
-    <ul class="hr-list">${review.strengths.map(s => '<li>' + s + '</li>').join('')}</ul>
+    <ul class="hr-list">${review.strengths.map(s => '<li>' + escapeHtml(s) + '</li>').join('')}</ul>
   ` : '';
 
   el('autoBlock').innerHTML = (review.auto_changes || []).length ? `
@@ -1094,8 +1094,8 @@ function showChanges(review) {
     <p class="changes-hint">Directly evidenced in your CV — no confirmation needed:</p>
     ${review.auto_changes.map(c => `
       <div class="auto-change">
-        <div class="auto-desc">${c.description}</div>
-        <div class="auto-rationale">${c.rationale}</div>
+        <div class="auto-desc">${escapeHtml(c.description)}</div>
+        <div class="auto-rationale">${escapeHtml(c.rationale)}</div>
       </div>
     `).join('')}
   ` : '';
@@ -1160,10 +1160,10 @@ function renderExpandedGapCard(i) {
   return `
     <div class="confirm-change expanded" id="cc-${i}">
       <div class="confirm-change-text">
-        <div class="gap-slogan ${gapDecisionClass(g)}" id="cc-desc-${i}">${g.description}${severityTag}</div>
-        <div class="confirm-rationale gap-rationale" id="cc-rationale-${i}">${g.rationale}</div>
+        <div class="gap-slogan ${gapDecisionClass(g)}" id="cc-desc-${i}">${escapeHtml(g.description)}${severityTag}</div>
+        <div class="confirm-rationale gap-rationale" id="cc-rationale-${i}">${escapeHtml(g.rationale)}</div>
         ${hasDraft ? `
-          <div class="gap-hr-advice ${leanClass}">${hrStatement}</div>
+          <div class="gap-hr-advice ${leanClass}">${escapeHtml(hrStatement)}</div>
         ` : ''}
       </div>
       <div class="confirm-btns">
@@ -1740,10 +1740,10 @@ async function runCoach() {
     <div class="coach-section-title">Ideal roles for you</div>
     ${data.suggestedRoles.map((r, i) => `
       <div class="role-card">
-        <div class="role-title">${r.title}</div>
-        <div class="role-row"><strong>Why you fit:</strong> ${r.why_fit}</div>
-        <div class="role-row"><strong>Why now:</strong> ${r.why_next_step}</div>
-        <button class="btn btn-ghost btn-sm" style="margin-top:8px;" id="pth-${i}" onclick="getCareerPath('${r.title.replace(/'/g,"\\'")}',${i})">Career path →</button>
+        <div class="role-title">${escapeHtml(r.title)}</div>
+        <div class="role-row"><strong>Why you fit:</strong> ${escapeHtml(r.why_fit)}</div>
+        <div class="role-row"><strong>Why now:</strong> ${escapeHtml(r.why_next_step)}</div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:8px;" id="pth-${i}" data-title="${escapeHtml(r.title)}" onclick="getCareerPath(this.dataset.title,${i})">Career path →</button>
         <div id="pp-${i}"></div>
       </div>
     `).join('')}
@@ -1751,9 +1751,9 @@ async function runCoach() {
       <div class="coach-section-title">Best available jobs for your next step</div>
       ${data.marketMatches.map(m=>`
         <div class="role-card">
-          <div class="role-title">${m.job_title} · <span style="font-weight:400;color:#888">${m.company||''}</span></div>
-          <div class="role-row"><strong>Why it fits:</strong> ${m.why_it_fits}</div>
-          <div class="role-row"><strong>Stepping stone to:</strong> ${m.stepping_stone_to}</div>
+          <div class="role-title">${escapeHtml(m.job_title)} · <span style="font-weight:400;color:#888">${escapeHtml(m.company||'')}</span></div>
+          <div class="role-row"><strong>Why it fits:</strong> ${escapeHtml(m.why_it_fits)}</div>
+          <div class="role-row"><strong>Stepping stone to:</strong> ${escapeHtml(m.stepping_stone_to)}</div>
         </div>
       `).join('')}
     ` : ''}
@@ -1769,13 +1769,13 @@ async function getCareerPath(title, i) {
   if (d.error) { panel.innerHTML='<p class="err-msg">'+d.error+'</p>'; showErrorPopup(d, '/coach/path'); return; }
   panel.innerHTML=`<div class="path-panel">
     <div class="path-label">Key Challenges</div>
-    <ul class="path-list">${d.key_challenges.map(c=>'<li>'+c+'</li>').join('')}</ul>
+    <ul class="path-list">${d.key_challenges.map(c=>'<li>'+escapeHtml(c)+'</li>').join('')}</ul>
     <div class="path-label">Skill Gaps</div>
-    <ul class="path-list">${d.skill_gaps.map(g=>'<li>'+g+'</li>').join('')}</ul>
+    <ul class="path-list">${d.skill_gaps.map(g=>'<li>'+escapeHtml(g)+'</li>').join('')}</ul>
     <div class="path-label">Success at 12 months</div>
-    <p class="path-p">${d.success_at_12_months}</p>
+    <p class="path-p">${escapeHtml(d.success_at_12_months)}</p>
     <div class="path-label">Long-term trajectory</div>
-    <p class="path-p">${d.long_term_trajectory}</p>
+    <p class="path-p">${escapeHtml(d.long_term_trajectory)}</p>
   </div>`;
 }
 

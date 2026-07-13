@@ -159,7 +159,7 @@ router.get('/auth/prefill', async (req, res) => {
     ]);
 
     res.json({
-      preferredModel: preferredModel || 'claude-sonnet-5',
+      preferredModel: preferredModel || 'claude-sonnet-4-6',
       lastJobText: lastJobText || null,
       latestCv: latestCv || null,
       profilePreferences: profilePreferences || null,

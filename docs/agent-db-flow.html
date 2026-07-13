@@ -1,0 +1,380 @@
+<title>Job Agent — Data Flow</title>
+<style>
+:root {
+  --bg: #f4f6fb;
+  --hr-bg: #dbeafe;      --hr-border: #2563eb;
+  --hr-chip: #bfdbfe;    --hr-chip-text: #1d4ed8;
+  --coach-bg: #ede9fe;   --coach-border: #7c3aed;
+  --coach-chip: #ddd6fe; --coach-chip-text: #5b21b6;
+  --db-bg: #ffffff;      --db-border: #d1d5db;
+  --db-shadow: 0 1px 4px rgba(0,0,0,.08);
+  --db-name: #111827;    --db-desc: #6b7280;
+  --dropped-bg: #fff1f2; --dropped-border: #fca5a5; --dropped-text: #dc2626;
+  --sess-border: #16a34a; --sess-name: #15803d; --sess-sub: #4b7a5b;
+  --text: #111827; --muted: #6b7280;
+  --c-read: #2563eb; --c-write: #d97706; --c-rw: #7c3aed;
+  --key-bg: #f1f5f9;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #0f1117;
+  --hr-bg: #1e3a5f;      --hr-border: #60a5fa;
+  --hr-chip: #1e3a6e;    --hr-chip-text: #93c5fd;
+  --coach-bg: #2e1065;   --coach-border: #a78bfa;
+  --coach-chip: #3b0764; --coach-chip-text: #c4b5fd;
+  --db-bg: #1a1f2e;      --db-border: #374151;
+  --db-shadow: 0 1px 4px rgba(0,0,0,.3);
+  --db-name: #f3f4f6;    --db-desc: #9ca3af;
+  --dropped-bg: #2d1010; --dropped-border: #f87171; --dropped-text: #f87171;
+  --sess-border: #4ade80; --sess-name: #4ade80; --sess-sub: #6ee7b7;
+  --text: #f3f4f6; --muted: #9ca3af;
+  --c-read: #60a5fa; --c-write: #fbbf24; --c-rw: #c084fc;
+  --key-bg: #111827;
+}}
+:root[data-theme="light"] {
+  --bg:#f4f6fb; --hr-bg:#dbeafe; --hr-border:#2563eb; --hr-chip:#bfdbfe; --hr-chip-text:#1d4ed8;
+  --coach-bg:#ede9fe; --coach-border:#7c3aed; --coach-chip:#ddd6fe; --coach-chip-text:#5b21b6;
+  --db-bg:#ffffff; --db-border:#d1d5db; --db-shadow:0 1px 4px rgba(0,0,0,.08);
+  --db-name:#111827; --db-desc:#6b7280; --dropped-bg:#fff1f2; --dropped-border:#fca5a5; --dropped-text:#dc2626;
+  --sess-border:#16a34a; --sess-name:#15803d; --sess-sub:#4b7a5b;
+  --text:#111827; --muted:#6b7280; --c-read:#2563eb; --c-write:#d97706; --c-rw:#7c3aed; --key-bg:#f1f5f9;
+}
+:root[data-theme="dark"] {
+  --bg:#0f1117; --hr-bg:#1e3a5f; --hr-border:#60a5fa; --hr-chip:#1e3a6e; --hr-chip-text:#93c5fd;
+  --coach-bg:#2e1065; --coach-border:#a78bfa; --coach-chip:#3b0764; --coach-chip-text:#c4b5fd;
+  --db-bg:#1a1f2e; --db-border:#374151; --db-shadow:0 1px 4px rgba(0,0,0,.3);
+  --db-name:#f3f4f6; --db-desc:#9ca3af; --dropped-bg:#2d1010; --dropped-border:#f87171; --dropped-text:#f87171;
+  --sess-border:#4ade80; --sess-name:#4ade80; --sess-sub:#6ee7b7;
+  --text:#f3f4f6; --muted:#9ca3af; --c-read:#60a5fa; --c-write:#fbbf24; --c-rw:#c084fc; --key-bg:#111827;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  padding: 2rem 1.5rem 3rem; min-height: 100vh;
+}
+.page-header { max-width: 980px; margin: 0 auto 2rem; }
+.page-header h1 { font-size: 1.35rem; font-weight: 700; margin-bottom: 0.2rem; }
+.page-header p  { font-size: 0.82rem; color: var(--muted); }
+
+#diagram {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.agents-col {
+  width: 270px; flex-shrink: 0;
+  display: flex; flex-direction: column;
+  gap: 2.25rem; z-index: 1;
+}
+
+.arrow-gap { flex: 1; min-width: 90px; }
+
+.db-col {
+  width: 230px; flex-shrink: 0;
+  display: flex; flex-direction: column;
+  gap: 0.55rem; z-index: 1;
+}
+
+.agent-box {
+  border-radius: 14px; border-width: 2px; border-style: solid;
+  padding: 1.15rem 1.25rem;
+  box-shadow: 0 2px 10px rgba(0,0,0,.08);
+}
+.agent-box.hr    { background: var(--hr-bg);    border-color: var(--hr-border); }
+.agent-box.coach { background: var(--coach-bg); border-color: var(--coach-border); }
+
+.agent-eyebrow {
+  font-size: 0.6rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 0.2rem;
+}
+.agent-name {
+  font-size: 1.1rem; font-weight: 700; margin-bottom: 0.75rem;
+  font-family: 'Menlo', 'Consolas', monospace;
+}
+.agent-box.hr    .agent-name { color: var(--hr-border); }
+.agent-box.coach .agent-name { color: var(--coach-border); }
+
+.intent-list { display: flex; flex-direction: column; gap: 4px; }
+.intent {
+  display: inline-block; width: fit-content;
+  font-size: 0.7rem; font-family: 'Menlo', 'Consolas', monospace;
+  padding: 2px 7px; border-radius: 4px;
+}
+.agent-box.hr    .intent { background: var(--hr-chip);    color: var(--hr-chip-text); }
+.agent-box.coach .intent { background: var(--coach-chip); color: var(--coach-chip-text); }
+
+.thread-section {
+  margin-top: 0.9rem;
+  padding-top: 0.7rem;
+  border-top: 1.5px dashed var(--sess-border);
+}
+.thread-eyebrow {
+  font-size: 0.58rem; font-weight: 700; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--sess-border); opacity: .8;
+  margin-bottom: 0.2rem;
+}
+.thread-name {
+  font-size: 0.82rem; font-weight: 700;
+  font-family: 'Menlo', 'Consolas', monospace;
+  color: var(--sess-name); margin-bottom: 0.2rem;
+}
+.thread-desc { font-size: 0.67rem; color: var(--sess-sub); line-height: 1.45; }
+
+.db-box {
+  background: var(--db-bg); border: 1.5px solid var(--db-border);
+  border-radius: 9px; padding: 0.5rem 0.85rem;
+  box-shadow: var(--db-shadow);
+}
+.db-box.dropped { background: var(--dropped-bg); border-color: var(--dropped-border); }
+.db-section-label {
+  font-size: 0.6rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); padding: 0.35rem 0.85rem; margin-top: 0.4rem;
+}
+.db-name {
+  font-size: 0.77rem; font-weight: 600;
+  font-family: 'Menlo', 'Consolas', monospace; color: var(--db-name);
+}
+.db-box.dropped .db-name { text-decoration: line-through; color: var(--dropped-text); }
+.db-key {
+  font-size: 0.63rem; font-family: 'Menlo', 'Consolas', monospace;
+  background: var(--key-bg); border-radius: 3px; padding: 0 5px;
+  margin-left: 5px; color: var(--muted); vertical-align: middle;
+}
+.db-desc { font-size: 0.68rem; color: var(--db-desc); margin-top: 2px; }
+.db-box.dropped .db-desc { color: var(--dropped-text); opacity: .7; }
+
+#arrow-svg {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%; pointer-events: none; overflow: visible;
+  z-index: 5;
+}
+
+.legend {
+  max-width: 980px; margin: 2rem auto 0;
+  display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center;
+  padding-top: 1.25rem; border-top: 1px solid var(--db-border);
+}
+.legend-title {
+  font-size: 0.7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); flex-basis: 100%; margin-bottom: -0.5rem;
+}
+.legend-item { display: flex; align-items: center; gap: 0.55rem; font-size: 0.78rem; color: var(--muted); }
+.lw { position: relative; width: 40px; height: 14px; flex-shrink: 0; }
+.lw svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: visible; }
+.lswatch {
+  width: 38px; height: 12px; flex-shrink: 0;
+  border-bottom: 1.5px dashed var(--sess-border);
+}
+</style>
+
+<div class="page-header">
+  <h1>Job Agent — Data Flow</h1>
+  <p>After Phase&nbsp;0–4 refactor &nbsp;·&nbsp; Green dashed section = in-session thread (RAM only, cleared when session ends)</p>
+</div>
+
+<div id="diagram">
+
+  <div class="agents-col">
+
+    <div class="agent-box hr" id="hr-agent">
+      <div class="agent-eyebrow">Agent</div>
+      <div class="agent-name">hrAgent</div>
+      <div class="intent-list">
+        <span class="intent">review-cv</span>
+        <span class="intent">refine-gap</span>
+        <span class="intent">research-conventions</span>
+        <span class="intent">draft-sidebar</span>
+        <span class="intent">chat</span>
+      </div>
+      <div class="thread-section">
+        <div class="thread-eyebrow">In-session thread</div>
+        <div class="thread-name">hrThread</div>
+        <div class="thread-desc">appSession array · cleared when session ends</div>
+      </div>
+    </div>
+
+    <div class="agent-box coach" id="coach-agent">
+      <div class="agent-eyebrow">Agent</div>
+      <div class="agent-name">coachAgent</div>
+      <div class="intent-list">
+        <span class="intent">analyze-gaps</span>
+        <span class="intent">analyze-job-fit</span>
+        <span class="intent">suggest-roles</span>
+        <span class="intent">match-market</span>
+        <span class="intent">build-path</span>
+        <span class="intent">chat</span>
+      </div>
+      <div class="thread-section">
+        <div class="thread-eyebrow">In-session thread</div>
+        <div class="thread-name">coachHistory</div>
+        <div class="thread-desc">gap&nbsp;1 context visible when discussing gap&nbsp;5 · cleared when session ends</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="arrow-gap"></div>
+
+  <div class="db-col">
+    <div class="db-section-label">Auth</div>
+    <div class="db-box" id="db-users">
+      <span class="db-name">users</span><div class="db-desc">accounts &amp; auth</div>
+    </div>
+
+    <div class="db-section-label">Profile</div>
+    <div class="db-box" id="db-user-profile">
+      <span class="db-name">user_profiles</span>
+      <div class="db-desc">structured candidate profile — NEW</div>
+    </div>
+    <div class="db-box" id="db-profile-prefs">
+      <span class="db-name">user_preferences</span><span class="db-key">profile_prefs</span>
+      <div class="db-desc">contact info &amp; tone prefs</div>
+    </div>
+
+    <div class="db-section-label">CV &amp; Jobs</div>
+    <div class="db-box" id="db-saved-cvs">
+      <span class="db-name">saved_cvs</span><div class="db-desc">uploaded CV text</div>
+    </div>
+    <div class="db-box" id="db-jobs">
+      <span class="db-name">jobs</span><div class="db-desc">job search results</div>
+    </div>
+
+    <div class="db-section-label">Tailoring Run Logs</div>
+    <div class="db-box" id="db-gap-memory">
+      <span class="db-name">tailoring_gap_log</span>
+      <div class="db-desc">one row per gap per run · write-only</div>
+    </div>
+    <div class="db-box" id="db-events">
+      <span class="db-name">events</span><div class="db-desc">telemetry &amp; action log</div>
+    </div>
+
+    <div class="db-section-label">Dropped</div>
+    <div class="db-box dropped" id="db-conv-history">
+      <span class="db-name">conversation_history</span>
+      <div class="db-desc">never read by any agent</div>
+    </div>
+    <div class="db-box dropped" id="db-coach-memory">
+      <span class="db-name">coach_memory</span>
+      <div class="db-desc">never read by any agent</div>
+    </div>
+  </div>
+
+  <svg id="arrow-svg"></svg>
+</div>
+
+<div class="legend">
+  <div class="legend-title">Legend</div>
+  <div class="legend-item">
+    <div class="lw"><svg viewBox="0 0 40 14"><defs><marker id="lr" markerWidth="6" markerHeight="5" refX="0" refY="2.5" orient="auto-start-reverse"><polygon points="0 0,6 2.5,0 5" fill="#2563eb"/></marker></defs><line x1="4" y1="7" x2="38" y2="7" stroke="#2563eb" stroke-width="2" marker-start="url(#lr)"/></svg></div>
+    <span>Read (DB → Agent)</span>
+  </div>
+  <div class="legend-item">
+    <div class="lw"><svg viewBox="0 0 40 14"><defs><marker id="lw2" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,6 2.5,0 5" fill="#d97706"/></marker></defs><line x1="2" y1="7" x2="36" y2="7" stroke="#d97706" stroke-width="2" marker-end="url(#lw2)"/></svg></div>
+    <span>Write (Agent → DB)</span>
+  </div>
+  <div class="legend-item">
+    <div class="lw"><svg viewBox="0 0 40 14"><defs><marker id="lrwe" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,6 2.5,0 5" fill="#7c3aed"/></marker><marker id="lrws" markerWidth="6" markerHeight="5" refX="0" refY="2.5" orient="auto-start-reverse"><polygon points="0 0,6 2.5,0 5" fill="#7c3aed"/></marker></defs><line x1="4" y1="7" x2="36" y2="7" stroke="#7c3aed" stroke-width="2" marker-start="url(#lrws)" marker-end="url(#lrwe)"/></svg></div>
+    <span>Read &amp; Write (both directions)</span>
+  </div>
+  <div class="legend-item">
+    <div class="lswatch"></div>
+    <span>In-session thread — RAM only, not persisted to DB</span>
+  </div>
+  <div class="legend-item">
+    <div class="lw"><svg viewBox="0 0 40 14"><line x1="2" y1="7" x2="38" y2="7" stroke="#dc2626" stroke-width="2" stroke-dasharray="5 3" opacity=".5"/></svg></div>
+    <span>Dropped table</span>
+  </div>
+</div>
+
+<script>
+const CONNECTIONS = [
+  ['hr-agent', 'db-users',         'read'],
+  ['hr-agent', 'db-user-profile',  'read'],
+  ['hr-agent', 'db-profile-prefs', 'read'],
+  ['hr-agent', 'db-gap-memory',    'write'],
+  ['hr-agent', 'db-saved-cvs',     'read'],
+  ['hr-agent', 'db-events',        'write'],
+  ['coach-agent', 'db-users',         'read'],
+  ['coach-agent', 'db-user-profile',  'read'],
+  ['coach-agent', 'db-profile-prefs', 'read'],
+  ['coach-agent', 'db-gap-memory',    'write'],
+  ['coach-agent', 'db-saved-cvs',     'read'],
+  ['coach-agent', 'db-jobs',          'read'],
+  ['coach-agent', 'db-events',        'write'],
+];
+
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+const C = { read:()=>css('--c-read'), write:()=>css('--c-write'), rw:()=>css('--c-rw') };
+let seq = 0;
+
+function getDefs(svg) {
+  let d = svg.querySelector('defs');
+  if (!d) { d = document.createElementNS('http://www.w3.org/2000/svg','defs'); svg.prepend(d); }
+  return d;
+}
+function mkM(d, color, id, rev) {
+  const m = document.createElementNS('http://www.w3.org/2000/svg','marker');
+  m.setAttribute('id',id); m.setAttribute('markerWidth','7'); m.setAttribute('markerHeight','5');
+  m.setAttribute('refX',rev?'0':'7'); m.setAttribute('refY','2.5');
+  m.setAttribute('orient',rev?'auto-start-reverse':'auto');
+  const p = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+  p.setAttribute('points','0 0,7 2.5,0 5'); p.setAttribute('fill',color);
+  m.appendChild(p); d.appendChild(m);
+}
+function arc(svg, base, x1, y1, x2, y2, type) {
+  const color = C[type](); const D = getDefs(svg); const s = seq++;
+  let me='', ms='';
+  if (type==='read' ||type==='rw') { mkM(D,color,`ms${s}`,true);  ms=`url(#ms${s})`; }
+  if (type==='write'||type==='rw') { mkM(D,color,`me${s}`,false); me=`url(#me${s})`; }
+  const mx = (x1+x2)/2;
+  const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+  p.setAttribute('d',`M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`);
+  p.setAttribute('stroke',color); p.setAttribute('stroke-width','1.6');
+  p.setAttribute('fill','none'); p.setAttribute('opacity','0.72');
+  if (me) p.setAttribute('marker-end',me);
+  if (ms) p.setAttribute('marker-start',ms);
+  svg.appendChild(p);
+}
+
+function draw() {
+  const svg = document.getElementById('arrow-svg');
+  while (svg.lastChild) svg.removeChild(svg.lastChild);
+  seq = 0;
+  const base = document.getElementById('diagram').getBoundingClientRect();
+
+  const hrC    = CONNECTIONS.filter(c=>c[0]==='hr-agent');
+  const coachC = CONNECTIONS.filter(c=>c[0]==='coach-agent');
+
+  const tCount={}, tIdx={};
+  CONNECTIONS.forEach(([,t])=>{ tCount[t]=(tCount[t]||0)+1; tIdx[t]=0; });
+
+  function drawGroup(conns) {
+    const n = conns.length;
+    conns.forEach((conn,i) => {
+      const fr = document.getElementById(conn[0]).getBoundingClientRect();
+      const tr = document.getElementById(conn[1]).getBoundingClientRect();
+      const frac = n===1 ? 0.5 : (i/(n-1))*0.6+0.2;
+      const x1 = fr.right - base.left;
+      const y1 = fr.top - base.top + fr.height * frac;
+      const cnt=tCount[conn[1]], idx=tIdx[conn[1]]++;
+      const tFrac = cnt===1 ? 0.5 : (idx/(cnt-1))*0.5+0.25;
+      const x2 = tr.left - base.left;
+      const y2 = tr.top - base.top + tr.height * tFrac;
+      arc(svg, base, x1, y1, x2, y2, conn[2]);
+    });
+  }
+
+  drawGroup(hrC);
+  Object.keys(tIdx).forEach(k=>{ tIdx[k]=0; });
+  hrC.forEach(([,t])=>{ tIdx[t]++; });
+  drawGroup(coachC);
+}
+
+window.addEventListener('load', ()=>requestAnimationFrame(draw));
+window.addEventListener('resize', draw);
+new MutationObserver(draw).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+</script>

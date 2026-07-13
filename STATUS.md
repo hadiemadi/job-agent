@@ -3,13 +3,24 @@
 > Single source of truth for project state. Kept current automatically by Claude
 > Code (see CLAUDE.md). Update the date whenever it changes.
 
-**Last updated:** 2026-07-10
+**Last updated:** 2026-07-13
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
 **Tests:** 466/466 green · **origin/main HEAD:** `4cd2afc`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **hotfix: XSS + model default** —
+  `public/app.js`: all AI-generated strings injected into `innerHTML` now wrapped in `escapeHtml()` (strengths, auto_changes, gap card rationale/description/hrStatement, coach roles/market matches, career path bullets). `onclick` attribute injection replaced with `data-title` + `this.dataset.title` pattern to prevent attribute-breaking payloads (issue 1.9).
+  `routes/auth.routes.js`: default model for new logged-in users changed from `'claude-sonnet-5'` → `'claude-sonnet-4-6'` to match `core/claude.js` backend default. Broken default caused API errors on every new account's first tailoring run (issue 9.8).
+  `routes/auth.routes.test.js`: assertion updated to expect `claude-sonnet-4-6`.
+  466/466 green.
+
+- **docs: create docs/ folder — agent-db-flow diagram + full UI audit** —
+  `docs/agent-db-flow.html`: interactive data-flow diagram — two unified agents (`hrAgent`, `coachAgent`), their in-session threads (`hrThread`/`coachHistory`), and all DB connections with directional arrows. Update whenever agent or DB structure changes.
+  `docs/ui-audit.md`: 42-item UI quality audit. Two critical items need immediate hotfix: XSS via unescaped AI output injected into `innerHTML` (issue 1.9) and broken model IDs in `MODEL_OPTIONS` that cause API errors on selection (issues 9.7/9.8).
+  `CLAUDE.md`: `docs/ upkeep` rule added — both files staged with any commit that affects them.
 
 - **feat(gap-memory): tailoringRunId isolates HR history per Tailor-my-CV run** —
   Root cause of "Ask your HR Expert shows all history": `gap_memory` had no way to

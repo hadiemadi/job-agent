@@ -577,7 +577,7 @@ describe('GET /auth/prefill', () => {
 
     const res = await agent.get('/auth/prefill');
     expect(res.status).toBe(200);
-    expect(res.body.preferredModel).toBe('claude-sonnet-5');
+    expect(res.body.preferredModel).toBe('claude-sonnet-4-6');
     expect(res.body.lastJobText).toBeNull();
     expect(res.body.latestCv).toBeNull();
     // Phase 2.5: profilePreferences is null for a first-time user
