@@ -11,6 +11,11 @@
 
 ## ✅ Recently shipped (on `main`)
 
+- **fix(profile): exhaustive CV extraction + silent re-upload backfill** —
+  `src/ai.js` `buildProfileFromCv`: CV text limit 3k → 8k chars; `max_tokens` 800 → 1600; prompt updated to say "be exhaustive — capture every distinct fact." `computeProfileAdditions`: CV text limit 2k → 8k; prompt tightened — "a fact is already in the profile if the same underlying information exists in any form, even if worded differently; only return concepts completely absent."
+  `routes/cv.routes.js`: on re-upload for logged-in users (profile already exists), runs `computeProfileAdditions` fire-and-forget and auto-merges any missing facts into the stored profile without showing a popup. First upload unchanged (full `buildProfileFromCv`). Net effect: profile becomes complete after first or second CV upload; the "Update your profile?" popup at "Tailor my CV" should find nothing (or almost nothing) to add when the same CV is uploaded again. 465/465 green.
+
+
 - **feat(ui): profile update popup — bullet text now editable before saving** —
   `public/app.js`: `showProfileUpdatePopup` renders each addition as an `<input type="text">` (`#pa-input-N`) pre-filled with the AI-suggested bullet, replacing the previous read-only `<span>`. `confirmProfileAdditions` reads live input values (not the stale array) and filters out any blank entries. Users can now edit or correct a suggested fact before it's written to their profile. 465/465 green.
 

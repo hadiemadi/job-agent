@@ -70,16 +70,30 @@ router.post('/upload-cv', upload.single('cv'), async (req, res) => {
         appSession.cvText = cvText;
         appSession.cvPath = null;
         appSession.cvData = cvData;
-        // Phase 1: build career profile for logged-in users on first CV upload.
+        // Phase 1: build or backfill career profile for logged-in users on CV upload.
         // Fire-and-forget — profile will be ready by the time the user reaches gap review.
         if (appSession.userId) {
-          getUserProfile(appSession.userId).then(existing => {
+          getUserProfile(appSession.userId).then(async existing => {
             if (!existing) {
-              return buildProfileFromCv(cvText).then(profile => {
-                if (profile) return saveUserProfile(appSession.userId, profile);
-              });
+              // First upload: full extraction from CV.
+              const profile = await buildProfileFromCv(cvText);
+              if (profile) await saveUserProfile(appSession.userId, profile);
+            } else {
+              // Re-upload: silently backfill any facts the initial extraction missed.
+              const additions = await computeProfileAdditions(existing, cvText, []);
+              if (additions && additions.length > 0) {
+                if (!existing.categories) existing.categories = {};
+                for (const { category, bullet } of additions) {
+                  if (!PROFILE_CATEGORIES.includes(category) || !bullet) continue;
+                  const arr = Array.isArray(existing.categories[category]) ? existing.categories[category] : [];
+                  if (!arr.includes(bullet)) arr.push(bullet);
+                  existing.categories[category] = arr.slice(0, 8);
+                }
+                existing.updatedAt = new Date().toISOString();
+                await saveUserProfile(appSession.userId, existing);
+              }
             }
-          }).catch(e => console.warn('[profile] build failed (non-fatal):', e.message));
+          }).catch(e => console.warn('[profile] build/backfill failed (non-fatal):', e.message));
         }
         const after = snapshotSessionUsage();
         const stageUsage = { usd: after.usd - before.usd, tokIn: after.tokIn - before.tokIn, tokOut: after.tokOut - before.tokOut };

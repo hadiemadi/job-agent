@@ -12,10 +12,10 @@ async function buildProfileFromCv(cvText) {
   try {
     message = await client.messages.create({
       model: 'claude-haiku-4-5',
-      max_tokens: 800,
+      max_tokens: 1600,
       messages: [{
         role: 'user',
-        content: `Extract a structured career profile from this CV. Return JSON exactly:
+        content: `Extract a structured career profile from this CV. Be exhaustive — capture every distinct fact present. Return JSON exactly:
 {
   "version": 1,
   "categories": {
@@ -28,10 +28,10 @@ async function buildProfileFromCv(cvText) {
     "Projects": []
   }
 }
-Rules: max 8 bullets per category, max 15 words per bullet, no PII (no person names, DOB, salary, phone, email, address).
+Rules: max 8 bullets per category, max 15 words per bullet, no PII (no person names, DOB, salary, phone, email, address). If a category has no relevant facts, leave it as an empty array.
 
 CV:
-${cvText.slice(0, 3000)}`,
+${cvText.slice(0, 8000)}`,
       }],
     });
   } catch (e) {
@@ -115,13 +115,18 @@ async function computeProfileAdditions(profile, cvText, coachInsights = []) {
       max_tokens: 600,
       messages: [{
         role: 'user',
-        content: `Compare the current profile against the CV and session insights to find genuinely NEW facts not yet in the profile. Return ONLY facts that are clearly new and specific. Max 8 additions. Each bullet max 15 words. No PII.
+        content: `Compare the current profile against the CV and session insights to find genuinely NEW facts not yet in the profile.
+
+Rules:
+- A fact is ALREADY IN THE PROFILE if the same underlying information exists in any form, even if worded differently. Do not re-surface rephrased versions of existing bullets.
+- Only return a fact if the concept is completely absent from the profile.
+- Max 8 additions total. Each bullet max 15 words. No PII.
 
 CURRENT PROFILE:
 ${profileSummary}
 
-CV (excerpt):
-${(cvText || '').slice(0, 2000)}${insightBlock}
+CV:
+${(cvText || '').slice(0, 8000)}${insightBlock}
 
 Return JSON only:
 {"additions":[{"category":"TechnicalSkills","bullet":"specific new fact","source":"cv"}]}
