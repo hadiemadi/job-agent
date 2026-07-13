@@ -10,7 +10,8 @@ const { setGaps, getGap, proposeStatement, setUserDecision, buildSharedGapContex
 const { createJob, updateJob } = require('../services/jobQueue');
 const { sendError } = require('../core/respondError');
 const { logEvent, logDiagnostic } = require('../core/logger');
-const { saveProfilePreferences, getProfilePreferences, upsertGapMemory, listGapMemory } = require('../services/auth');
+const { saveProfilePreferences, getProfilePreferences, upsertGapMemory, listGapMemory, getUserProfile } = require('../services/auth');
+const { buildProfileBlock } = require('../services/profileBlock');
 
 // Builds the profile-preferences snapshot from the current session state — used by both the
 // confirm-contact save and the HR-completion safety upsert to guarantee they write the same shape.
@@ -349,11 +350,17 @@ router.post('/hr/chat', async (req, res) => {
         (concern.isFirst ? '\n\n(This is the start of this discussion — first briefly quote or restate the excerpt above to confirm you understood what they\'re referring to, then respond to their point.)' : '');
     }
     const sessionCtx = buildSharedGapContext(null);
-    const memCtx     = await buildGapMemoryBlock(appSession.userId, appSession.tailoringRunId);
-    const sharedCtx  = [sessionCtx, memCtx].filter(Boolean).join('\n\n');
+    let profileBlock = '';
+    if (appSession.userId) {
+      try {
+        const profile = await getUserProfile(appSession.userId);
+        profileBlock = buildProfileBlock(profile);
+      } catch (e) { /* non-fatal — HR chat proceeds without profile context */ }
+    }
+    const sharedCtx = sessionCtx || '';
     const { reply, thread } = await chatWithHRExpert(
       appSession.cvText, appSession.currentJob, appSession.hrThread, finalMessage, model, appSession.clientPreferences,
-      sharedCtx
+      sharedCtx, profileBlock
     );
     appSession.hrThread = thread;
     appSession.hrDisplayHistory = [...appSession.hrDisplayHistory, { role: 'user', text: message }, { role: 'expert', text: reply }];

@@ -125,10 +125,11 @@ describe('tailoringRunId isolation — buildGapMemoryBlock', () => {
 });
 
 describe('tailoringRunId threading — source-level assertions', () => {
-  test('coach.routes.js passes tailoringRunId to findGapMemoryBySlogan (excludes current run from cross-session lookup)', () => {
+  test('coach.routes.js uses getUserProfile for cross-session profile injection (Phase 4 replacement for findGapMemoryBySlogan)', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'routes', 'coach.routes.js'), 'utf8');
-    // findGapMemoryBySlogan must be called with 3 args: userId, gap.description, AND tailoringRunId
-    expect(src).toMatch(/findGapMemoryBySlogan\s*\(\s*appSession\.userId\s*,\s*gap\.description\s*,\s*appSession\.tailoringRunId\s*\)/);
+    // Phase 4: profile-based injection replaces the old per-gap findGapMemoryBySlogan lookup
+    expect(src).toMatch(/getUserProfile\s*\(\s*appSession\.userId\s*\)/);
+    expect(src).toMatch(/userProfile/);
   });
 
   test('coach.routes.js passes tailoringRunId to upsertGapMemory', () => {
@@ -142,9 +143,12 @@ describe('tailoringRunId threading — source-level assertions', () => {
     expect(matches.length).toBeGreaterThanOrEqual(2); // /hr/refine + /gap-decision
   });
 
-  test('hr.routes.js passes tailoringRunId to buildGapMemoryBlock', () => {
+  test('hr.routes.js uses getUserProfile + buildProfileBlock in /hr/chat (Phase 4 replacement for buildGapMemoryBlock)', () => {
     const src = fs.readFileSync(path.join(__dirname, 'hr.routes.js'), 'utf8');
-    expect(src).toMatch(/buildGapMemoryBlock\s*\(\s*appSession\.userId\s*,\s*appSession\.tailoringRunId\s*\)/);
+    // Phase 4: profile block injected into system prompt via chatWithHRExpert instead of
+    // appending buildGapMemoryBlock output to each user message
+    expect(src).toMatch(/getUserProfile\s*\(\s*appSession\.userId\s*\)/);
+    expect(src).toMatch(/buildProfileBlock\s*\(\s*profile\s*\)/);
   });
 
   test('cv.routes.js sets appSession.tailoringRunId before createJob() in /rewrite', () => {

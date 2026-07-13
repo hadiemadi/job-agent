@@ -4,6 +4,7 @@ const { logDiagnostic } = require('../core/logger');
 const { loadCore } = require('../core/knowledge');
 const { preferencesBlock } = require('../core/preferences');
 const { fieldBlock } = require('./recruiter');
+const { buildProfileBlock } = require('../services/profileBlock');
 
 const DIRECTION_DESCRIPTIONS = {
   specialist:  'Deep technical expert, Individual Contributor, architect, domain authority — going deeper not broader',
@@ -215,32 +216,12 @@ function selectTopGaps(gaps, severities = ['major', 'mild', 'minor'], minCount =
 // Word export), so this is the same coach throughout, exactly like the HR thread. Lives here
 // (not agents/recruiter.js) since it's a Coach interaction, even though it runs during the
 // HR review step — the candidate is talking to their coach about a gap HR flagged.
-// Builds a compact prior-history block from a gap_memory row, injected into the Coach prompt
-// on the first turn of a new gap chat. The coach agent itself judges relevance and phrasing —
-// no hardcoded template forces a reference when nothing useful exists.
-// extensive=true (Deep research mode): include full prior conversation turns.
-// extensive=false (default): verdict-only — faster and cheaper.
-function buildPriorGapBlock(prior, extensive = false) {
-  const parts = [];
-  if (extensive) {
-    const turns = Array.isArray(prior.coach_conversation) ? prior.coach_conversation : [];
-    if (turns.length > 0) {
-      const excerpt = turns.slice(-5).map(t => `${t.role === 'user' ? 'Candidate' : 'Coach'}: ${String(t.content || '').slice(0, 120)}`).join('\n');
-      parts.push('Recent conversation:\n' + excerpt);
-    }
-  }
-  if (prior.coach_verdict) parts.push('Coach\'s last verdict: ' + String(prior.coach_verdict).slice(0, 200));
-  if (!parts.length) return '';
-  return `PRIOR HISTORY FOR THIS GAP (from a previous session with this candidate):
-${parts.join('\n')}
-
-If any of the above is genuinely relevant to the current discussion, you may reference it naturally. Do not force a reference when nothing useful exists. You are the judge.`;
-}
-
-async function chatWithCoach(cvText, job, hrReview, history, userMessage, gapDescription, preferences, field, disciplineStore, sharedContext, priorGapHistory = null) {
+// Cross-session context comes from the user profile (services/profileBlock.js) — a compact
+// structured summary of confirmed facts, injected into every turn rather than replaying raw
+// gap history. Cheaper and more complete than the old per-gap findGapMemoryBySlogan lookup.
+async function chatWithCoach(cvText, job, hrReview, history, userMessage, gapDescription, preferences, field, disciplineStore, sharedContext, userProfile = null) {
   const gapContext = gapDescription ? `The candidate is currently discussing this specific gap: "${gapDescription}"\n\n` : '';
-  const extensive = !!(preferences && preferences.extensiveSearch);
-  const priorBlock = priorGapHistory ? buildPriorGapBlock(priorGapHistory, extensive) : '';
+  const priorBlock = buildProfileBlock(userProfile);
   const systemPrompt = `${CAREER_COACH_PERSONA}
 
 CV (summary):
@@ -287,7 +268,7 @@ async function coachAgent(intent, {
   direction, suggestedRoles, rankedJobs,
   roleTitle,
   userMessage, gapDescription,
-  priorGapHistory = null,
+  userProfile = null,
 }) {
   switch (intent) {
     case 'analyze-gaps': {
@@ -340,7 +321,7 @@ async function coachAgent(intent, {
     case 'chat': {
       const { reply, history } = await chatWithCoach(
         cvText, job, hrReview, coachThread, userMessage, gapDescription,
-        preferences, field, disciplineStore, sharedContext, priorGapHistory
+        preferences, field, disciplineStore, sharedContext, userProfile
       );
       return { reply, thread: history, structured: null };
     }
@@ -351,6 +332,6 @@ async function coachAgent(intent, {
 
 module.exports = {
   analyzeAndSuggestRoles, matchRolesToMarket, buildCareerPath, analyzeGaps, selectTopGaps,
-  chatWithCoach, CAREER_COACH_PERSONA, buildPriorGapBlock,
+  chatWithCoach, CAREER_COACH_PERSONA,
   coachAgent,
 };

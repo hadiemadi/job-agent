@@ -5,11 +5,22 @@
 
 **Last updated:** 2026-07-13
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render free tier, US/Oregon)
-**Tests:** 465/465 green · **origin/main HEAD:** `4cd2afc`
+**Tests:** 465/465 green · **origin/main HEAD:** `555b912`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **Phase 4 — Replace cross-session gap_memory injection with user profile** —
+  `services/profileBlock.js` (new): `buildProfileBlock(profile)` — formats the stored user profile as a compact text block for agent system prompts. Returns `''` when profile is null/empty.
+  `agents/recruiter.js`: `hrSystemPrompt` accepts optional 6th param `profileBlock`; `chatWithHRExpert` accepts optional 8th param `profileBlock` and passes it to `hrSystemPrompt`.
+  `agents/coach.js`: imports `buildProfileBlock`; `chatWithCoach` 11th param renamed `priorGapHistory` → `userProfile`; uses `buildProfileBlock(userProfile)` instead of `buildPriorGapBlock`; `buildPriorGapBlock` removed; `coachAgent` 'chat' case updated.
+  `routes/coach.routes.js`: `findGapMemoryBySlogan` block replaced — `getUserProfile(appSession.userId)` fetched each turn and passed as `userProfile` to `coachAgent('chat', ...)`.
+  `routes/hr.routes.js`: `buildGapMemoryBlock` call in `/hr/chat` replaced — `getUserProfile` + `buildProfileBlock` now inject the profile into `chatWithHRExpert`'s system prompt (no longer appended to user messages).
+  `agents/coach.test.js`: rewritten — `buildPriorGapBlock` tests replaced with 5 tests for `buildProfileBlock`.
+  `routes/hr.routes.test.js`: 2 source-inspection tests updated to assert new `getUserProfile`+`buildProfileBlock` pattern.
+  `docs/agent-db-flow.html`: `user_profiles` box description updated to "Phase 4 live"; duplicate Phase 1 box removed.
+  465/465 green.
 
 - **Phase 1 — user_profiles table + buildProfileFromCv** —
   `core/db.js`: `user_profiles` table added (one row per user, JSONB profile, versioned).

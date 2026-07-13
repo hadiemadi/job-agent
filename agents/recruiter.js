@@ -80,7 +80,7 @@ function fieldBlock(field, disciplineStore) {
 // Exported so agents/cvWriter.js and tasks/* (which write/place CV content but don't own the
 // persona itself) can build their system prompts with it. `field`/`disciplineStore` are
 // optional — only reviewCV passes them for now; other callers are unaffected.
-function hrSystemPrompt(cvText, job, preferences, field, disciplineStore) {
+function hrSystemPrompt(cvText, job, preferences, field, disciplineStore, profileBlock = '') {
   return `${loadCore('recruiter-core')}
 ${regionalConventionsBlock(job, preferences && preferences.conventionsResearch)}${fieldBlock(field, disciplineStore)}
 
@@ -88,7 +88,7 @@ CANDIDATE'S TARGET JOB: ${job.job_title} at ${job.employer_name || job.company |
 ${(job.job_description || job.description || '').slice(0, 800)}
 
 CANDIDATE'S CV:
-${cvText}${preferencesBlock(preferences)}${stealthWritingDirective()}`;
+${cvText}${preferencesBlock(preferences)}${stealthWritingDirective()}${profileBlock ? `\n\n${profileBlock}` : ''}`;
 }
 
 // The learning loop (Part D of the refactor plan): load this field's discipline store; if
@@ -303,13 +303,13 @@ clause, never a full sentence with subordinate clauses, never a paragraph.`;
 // Sidebar Q&A on the editable tailored CV page — continues the same HR thread, so the
 // expert remembers everything discussed during review/rewrite/placement. `model` lets the
 // sidebar's picker override the default model for this turn only.
-async function chatWithHRExpert(cvText, job, thread, userMessage, model, preferences, sharedContext) {
+async function chatWithHRExpert(cvText, job, thread, userMessage, model, preferences, sharedContext, profileBlock = '') {
   const finalUserMessage = sharedContext ? `${userMessage}\n\n${sharedContext}` : userMessage;
   const messages = [...(thread || []), { role: 'user', content: finalUserMessage }];
   const response = await client.messages.create({
     model: model || MODEL,
     max_tokens: 900,
-    system: hrSystemPrompt(cvText, job, preferences),
+    system: hrSystemPrompt(cvText, job, preferences, null, null, profileBlock),
     messages,
   });
   const reply = firstText(response);

@@ -1,8 +1,7 @@
 'use strict';
 
-// Regression tests for buildPriorGapBlock field isolation.
-// Coach is only allowed to see gap_slogan, coach_conversation, coach_verdict —
-// NOT hr_statement or user_decision, which never appear in the SELECT query result.
+// Unit tests for buildProfileBlock (services/profileBlock.js) covering the common cases
+// a Coach or HR system prompt will encounter: empty profile, partial categories, full profile.
 
 jest.mock('../core/claude',    () => ({ client: {}, MODEL: 'test-model' }));
 jest.mock('../core/json',      () => ({ extractJSON: jest.fn(), firstText: jest.fn() }));
@@ -11,68 +10,47 @@ jest.mock('../core/knowledge', () => ({ loadCore: jest.fn().mockReturnValue('Coa
 jest.mock('../core/preferences', () => ({ preferencesBlock: jest.fn().mockReturnValue('') }));
 jest.mock('./recruiter',        () => ({ fieldBlock: jest.fn().mockReturnValue('') }));
 
-const { buildPriorGapBlock } = require('./coach');
+const { buildProfileBlock } = require('../services/profileBlock');
 
-describe('buildPriorGapBlock — field isolation', () => {
-  it('default mode: includes coach_verdict, never hr_statement or user_decision', () => {
-    const prior = {
-      gap_slogan:         'cloud-experience',
-      coach_conversation: [
-        { role: 'user',      content: 'I have AWS experience' },
-        { role: 'assistant', content: 'Strong AWS background noted' },
-      ],
-      coach_verdict: 'Solid cloud experience confirmed',
-      hr_statement:  'HR says candidate is a good fit',
-      user_decision: 'added',
+describe('buildProfileBlock', () => {
+  it('returns empty string for null profile', () => {
+    expect(buildProfileBlock(null)).toBe('');
+  });
+
+  it('returns empty string for profile with no categories key', () => {
+    expect(buildProfileBlock({})).toBe('');
+    expect(buildProfileBlock({ version: 1 })).toBe('');
+  });
+
+  it('returns empty string when all categories are empty arrays', () => {
+    const profile = { categories: { TechnicalSkills: [], Certifications: [] } };
+    expect(buildProfileBlock(profile)).toBe('');
+  });
+
+  it('renders populated categories as a labelled block', () => {
+    const profile = {
+      categories: {
+        TechnicalSkills: ['RF antenna design (3+ years)', 'MATLAB signal processing'],
+        Certifications: ['PMP 2022'],
+        Experience: [],
+      },
     };
-    const block = buildPriorGapBlock(prior, false);
-    expect(block).toContain('Solid cloud experience confirmed');
-    expect(block).not.toContain('HR says');
-    expect(block).not.toContain('good fit');
-    expect(block).not.toContain('added');
-    // conversation turns must NOT appear in default mode
-    expect(block).not.toContain('I have AWS experience');
-    expect(block).not.toContain('Strong AWS background noted');
+    const block = buildProfileBlock(profile);
+    expect(block).toContain('CANDIDATE PROFILE (confirmed facts across sessions):');
+    expect(block).toContain('TechnicalSkills: RF antenna design (3+ years) | MATLAB signal processing');
+    expect(block).toContain('Certifications: PMP 2022');
+    expect(block).not.toContain('Experience:');
   });
 
-  it('extensive mode: adds conversation turns, still no hr_statement or user_decision', () => {
-    const prior = {
-      coach_conversation: [
-        { role: 'user',      content: 'I managed cloud infra at scale' },
-        { role: 'assistant', content: 'That clearly covers the gap' },
-      ],
-      coach_verdict: 'Gap is covered by candidate',
-      hr_statement:  'HR confidential statement — must not reach Coach',
-      user_decision: 'left-out',
+  it('excludes categories with empty arrays', () => {
+    const profile = {
+      categories: {
+        Leadership: [],
+        Projects: ['5G rollout — 3 sites, $2M budget'],
+      },
     };
-    const block = buildPriorGapBlock(prior, true);
-    expect(block).toContain('Gap is covered by candidate');
-    expect(block).toContain('I managed cloud infra at scale');
-    expect(block).toContain('That clearly covers the gap');
-    expect(block).not.toContain('HR confidential statement');
-    expect(block).not.toContain('must not reach Coach');
-    expect(block).not.toContain('left-out');
-  });
-
-  it('returns empty string when prior has no coach_verdict and no conversation', () => {
-    expect(buildPriorGapBlock({}, false)).toBe('');
-    // hr_statement and user_decision are present but must not produce output
-    expect(buildPriorGapBlock({ hr_statement: 'secret', user_decision: 'skip' }, false)).toBe('');
-  });
-
-  it('returns empty string when coach_conversation exists but extensive is false and no verdict', () => {
-    const prior = { coach_conversation: [{ role: 'user', content: 'something' }], coach_verdict: null };
-    expect(buildPriorGapBlock(prior, false)).toBe('');
-  });
-
-  it('query result shape — restricted SELECT returns no hr_statement or user_decision', () => {
-    // Documents the shape that findGapMemoryBySlogan now returns after the SELECT restriction.
-    const queryResult = {
-      gap_slogan:         'some-gap',
-      coach_conversation: [],
-      coach_verdict:      null,
-    };
-    expect(queryResult).not.toHaveProperty('hr_statement');
-    expect(queryResult).not.toHaveProperty('user_decision');
+    const block = buildProfileBlock(profile);
+    expect(block).not.toContain('Leadership');
+    expect(block).toContain('Projects: 5G rollout — 3 sites, $2M budget');
   });
 });
