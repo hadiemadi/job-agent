@@ -16,6 +16,7 @@ const { createJob, updateJob, getJob } = require('../services/jobQueue');
 const { pollLimiter } = require('../services/ratelimit');
 const { sendError } = require('../core/respondError');
 const { logEvent, logDiagnostic } = require('../core/logger');
+const { getSpendToday } = require('../core/claude');
 
 // Shared by /rewrite and /regenerate-cv (#29/#31) — derives the gap-sourced inputs to the CV
 // writer from the server-side gap store, instead of trusting a client-submitted list. Only a
@@ -514,6 +515,13 @@ router.post('/upload-template', templateUpload.single('template'), async (req, r
 router.get('/session/usage', (req, res) => {
   try { res.json(getSessionUsage()); }
   catch (_) { res.json({ usd: 0, tokIn: 0, tokOut: 0 }); }
+});
+
+// Returns the server's running daily AI spend total and budget cap. Used by the tailored
+// CV page to display the owner's cost-to-date alongside the per-session cost.
+router.get('/session/daily-usage', (req, res) => {
+  try { const { spendTodayUsd, DAILY_AI_BUDGET_USD } = getSpendToday(); res.json({ usd: spendTodayUsd, budgetUsd: DAILY_AI_BUDGET_USD }); }
+  catch (_) { res.json({ usd: 0, budgetUsd: 5 }); }
 });
 
 // Profile page (Phase 5) — serve the static profile editor.

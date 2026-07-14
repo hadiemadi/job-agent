@@ -123,7 +123,7 @@ function renderCVPage(cv, job, opts = {}) {
 
 // ── Standalone tailored CV (editable, with toolbar) ───────────────────────────
 function generateExecutiveTemplate(cv, job, opts = {}) {
-  const { hrDisplayHistory = [], aiSpendUsd = 0, aiTokensIn = 0, aiTokensOut = 0 } = opts;
+  const { hrDisplayHistory = [], aiSpendUsd = 0, aiTokensIn = 0, aiTokensOut = 0, dailySpendUsd = 0, dailyBudgetUsd = 5 } = opts;
   const pageHtml = renderCVPage(cv, job, { editable: true, showBadge: true });
 
   // Serialize data for <script type="application/json"> elements.
@@ -341,7 +341,7 @@ ${CV_CSS}
     <button class="tb-btn tb-save" id="hrToggleBtn" onclick="toggleHrSidebar()" data-tooltip="Shows or hides the HR Expert chat panel — select any text in the CV to start a discussion about it.">Hide HR Expert</button>
   </div>
   <div class="tb-donate-wrap">
-    <div id="tb-cost" class="tb-cost" title="Total Anthropic API cost for this session's CV — not the global daily budget, not other users' usage">AI cost: $${Number(aiSpendUsd || 0).toFixed(4)}<br><span style="font-size:0.7em;opacity:0.7;">In: ${aiTokensIn.toLocaleString()} · Out: ${aiTokensOut.toLocaleString()} tok</span></div>
+    <div id="tb-cost" class="tb-cost" title="Session cost = this CV only. Daily total = all AI calls today on this server.">Session: $${Number(aiSpendUsd || 0).toFixed(4)}<br><span style="font-size:0.7em;opacity:0.7;">In: ${aiTokensIn.toLocaleString()} · Out: ${aiTokensOut.toLocaleString()} tok</span><br>Daily: $${Number(dailySpendUsd || 0).toFixed(4)} / $${Number(dailyBudgetUsd || 5).toFixed(2)}</div>
     <button class="tb-donate" onclick="openDonate()">Buy me a coffee ☕</button>
   </div>
 </div>
@@ -557,12 +557,17 @@ ${pageHtml}
   // every AI action (cover letter, HR chat, regen, etc.) so the cost stays current without
   // a page reload. Fire-and-forget — a network failure just leaves the last known value shown.
   function refreshCostDisplay() {
-    fetch('/session/usage').then(function(r) { return r.json(); }).then(function(u) {
+    Promise.all([
+      fetch('/session/usage').then(function(r) { return r.json(); }),
+      fetch('/session/daily-usage').then(function(r) { return r.json(); }),
+    ]).then(function(results) {
+      var u = results[0], d = results[1];
       const el = document.getElementById('tb-cost');
       if (!el) return;
-      el.innerHTML = 'AI cost: $' + Number(u.usd || 0).toFixed(4) +
+      el.innerHTML = 'Session: $' + Number(u.usd || 0).toFixed(4) +
         '<br><span style="font-size:0.7em;opacity:0.7;">In: ' + (u.tokIn || 0).toLocaleString() +
-        ' · Out: ' + (u.tokOut || 0).toLocaleString() + ' tok</span>';
+        ' · Out: ' + (u.tokOut || 0).toLocaleString() + ' tok</span>' +
+        '<br>Daily: $' + Number(d.usd || 0).toFixed(4) + ' / $' + Number(d.budgetUsd || 5).toFixed(2);
     }).catch(function() {});
   }
 

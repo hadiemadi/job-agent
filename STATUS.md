@@ -5,11 +5,17 @@
 
 **Last updated:** 2026-07-14
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render Starter, always-on, US/Oregon)
-**Tests:** 476/476 green · **origin/main HEAD:** `pending`
+**Tests:** 479/479 green · **origin/main HEAD:** `pending`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **fix(ui+cost): toggle-row layout fix + daily AI spend display** —
+
+  **A1 — Refresh Discipline checkbox layout:** `public/style.css`: added `flex-wrap:nowrap` to `.toggle-row` and `flex:1 1 auto; min-width:0` to `.toggle-label-text`. Prevents the label text from wrapping below the toggle track on narrow widths in the Advanced panel and sidebar.
+
+  **A2 — Daily AI spend on tailored CV page:** `render/cvHtml.js`: `#tb-cost` now shows two lines — "Session: $…" (per-session cost, same as before) and "Daily: $… / $…" (server's running daily total vs. budget cap). `refreshCostDisplay()` now fetches `/session/usage` + `/session/daily-usage` in parallel. `routes/cv.routes.js`: new `GET /session/daily-usage` endpoint returning `{ usd, budgetUsd }` from `core/claude.js`'s `getSpendToday()`. `agents/cvWriter.js`: both `generateExecutiveTemplate` call sites now pass `dailySpendUsd` and `dailyBudgetUsd` for the initial server-rendered cost display. `agents/agents.smoke.test.js`: mock updated to include `getSpendToday`; assertion updated from "AI cost:" → "Session:". **Tests (+3):** `/session/daily-usage` exposes endpoint, calls `getSpendToday`, imports from `core/claude`. 479/479 green.
 
 - **feat(profile+mydata): Profile-as-Memory — cvData storage, cap 8→20, CV limit, Coach Conversations fix** —
 

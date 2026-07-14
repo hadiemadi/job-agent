@@ -1,6 +1,6 @@
 const fse = require('fs-extra');
 const { generateExecutiveTemplate } = require('../render/cvHtml');
-const { client, MODEL, createJsonCompletion } = require('../core/claude');
+const { client, MODEL, createJsonCompletion, getSpendToday } = require('../core/claude');
 const { extractJSON, firstText } = require('../core/json');
 const { logDiagnostic } = require('../core/logger');
 const { loadCore } = require('../core/knowledge');
@@ -392,7 +392,8 @@ IMPORTANT: skills must use the {category, items}[] format — group all skills i
   const updatedDisplayHistory = [...(hrDisplayHistory || []), { role: 'expert', text: initialHrMessage }];
 
   const { usd: aiSpendUsd, tokIn: aiTokensIn, tokOut: aiTokensOut } = getSessionUsage();
-  const html = generateExecutiveTemplate(cvData, job, { hrDisplayHistory: updatedDisplayHistory, aiSpendUsd, aiTokensIn, aiTokensOut });
+  const { spendTodayUsd: dailySpendUsd, DAILY_AI_BUDGET_USD: dailyBudgetUsd } = getSpendToday();
+  const html = generateExecutiveTemplate(cvData, job, { hrDisplayHistory: updatedDisplayHistory, aiSpendUsd, aiTokensIn, aiTokensOut, dailySpendUsd, dailyBudgetUsd });
   const filePath = registerOutputFile('html'); // unguessable, session-scoped — see services/session.js
   await fse.outputFile(filePath, html);
 
@@ -441,7 +442,8 @@ Return JSON only:
   const updatedDisplayHistory = [...(hrDisplayHistory || []), { role: 'expert', text: initialHrMessage }];
 
   const { usd: aiSpendUsd, tokIn: aiTokensIn, tokOut: aiTokensOut } = getSessionUsage();
-  const html = generateExecutiveTemplate(updatedCv, job, { hrDisplayHistory: updatedDisplayHistory, aiSpendUsd, aiTokensIn, aiTokensOut });
+  const { spendTodayUsd: dailySpendUsd, DAILY_AI_BUDGET_USD: dailyBudgetUsd } = getSpendToday();
+  const html = generateExecutiveTemplate(updatedCv, job, { hrDisplayHistory: updatedDisplayHistory, aiSpendUsd, aiTokensIn, aiTokensOut, dailySpendUsd, dailyBudgetUsd });
   const filePath = registerOutputFile('html'); // unguessable, session-scoped — see services/session.js
   await fse.outputFile(filePath, html);
 

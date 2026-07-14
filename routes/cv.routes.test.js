@@ -44,3 +44,17 @@ describe('Item 8 — stageUsage wired into job results', () => {
     expect(cvSrc).toMatch(/sessionUsage.*getSessionUsage|getSessionUsage.*sessionUsage/s);
   });
 });
+
+describe('GET /session/daily-usage endpoint', () => {
+  test('cv.routes.js exposes GET /session/daily-usage', () => {
+    expect(cvSrc).toMatch(/router\.get\s*\(\s*['"]\/session\/daily-usage['"]/);
+  });
+
+  test('GET /session/daily-usage calls getSpendToday()', () => {
+    expect(cvSrc).toMatch(/getSpendToday\s*\(\s*\)/);
+  });
+
+  test('GET /session/daily-usage imports getSpendToday from core/claude', () => {
+    expect(cvSrc).toMatch(/getSpendToday.*require.*core\/claude|require.*core\/claude.*getSpendToday/s);
+  });
+});

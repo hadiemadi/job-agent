@@ -6,6 +6,8 @@
 jest.mock('../core/claude', () => ({
   client: { messages: { create: jest.fn() } },
   MODEL: 'claude-sonnet-4-6',
+  getSpendToday: jest.fn().mockReturnValue({ spendTodayUsd: 0, DAILY_AI_BUDGET_USD: 5 }),
+  createJsonCompletion: jest.fn(),
 }));
 
 const { client } = require('../core/claude');
@@ -254,7 +256,7 @@ describe('agents/cvWriter', () => {
     });
     try {
       const html = fs.readFileSync(result.filePath, 'utf8');
-      expect(html).toContain('AI cost: $1.2345');
+      expect(html).toContain('Session: $1.2345');
     } finally {
       fs.rmSync(result.filePath, { force: true });
     }
