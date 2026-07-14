@@ -126,6 +126,8 @@ input[type="range"] { width:100%; cursor:pointer; accent-color:var(--accent); }
 .btn-blue { background:var(--accent); color:white; }
 .btn-blue:hover { background:var(--accent-dark); }
 .btn-blue:disabled { background:#c2c2bd; cursor:not-allowed; }
+.btn-danger { background:#dc2626; color:white; }
+.btn-danger:hover { background:#b91c1c; }
 .btn-green { background:var(--success); color:white; text-decoration:none; display:inline-block; }
 .btn-green:hover { background:#175c33; }
 .btn-ghost { background:var(--surface); color:var(--accent); border:1px solid var(--accent); }

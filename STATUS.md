@@ -5,11 +5,27 @@
 
 **Last updated:** 2026-07-14
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render Starter, always-on, US/Oregon)
-**Tests:** 465/465 green · **origin/main HEAD:** `pending`
+**Tests:** 476/476 green · **origin/main HEAD:** `pending`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **feat(profile+mydata): Profile-as-Memory — cvData storage, cap 8→20, CV limit, Coach Conversations fix** —
+
+  Five coordinated improvements shipped as one PR:
+
+  **1a — Fix Coach Conversations crash:** `routes/auth.routes.js` `/auth/my-data` now includes `listGapMemory` in the Promise.all and maps rows to `coachMemory` (coach_verdict) + `conversationHistory` (hr_statement). The crash (`data.coachMemory.length` on undefined) is gone.
+
+  **1b — CV history limit (5 CVs):** `services/auth.js`: `deleteAllSavedCvs(userId)` added. `routes/auth.routes.js`: `GET /auth/saved-cvs/count` + `DELETE /auth/saved-cvs` (bulk, registered before `:id` route). `public/index.html`: `#cvLimitModal` with "Delete all / Keep 6 / Cancel". `public/app.js`: CV count check at the start of `applyChanges()` — shows dialog at ≥5 saved CVs, blocks or clears history before tailoring. `public/style.css`: `.btn-danger` added.
+
+  **1c — Profile cap 8→20:** `src/ai.js`: storage rule changed to 20 bullets/category, `max_tokens` 1600→2400 in `buildProfileFromCv`, `slice(0,8)→slice(0,20)` in both functions. `routes/cv.routes.js`: all three merge loops use `slice(0,20)`. `services/profileBlock.js`: new active-selection framing ("actively decide which profile facts strengthen the fit for THIS specific role. Use what is relevant. Skip what is not.") + `maxPerCategory=8` injection cap (independent of storage — token cost unchanged).
+
+  **1d — Coach-insight auto-backfill:** Inline re-upload merge loop extracted to `mergeProfileAdditions(userId, cvText, coachInsights)` helper in `routes/cv.routes.js`. After `tailorCvWithReview` completes in the `/rewrite` background task, coach conversation insights from gap review are merged into the profile fire-and-forget — profile learns from every Coach discussion automatically.
+
+  **1e — Store `cvData` in profile (foundation for CV-without-upload):** On every CV upload, `parseCVStructure()`'s full structured result is stored as `profile.cvData` + `profile.cvDataUpdatedAt`. First upload writes it alongside extracted bullets; re-upload re-reads the post-merge profile before attaching. `/auth/prefill` returns `hasCvData` + `cvDataDate` so the frontend can show a "Use my saved profile" button in a future PR (Bundle 2, deferred).
+
+  **Tests (+11):** `/auth/my-data` returns `coachMemory` + `conversationHistory`; `GET /auth/saved-cvs/count` 401/0/N; `DELETE /auth/saved-cvs` 401/ok/route-ordering; `/auth/prefill` hasCvData false/true. `agents/coach.test.js`: updated `buildProfileBlock` header assertion. 476/476 green.
 
 - **fix(model-picker): realistic token estimate 14K → ~70K** —
   `public/app.js`: `_COST_CV_TOKENS` 1500→3000, `_COST_OVERHEAD_TOKENS` 300→2000, `_COST_OUTPUT_TOKENS` 600→1500, `_COST_PIPELINE_STEPS` 4→9, `_COST_BUFFER` 1.2→1.3. New estimate: (3000+jobTokens+2000)×9 input + 1500×9 output ×1.3 ≈ 60–150K tokens for a typical run — matching observed usage. `public/app.test.js`: updated hardcoded expected cost for haiku/no-job-text to match new constants (0.02304 → 0.14625). `scripts/token-stats.js` (new): standalone script to query the last N jobs per pipeline step from the DB and print anonymous min/max/avg/p50 token stats per step — run with `DATABASE_URL=<url> node scripts/token-stats.js [--limit 20]`. 465/465 green.

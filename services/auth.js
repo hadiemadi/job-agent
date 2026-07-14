@@ -122,6 +122,16 @@ async function deleteSavedCv(cvId, userId) {
   return rowCount > 0;
 }
 
+async function deleteAllSavedCvs(userId) {
+  const pool = getPool();
+  if (!pool) return 0;
+  const { rowCount } = await pool.query(
+    'DELETE FROM saved_cvs WHERE user_id = $1',
+    [userId]
+  );
+  return rowCount;
+}
+
 async function getLatestSavedCv(userId) {
   const pool = getPool();
   if (!pool) return null;
@@ -238,7 +248,7 @@ module.exports = {
   createUser, findUserByEmail, findUserByGoogleId, findUserById,
   hashPassword, verifyPassword,
   setUserPreference, getUserPreference,
-  saveCv, listSavedCvs, deleteSavedCv,
+  saveCv, listSavedCvs, deleteSavedCv, deleteAllSavedCvs,
   getLatestSavedCv,
   saveProfilePreferences, getProfilePreferences,
   saveUserProfile, getUserProfile,

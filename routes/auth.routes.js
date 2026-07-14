@@ -4,9 +4,9 @@ const passport = require('../core/passport');
 const { getSession, purgeSessionData } = require('../services/session');
 const {
   createUser, findUserByEmail, findUserById, hashPassword,
-  listSavedCvs, deleteSavedCv,
+  listSavedCvs, deleteSavedCv, deleteAllSavedCvs,
   setUserPreference, getUserPreference, getLatestSavedCv,
-  getProfilePreferences, deleteUserAccount,
+  getProfilePreferences, getUserProfile, deleteUserAccount, listGapMemory,
 } = require('../services/auth');
 const { listDisciplines } = require('../core/knowledge');
 const { sendError } = require('../core/respondError');
@@ -103,9 +103,10 @@ router.get('/auth/my-data', async (req, res) => {
       return sendError(res, '/auth/my-data', 'ERR-AUTH-007');
     }
 
-    const [savedCvs, lastJobText] = await Promise.all([
+    const [savedCvs, lastJobText, gapRows] = await Promise.all([
       listSavedCvs(appSession.userId),
       getUserPreference(appSession.userId, 'last_job_text'),
+      listGapMemory(appSession.userId),
     ]);
 
     res.json({
@@ -113,9 +114,50 @@ router.get('/auth/my-data', async (req, res) => {
       savedCvs,
       lastJobText: lastJobText || null,
       disciplines: listDisciplines(),
+      coachMemory: gapRows.map(r => ({
+        id: r.id,
+        gap_topic: r.gap_slogan,
+        digest_summary: r.coach_verdict || null,
+        created_at: r.updated_at,
+      })),
+      conversationHistory: gapRows
+        .filter(r => r.hr_statement)
+        .map(r => ({
+          id: r.id,
+          gap_topic: r.gap_slogan,
+          digest_summary: r.hr_statement,
+          agent: 'hr',
+          created_at: r.updated_at,
+        })),
     });
   } catch (err) {
     sendError(res, '/auth/my-data', 'ERR-AUTH-004', err);
+  }
+});
+
+// ── GET /auth/saved-cvs/count — return number of saved CVs for the logged-in user ─
+router.get('/auth/saved-cvs/count', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.userId) return sendError(res, '/auth/saved-cvs/count', 'ERR-AUTH-007');
+    const cvs = await listSavedCvs(appSession.userId);
+    res.json({ count: cvs.length });
+  } catch (err) {
+    sendError(res, '/auth/saved-cvs/count', 'ERR-AUTH-004', err);
+  }
+});
+
+// ── DELETE /auth/saved-cvs — bulk-delete ALL saved CVs for the logged-in user ──
+// Must be registered BEFORE DELETE /auth/saved-cvs/:id to avoid "saved-cvs" being
+// swallowed as an :id parameter.
+router.delete('/auth/saved-cvs', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.userId) return sendError(res, '/auth/saved-cvs', 'ERR-AUTH-007');
+    await deleteAllSavedCvs(appSession.userId);
+    res.json({ ok: true });
+  } catch (err) {
+    sendError(res, '/auth/saved-cvs', 'ERR-AUTH-004', err);
   }
 });
 
@@ -147,11 +189,12 @@ router.get('/auth/prefill', async (req, res) => {
     const user = await findUserById(appSession.userId);
     if (!user) { appSession.userId = null; return sendError(res, '/auth/prefill', 'ERR-AUTH-007'); }
 
-    const [preferredModel, lastJobText, latestCv, profilePreferences] = await Promise.all([
+    const [preferredModel, lastJobText, latestCv, profilePreferences, profile] = await Promise.all([
       getUserPreference(appSession.userId, 'preferred_model'),
       getUserPreference(appSession.userId, 'last_job_text'),
       getLatestSavedCv(appSession.userId),
       getProfilePreferences(appSession.userId),
+      getUserProfile(appSession.userId),
     ]);
 
     res.json({
@@ -159,6 +202,8 @@ router.get('/auth/prefill', async (req, res) => {
       lastJobText: lastJobText || null,
       latestCv: latestCv || null,
       profilePreferences: profilePreferences || null,
+      hasCvData: !!(profile && profile.cvData),
+      cvDataDate: (profile && profile.cvDataUpdatedAt) || null,
     });
   } catch (err) {
     sendError(res, '/auth/prefill', 'ERR-AUTH-004', err);

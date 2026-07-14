@@ -13,6 +13,7 @@ jest.mock('../services/auth', () => ({
   saveCv:                     jest.fn(),
   listSavedCvs:               jest.fn(),
   deleteSavedCv:              jest.fn(),
+  deleteAllSavedCvs:          jest.fn(),
   getLatestSavedCv:           jest.fn(),
   saveProfilePreferences:     jest.fn(),
   getProfilePreferences:      jest.fn(),
@@ -61,9 +62,10 @@ const request = require('supertest');
 const app     = require('../server');
 const {
   createUser, findUserByEmail, findUserById, hashPassword, verifyPassword,
-  listSavedCvs, deleteSavedCv,
+  listSavedCvs, deleteSavedCv, deleteAllSavedCvs,
   setUserPreference, getUserPreference, getLatestSavedCv,
-  saveProfilePreferences, getProfilePreferences, deleteUserAccount,
+  saveProfilePreferences, getProfilePreferences, getUserProfile, deleteUserAccount,
+  listGapMemory,
 } = require('../services/auth');
 const { classify } = require('../agents/inputRouter');
 const { listDisciplines } = require('../core/knowledge');
@@ -83,6 +85,9 @@ beforeEach(() => {
   verifyPassword.mockResolvedValue(false);
   listSavedCvs.mockResolvedValue([]);
   deleteSavedCv.mockResolvedValue(true);
+  deleteAllSavedCvs.mockResolvedValue(0);
+  getUserProfile.mockResolvedValue(null);
+  listGapMemory.mockResolvedValue([]);
   setUserPreference.mockResolvedValue(undefined);
   getUserPreference.mockResolvedValue(null);
   getLatestSavedCv.mockResolvedValue(null);
@@ -772,6 +777,154 @@ describe('DELETE /auth/account', () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(deleteUserAccount).toHaveBeenCalledWith(MOCK_USER.id);
+  });
+});
+
+// ── GET /auth/my-data — coachMemory + conversationHistory ─────────────────────
+
+describe('GET /auth/my-data — coachMemory and conversationHistory', () => {
+  const loginAgent = async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    findUserById.mockResolvedValue(MOCK_USER);
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+    return agent;
+  };
+
+  test('returns empty coachMemory and conversationHistory when gap_memory is empty', async () => {
+    const agent = await loginAgent();
+    listGapMemory.mockResolvedValue([]);
+    const res = await agent.get('/auth/my-data');
+    expect(res.status).toBe(200);
+    expect(res.body.coachMemory).toEqual([]);
+    expect(res.body.conversationHistory).toEqual([]);
+  });
+
+  test('maps gap_memory rows to coachMemory (gap_topic + digest_summary)', async () => {
+    const agent = await loginAgent();
+    listGapMemory.mockResolvedValue([
+      { id: 'gm-001', gap_slogan: 'RF domain depth', coach_verdict: 'Candidate has strong RF background', hr_statement: null, updated_at: '2026-07-10T10:00:00Z' },
+    ]);
+    const res = await agent.get('/auth/my-data');
+    expect(res.status).toBe(200);
+    expect(res.body.coachMemory).toHaveLength(1);
+    expect(res.body.coachMemory[0]).toMatchObject({ id: 'gm-001', gap_topic: 'RF domain depth', digest_summary: 'Candidate has strong RF background' });
+  });
+
+  test('conversationHistory only includes rows with hr_statement', async () => {
+    const agent = await loginAgent();
+    listGapMemory.mockResolvedValue([
+      { id: 'gm-001', gap_slogan: 'Leadership experience', coach_verdict: null, hr_statement: 'Led 12-person program team across 3 sites', updated_at: '2026-07-10T10:00:00Z' },
+      { id: 'gm-002', gap_slogan: 'Budget ownership', coach_verdict: 'Has budget experience', hr_statement: null, updated_at: '2026-07-10T11:00:00Z' },
+    ]);
+    const res = await agent.get('/auth/my-data');
+    expect(res.status).toBe(200);
+    expect(res.body.coachMemory).toHaveLength(2);
+    expect(res.body.conversationHistory).toHaveLength(1);
+    expect(res.body.conversationHistory[0]).toMatchObject({
+      id: 'gm-001', gap_topic: 'Leadership experience',
+      digest_summary: 'Led 12-person program team across 3 sites', agent: 'hr',
+    });
+  });
+});
+
+// ── GET /auth/saved-cvs/count ─────────────────────────────────────────────────
+
+describe('GET /auth/saved-cvs/count', () => {
+  test('returns 401 for a guest', async () => {
+    const res = await request(app).get('/auth/saved-cvs/count');
+    expect(res.status).toBe(401);
+    expect(res.body.error_code).toBe('ERR-AUTH-007');
+  });
+
+  test('returns { count: 0 } when user has no saved CVs', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    listSavedCvs.mockResolvedValue([]);
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+    const res = await agent.get('/auth/saved-cvs/count');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ count: 0 });
+  });
+
+  test('returns { count: N } matching the number of saved CVs', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    listSavedCvs.mockResolvedValue([
+      { id: 'cv-001', label: 'CV 1', created_at: new Date() },
+      { id: 'cv-002', label: 'CV 2', created_at: new Date() },
+      { id: 'cv-003', label: 'CV 3', created_at: new Date() },
+    ]);
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+    const res = await agent.get('/auth/saved-cvs/count');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ count: 3 });
+  });
+});
+
+// ── DELETE /auth/saved-cvs (bulk) ─────────────────────────────────────────────
+
+describe('DELETE /auth/saved-cvs (bulk)', () => {
+  test('returns 401 for a guest', async () => {
+    const res = await request(app).delete('/auth/saved-cvs');
+    expect(res.status).toBe(401);
+    expect(res.body.error_code).toBe('ERR-AUTH-007');
+    expect(deleteAllSavedCvs).not.toHaveBeenCalled();
+  });
+
+  test('returns { ok: true } and calls deleteAllSavedCvs for a logged-in user', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    deleteAllSavedCvs.mockResolvedValue(3);
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+    const res = await agent.delete('/auth/saved-cvs');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('ok', true);
+    expect(deleteAllSavedCvs).toHaveBeenCalledWith('usr-001');
+  });
+
+  test('bulk DELETE does not affect DELETE /auth/saved-cvs/:id (route ordering correct)', async () => {
+    // If routes were registered in wrong order, bulk DELETE would match /:id with id='saved-cvs'
+    // This test confirms the specific-CV delete still works by id after the bulk route.
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    deleteSavedCv.mockResolvedValue(true);
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+    const res = await agent.delete('/auth/saved-cvs/cv-001');
+    expect(res.status).toBe(200);
+    expect(deleteSavedCv).toHaveBeenCalledWith('cv-001', 'usr-001');
+    expect(deleteAllSavedCvs).not.toHaveBeenCalled();
+  });
+});
+
+// ── GET /auth/prefill — hasCvData flag ───────────────────────────────────────
+
+describe('GET /auth/prefill — hasCvData flag', () => {
+  test('hasCvData is false when profile has no cvData', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    findUserById.mockResolvedValue(MOCK_USER);
+    getUserProfile.mockResolvedValue({ version: 1, categories: {}, updatedAt: null });
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+    const res = await agent.get('/auth/prefill');
+    expect(res.status).toBe(200);
+    expect(res.body.hasCvData).toBe(false);
+    expect(res.body.cvDataDate).toBeNull();
+  });
+
+  test('hasCvData is true when profile.cvData is present', async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    findUserById.mockResolvedValue(MOCK_USER);
+    getUserProfile.mockResolvedValue({
+      version: 2, categories: {}, cvData: { name: 'Hadi', title: 'TPM' },
+      cvDataUpdatedAt: '2026-07-14T09:00:00Z', updatedAt: '2026-07-14T09:00:00Z',
+    });
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+    const res = await agent.get('/auth/prefill');
+    expect(res.status).toBe(200);
+    expect(res.body.hasCvData).toBe(true);
+    expect(res.body.cvDataDate).toBe('2026-07-14T09:00:00Z');
   });
 });
 

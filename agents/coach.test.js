@@ -36,7 +36,8 @@ describe('buildProfileBlock', () => {
       },
     };
     const block = buildProfileBlock(profile);
-    expect(block).toContain('CANDIDATE PROFILE (confirmed facts across sessions):');
+    expect(block).toContain('CANDIDATE PROFILE — additional background');
+    expect(block).toContain('actively decide which profile facts');
     expect(block).toContain('TechnicalSkills: RF antenna design (3+ years) | MATLAB signal processing');
     expect(block).toContain('Certifications: PMP 2022');
     expect(block).not.toContain('Experience:');

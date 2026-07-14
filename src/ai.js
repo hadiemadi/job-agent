@@ -12,7 +12,7 @@ async function buildProfileFromCv(cvText) {
   try {
     message = await client.messages.create({
       model: 'claude-haiku-4-5',
-      max_tokens: 1600,
+      max_tokens: 2400,
       messages: [{
         role: 'user',
         content: `Extract a structured career profile from this CV. Be exhaustive — capture every distinct fact present. Return JSON exactly:
@@ -28,7 +28,7 @@ async function buildProfileFromCv(cvText) {
     "Projects": []
   }
 }
-Rules: max 8 bullets per category, max 15 words per bullet, no PII (no person names, DOB, salary, phone, email, address). If a category has no relevant facts, leave it as an empty array.
+Rules: max 20 bullets per category, max 15 words per bullet, no PII (no person names, DOB, salary, phone, email, address). If a category has no relevant facts, leave it as an empty array.
 
 CV:
 ${cvText.slice(0, 8000)}`,
@@ -40,10 +40,10 @@ ${cvText.slice(0, 8000)}`,
   try {
     const raw = extractJSON(firstText(message));
     const parsed = JSON.parse(raw);
-    // Enforce caps: max 8 bullets per category
+    // Enforce caps: max 20 bullets per category
     for (const cat of PROFILE_CATEGORIES) {
       if (Array.isArray(parsed.categories?.[cat])) {
-        parsed.categories[cat] = parsed.categories[cat].slice(0, 8);
+        parsed.categories[cat] = parsed.categories[cat].slice(0, 20);
       }
     }
     parsed.updatedAt = new Date().toISOString();
@@ -120,7 +120,7 @@ async function computeProfileAdditions(profile, cvText, coachInsights = []) {
 Rules:
 - A fact is ALREADY IN THE PROFILE if the same underlying information exists in any form, even if worded differently. Do not re-surface rephrased versions of existing bullets.
 - Only return a fact if the concept is completely absent from the profile.
-- Max 8 additions total. Each bullet max 15 words. No PII.
+- Max 20 additions total. Each bullet max 15 words. No PII.
 
 CURRENT PROFILE:
 ${profileSummary}
@@ -140,7 +140,7 @@ Return empty additions array if nothing is genuinely new.`,
   try {
     const raw = extractJSON(firstText(message));
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed.additions) ? parsed.additions.slice(0, 8) : [];
+    return Array.isArray(parsed.additions) ? parsed.additions.slice(0, 20) : [];
   } catch (e) {
     return [];
   }

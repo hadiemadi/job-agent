@@ -451,6 +451,19 @@
 <script>if(window.SpeechRecognition||window.webkitSpeechRecognition)document.body.classList.add('voice-supported');</script>
 <script src="/app.js"></script>
 
+<!-- ── CV history limit dialog ────────────────────────── -->
+<div class="modal-overlay" id="cvLimitModal" style="display:none;">
+  <div class="card modal-box" style="max-width:420px;">
+    <h2>CV history limit reached</h2>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">You already have 5 saved CVs. Tailoring this job will add a 6th.</p>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button class="btn btn-danger" onclick="cvLimitResolve('delete')">Delete all past CVs</button>
+      <button class="btn" onclick="cvLimitResolve('keep')">Keep all 6</button>
+      <button class="btn btn-ghost" onclick="cvLimitResolve('cancel')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Profile update popup (Phase 2) ─────────────────── -->
 <div class="modal-overlay" id="profileUpdateModal" style="display:none;">
   <div class="card modal-box" style="max-width:500px;">

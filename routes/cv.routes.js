@@ -45,6 +45,24 @@ function buildGapInputs(gaps) {
   return { confirmedChanges, gapDiscussions };
 }
 
+// Merges new facts into a user's profile. Used on re-upload and post-tailor coach backfill.
+// Fire-and-forget safe: caller should .catch() the returned promise.
+async function mergeProfileAdditions(userId, cvText, coachInsights = []) {
+  const existing = await getUserProfile(userId);
+  if (!existing) return; // first upload already handled by buildProfileFromCv path
+  const additions = await computeProfileAdditions(existing, cvText, coachInsights);
+  if (!additions || additions.length === 0) return;
+  if (!existing.categories) existing.categories = {};
+  for (const { category, bullet } of additions) {
+    if (!PROFILE_CATEGORIES.includes(category) || !bullet) continue;
+    const arr = Array.isArray(existing.categories[category]) ? existing.categories[category] : [];
+    if (!arr.includes(bullet)) arr.push(bullet);
+    existing.categories[category] = arr.slice(0, 20);
+  }
+  existing.updatedAt = new Date().toISOString();
+  await saveUserProfile(userId, existing);
+}
+
 const router = express.Router();
 
 // /upload-cv is now async (job-queue pattern, kind='reading_cv') so the browser can
@@ -77,21 +95,21 @@ router.post('/upload-cv', upload.single('cv'), async (req, res) => {
             if (!existing) {
               // First upload: full extraction from CV.
               const profile = await buildProfileFromCv(cvText);
-              if (profile) await saveUserProfile(appSession.userId, profile);
+              const base = profile || { version: 2, categories: {}, updatedAt: null };
+              base.cvData = cvData;
+              base.cvDataUpdatedAt = new Date().toISOString();
+              base.updatedAt = base.cvDataUpdatedAt;
+              await saveUserProfile(appSession.userId, base);
             } else {
-              // Re-upload: silently backfill any facts the initial extraction missed.
-              const additions = await computeProfileAdditions(existing, cvText, []);
-              if (additions && additions.length > 0) {
-                if (!existing.categories) existing.categories = {};
-                for (const { category, bullet } of additions) {
-                  if (!PROFILE_CATEGORIES.includes(category) || !bullet) continue;
-                  const arr = Array.isArray(existing.categories[category]) ? existing.categories[category] : [];
-                  if (!arr.includes(bullet)) arr.push(bullet);
-                  existing.categories[category] = arr.slice(0, 8);
-                }
-                existing.updatedAt = new Date().toISOString();
-                await saveUserProfile(appSession.userId, existing);
-              }
+              // Re-upload: silently backfill any facts the initial extraction missed,
+              // and store the latest structured CV backbone for future CV-without-upload.
+              await mergeProfileAdditions(appSession.userId, cvText, []);
+              // Re-read after merge so we don't overwrite the newly merged bullets.
+              const refreshed = await getUserProfile(appSession.userId) || existing;
+              refreshed.cvData = cvData;
+              refreshed.cvDataUpdatedAt = new Date().toISOString();
+              refreshed.updatedAt = refreshed.cvDataUpdatedAt;
+              await saveUserProfile(appSession.userId, refreshed);
             }
           }).catch(e => console.warn('[profile] build/backfill failed (non-fatal):', e.message));
         }
@@ -271,6 +289,19 @@ router.post('/rewrite', async (req, res) => {
           const label = [job.job_title, job.employer_name].filter(Boolean).join(' at ') || 'Tailored CV';
           saveCv(appSession.userId, { cvText: jobParams.cvText, fileRef: filePath, label })
             .catch(e => console.warn('[saveCv] write failed:', e.message));
+
+          // Backfill profile with coach insights learned during gap review (fire-and-forget).
+          const coachInsights = (getGaps() || [])
+            .filter(g => Array.isArray(g.coachConversation) && g.coachConversation.length > 0)
+            .map(g => {
+              const lastAssistant = g.coachConversation.slice().reverse().find(m => m.role === 'assistant');
+              return lastAssistant ? { gapDescription: g.description, coachVerdict: lastAssistant.content } : null;
+            })
+            .filter(Boolean);
+          if (coachInsights.length > 0) {
+            mergeProfileAdditions(appSession.userId, jobParams.cvText, coachInsights)
+              .catch(e => console.warn('[profile-coach-learn]', e.message));
+          }
         }
       } catch (err) {
         let traceId = null;
@@ -512,7 +543,7 @@ router.patch('/profile/category', async (req, res) => {
     if (!Array.isArray(bullets)) return res.status(400).json({ ok: false, error: 'bullets must be an array' });
     const profile = await getUserProfile(appSession.userId) || { version: 1, categories: {} };
     if (!profile.categories) profile.categories = {};
-    profile.categories[category] = bullets.filter(b => typeof b === 'string' && b.trim()).map(b => b.trim()).slice(0, 8);
+    profile.categories[category] = bullets.filter(b => typeof b === 'string' && b.trim()).map(b => b.trim()).slice(0, 20);
     profile.updatedAt = new Date().toISOString();
     await saveUserProfile(appSession.userId, profile);
     res.json({ ok: true });
@@ -556,7 +587,7 @@ router.post('/profile/confirm-additions', async (req, res) => {
       if (!PROFILE_CATEGORIES.includes(category) || !bullet) continue;
       const arr = Array.isArray(profile.categories[category]) ? profile.categories[category] : [];
       if (!arr.includes(bullet)) arr.push(bullet);
-      profile.categories[category] = arr.slice(0, 8);
+      profile.categories[category] = arr.slice(0, 20);
     }
     profile.updatedAt = new Date().toISOString();
     await saveUserProfile(appSession.userId, profile);

@@ -1628,8 +1628,34 @@ function skipProfileAdditions() {
   _profileResolve = null;
 }
 
+let _cvLimitResolve = null;
+function showCvLimitDialog() {
+  show('cvLimitModal');
+  return new Promise(resolve => { _cvLimitResolve = resolve; });
+}
+function cvLimitResolve(choice) {
+  hide('cvLimitModal');
+  if (_cvLimitResolve) _cvLimitResolve(choice);
+  _cvLimitResolve = null;
+}
+
 async function applyChanges() {
   startTailorTimer(); // start elapsed timer from "Apply changes" click
+
+  // For logged-in users, enforce the 5-CV history limit before tailoring.
+  if (_currentUserId) {
+    try {
+      const countRes = await fetch('/auth/saved-cvs/count');
+      if (countRes.ok) {
+        const { count } = await countRes.json();
+        if (count >= 5) {
+          const choice = await showCvLimitDialog();
+          if (choice === 'cancel') return;
+          if (choice === 'delete') await fetch('/auth/saved-cvs', { method: 'DELETE' });
+        }
+      }
+    } catch (e) { /* non-fatal — proceed if count check fails */ }
+  }
 
   // For logged-in users, check if the profile should be updated before tailoring starts.
   if (_currentUserId) {
