@@ -566,6 +566,15 @@ async function loadPrefillData() {
     if (_prefillProfile && card && !card.classList.contains('hidden')) {
       applyProfilePrefill(_prefillProfile);
     }
+    // Show "Use my saved profile" link when a saved CV backbone exists in the profile.
+    if (data.hasCvData) {
+      const opt = el('profileCvOption');
+      if (opt) opt.style.display = 'block';
+      const dateEl = el('profileCvDate');
+      if (dateEl && data.cvDataDate) {
+        dateEl.textContent = '(last updated ' + new Date(data.cvDataDate).toLocaleDateString() + ')';
+      }
+    }
   } catch (e) { /* best-effort — non-fatal */ }
 }
 
@@ -925,6 +934,51 @@ function setStep(i, state, detail) {
   icon.className = 'step-icon ' + state;
   icon.innerHTML = iconMap[state] || (i+1);
   if (det && detail) { det.className = 'step-detail ' + state; det.textContent = detail; }
+}
+
+// ── Use saved profile (skip PDF upload) ───────────────────────────────────────
+// Loads the user's saved profile CV into the session and goes directly to the
+// contact card — identical to the post-upload flow but without a reading_cv job.
+async function useProfileCv() {
+  const btn = el('useProfileCvBtn');
+  const jobText = el('jobText') && el('jobText').value.trim();
+  if (!jobText) { alert('Paste the job description first, then click "Use my saved profile".'); return; }
+  if (!el('consentCheck').checked) { alert('Please tick the consent checkbox before continuing.'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  try {
+    const res = await fetch('/use-profile-cv', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Could not load saved profile. Please upload your CV instead.');
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Use my saved profile <span id="profileCvDate" style="font-size:11px;color:var(--muted-light);"></span>'; }
+      return;
+    }
+    // Replicate the post-upload UI state so the rest of the pipeline is identical.
+    _cvFileName = data.name ? data.name + ' (profile)' : 'Saved profile';
+    _jobText    = jobText;
+    hide('cvPickerGroup');
+    el('fileChosenDisplay').innerHTML = '<span class="fc-icon">👤</span><span class="fc-name">' + escapeHtml(_cvFileName) + '</span>';
+    show('fileChosenDisplay');
+    hide('jobTextGroup');
+    el('jobDescDisplay').innerHTML = renderJobDescriptionHtml(_jobText);
+    show('jobDescDisplay');
+    el('goBtn').disabled = true;
+    hide('goBtn');
+    // Pre-fill contact form fields from the profile's stored CV data.
+    if (data.cvData) {
+      const cd = data.cvData;
+      if (el('ci-name'))     el('ci-name').value     = cd.name     || '';
+      if (el('ci-email'))    el('ci-email').value     = cd.email    || '';
+      if (el('ci-phone'))    el('ci-phone').value     = cd.phone    || '';
+      if (el('ci-location')) el('ci-location').value  = cd.location || '';
+      if (el('ci-linkedin')) el('ci-linkedin').value  = cd.linkedin || '';
+    }
+    if (_prefillProfile) applyProfilePrefill(_prefillProfile);
+    showContactCard();
+  } catch (err) {
+    alert('Could not load saved profile: ' + err.message + '. Please upload your CV instead.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Use my saved profile'; }
+  }
 }
 
 // ── Main entry point ──────────────────────────────────────────────────────────

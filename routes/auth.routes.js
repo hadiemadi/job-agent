@@ -210,6 +210,21 @@ router.get('/auth/prefill', async (req, res) => {
   }
 });
 
+// ── GET /auth/profile-cv — return the structured CV stored in the user's profile ────────────────
+// Returns profile.cvData so the frontend can display when the saved CV was last updated.
+// 404 when the user has no saved profile CV yet (profile absent or no cvData key).
+router.get('/auth/profile-cv', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.userId) return sendError(res, '/auth/profile-cv', 'ERR-AUTH-007');
+    const profile = await getUserProfile(appSession.userId);
+    if (!profile || !profile.cvData) return res.status(404).json({ error: 'No saved profile CV' });
+    res.json({ cvData: profile.cvData, updatedAt: profile.cvDataUpdatedAt });
+  } catch (err) {
+    sendError(res, '/auth/profile-cv', 'ERR-AUTH-004', err);
+  }
+});
+
 // ── POST /auth/preferences — save a single user preference key/value ─────────────
 // Used by the model picker and other per-user settings. Persists to user_preferences table.
 router.post('/auth/preferences', async (req, res) => {

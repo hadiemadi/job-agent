@@ -928,6 +928,41 @@ describe('GET /auth/prefill — hasCvData flag', () => {
   });
 });
 
+// ── GET /auth/profile-cv ──────────────────────────────────────────────────────
+describe('GET /auth/profile-cv', () => {
+  const loginAgent = async () => {
+    passport.authenticate.mockImplementation((strategy, opts, cb) => (req, res, next) => cb(null, MOCK_USER, null));
+    findUserById.mockResolvedValue(MOCK_USER);
+    const agent = request.agent(app);
+    await agent.post('/auth/login').send({ email: 'hadi@example.com', password: 'secret123' });
+    return agent;
+  };
+
+  test('returns 401 ERR-AUTH-007 for a guest', async () => {
+    const res = await request(app).get('/auth/profile-cv');
+    expect(res.status).toBe(401);
+    expect(res.body.error_code).toBe('ERR-AUTH-007');
+  });
+
+  test('returns 404 when the user has no saved profile CV', async () => {
+    const agent = await loginAgent();
+    getUserProfile.mockResolvedValue(null);
+    const res = await agent.get('/auth/profile-cv');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/No saved profile CV/i);
+  });
+
+  test('returns cvData and updatedAt when profile CV exists', async () => {
+    const agent = await loginAgent();
+    const mockCvData = { name: 'Hadi Emadi', title: 'Sr TPM', email: 'hadi@example.com', experience: [], education: [], skills: [] };
+    getUserProfile.mockResolvedValue({ cvData: mockCvData, cvDataUpdatedAt: '2026-07-14T09:00:00Z', categories: {} });
+    const res = await agent.get('/auth/profile-cv');
+    expect(res.status).toBe(200);
+    expect(res.body.cvData).toMatchObject({ name: 'Hadi Emadi', title: 'Sr TPM' });
+    expect(res.body.updatedAt).toBe('2026-07-14T09:00:00Z');
+  });
+});
+
 // ── POST /feedback ────────────────────────────────────────────────────────────
 describe('POST /feedback', () => {
   test('returns {ok:true} and accepts message + contact_email', async () => {

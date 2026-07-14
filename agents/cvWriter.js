@@ -508,4 +508,42 @@ Return JSON only:
   return { revisedText: revised_text, changed: changed !== false, thread: updatedThread };
 }
 
-module.exports = { parseCVStructure, rewriteCVWithChanges, adjustLanguageLevel, applyConcernChange };
+// Reconstructs a flat text representation from a structured cvData object so it can serve
+// as appSession.cvText when the user skips the PDF upload and uses their saved profile instead.
+function cvDataToText(cvData) {
+  if (!cvData) return '';
+  const lines = [];
+  if (cvData.name)     lines.push(cvData.name);
+  if (cvData.title)    lines.push(cvData.title);
+  if (cvData.email)    lines.push(cvData.email);
+  if (cvData.phone)    lines.push(cvData.phone);
+  if (cvData.location) lines.push(cvData.location);
+  if (cvData.linkedin) lines.push(cvData.linkedin);
+  if (cvData.summary)  lines.push('\nSUMMARY\n' + cvData.summary);
+  if (Array.isArray(cvData.key_qualifications) && cvData.key_qualifications.length) {
+    lines.push('\nKEY QUALIFICATIONS');
+    cvData.key_qualifications.forEach(q => lines.push('• ' + q));
+  }
+  if (Array.isArray(cvData.experience) && cvData.experience.length) {
+    lines.push('\nEXPERIENCE');
+    cvData.experience.forEach(e => {
+      lines.push(`${e.role || ''} | ${e.company || ''} | ${e.period || ''}`);
+      (e.bullets || []).forEach(b => lines.push('  • ' + b));
+    });
+  }
+  if (Array.isArray(cvData.education) && cvData.education.length) {
+    lines.push('\nEDUCATION');
+    cvData.education.forEach(e => lines.push(typeof e === 'string' ? e : JSON.stringify(e)));
+  }
+  if (Array.isArray(cvData.skills) && cvData.skills.length) {
+    const skillText = cvData.skills.map(s => {
+      if (typeof s === 'string') return s;
+      if (s.category && Array.isArray(s.items)) return `${s.category}: ${s.items.join(', ')}`;
+      return JSON.stringify(s);
+    }).join('\n');
+    lines.push('\nSKILLS\n' + skillText);
+  }
+  return lines.join('\n');
+}
+
+module.exports = { parseCVStructure, rewriteCVWithChanges, adjustLanguageLevel, applyConcernChange, cvDataToText };

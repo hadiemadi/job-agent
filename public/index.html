@@ -171,6 +171,9 @@
     <div class="form-group" id="cvPickerGroup">
       <label>Your CV <span class="opt">(PDF)</span></label>
       <input type="file" id="cvFile" accept=".pdf" />
+      <div id="profileCvOption" style="display:none; margin-top:6px; font-size:13px; color:var(--muted);">
+        — or — <button type="button" class="link-btn" id="useProfileCvBtn" onclick="useProfileCv()">Use my saved profile <span id="profileCvDate" style="font-size:11px; color:var(--muted-light);"></span></button>
+      </div>
     </div>
     <div class="file-chosen" id="fileChosenDisplay" style="display:none;"></div>
 

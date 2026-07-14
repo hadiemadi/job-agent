@@ -58,3 +58,20 @@ describe('GET /session/daily-usage endpoint', () => {
     expect(cvSrc).toMatch(/getSpendToday.*require.*core\/claude|require.*core\/claude.*getSpendToday/s);
   });
 });
+
+describe('POST /use-profile-cv endpoint', () => {
+  test('cv.routes.js exposes POST /use-profile-cv', () => {
+    expect(cvSrc).toMatch(/router\.post\s*\(\s*['"]\/use-profile-cv['"]/);
+  });
+
+  test('POST /use-profile-cv calls cvDataToText from agents/cvWriter', () => {
+    expect(cvSrc).toMatch(/cvDataToText/);
+    expect(cvSrc).toMatch(/agents\/cvWriter/);
+  });
+
+  test('POST /use-profile-cv sets appSession.cvText and appSession.cvData', () => {
+    const useProfileSection = cvSrc.slice(cvSrc.indexOf('/use-profile-cv'));
+    expect(useProfileSection).toMatch(/appSession\.cvText/);
+    expect(useProfileSection).toMatch(/appSession\.cvData/);
+  });
+});

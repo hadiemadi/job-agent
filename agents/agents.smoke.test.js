@@ -315,6 +315,41 @@ describe('Regression: generateExecutiveTemplate <script> block is syntactically 
   });
 });
 
+describe('cvDataToText — reconstructs flat CV text from structured cvData', () => {
+  const { cvDataToText } = require('./cvWriter');
+
+  test('produces name, title, summary, experience, skills from a full cvData object', () => {
+    const cvData = {
+      name: 'Hadi Emadi', title: 'Sr TPM', email: 'hadi@example.com',
+      phone: '+1-555-0000', location: 'San Jose, CA', linkedin: 'linkedin.com/in/hadi',
+      summary: 'RF hardware TPM with 10 years experience.',
+      key_qualifications: ['Program management', '5G deployment'],
+      experience: [{ role: 'Sr TPM', company: 'Qualcomm', period: '2020–2024', bullets: ['Led $5M program'] }],
+      education: ['BSEE, MIT, 2010'],
+      skills: [{ category: 'PM Tools', items: ['JIRA', 'Confluence'] }],
+    };
+    const text = cvDataToText(cvData);
+    expect(text).toContain('Hadi Emadi');
+    expect(text).toContain('Sr TPM');
+    expect(text).toContain('RF hardware TPM');
+    expect(text).toContain('Sr TPM | Qualcomm | 2020–2024');
+    expect(text).toContain('Led $5M program');
+    expect(text).toContain('PM Tools: JIRA, Confluence');
+  });
+
+  test('handles minimal cvData gracefully — no crash on missing fields', () => {
+    const text = cvDataToText({ name: 'Jane Doe' });
+    expect(text).toContain('Jane Doe');
+    expect(text).not.toContain('undefined');
+    expect(text).not.toContain('null');
+  });
+
+  test('returns empty string for null/undefined input', () => {
+    expect(cvDataToText(null)).toBe('');
+    expect(cvDataToText(undefined)).toBe('');
+  });
+});
+
 describe('Item 12 — wordExport.js skillsSection parses "Category: items" strings from DOM round-trip', () => {
   test('flat "Category: items" strings are rendered as bold-category rows, not bullet list', () => {
     const { generateWordCV } = require('../src/wordExport');

@@ -5,11 +5,25 @@
 
 **Last updated:** 2026-07-14
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render Starter, always-on, US/Oregon)
-**Tests:** 479/479 green · **origin/main HEAD:** `pending`
+**Tests:** 488/488 green · **origin/main HEAD:** `pending`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **feat(bundle2): "Use my saved profile" — skip PDF upload** —
+
+  Logged-in users with an existing profile CV (stored as `profile.cvData` on any previous CV upload) now see a "Use my saved profile (last updated …)" link below the PDF file picker. Clicking it sets the session's `cvText` and `cvData` from the profile, then jumps directly to the contact card — identical to the post-upload flow but without the `reading_cv` background job.
+
+  `agents/cvWriter.js`: new `cvDataToText(cvData)` helper — reconstructs a flat text representation from structured cvData for use as `appSession.cvText`. Handles both string skills and `{category, items[]}` array skills. Exported from `module.exports`.
+
+  `routes/auth.routes.js`: new `GET /auth/profile-cv` — returns `{ cvData, updatedAt }` for logged-in users; 404 when no profile CV exists.
+
+  `routes/cv.routes.js`: new `POST /use-profile-cv` — reads `profile.cvData` from DB, calls `cvDataToText`, sets `appSession.cvData + cvText + cvFileName`, returns `{ ok, name, cvData, updatedAt }`. Import added: `{ cvDataToText } = require('../agents/cvWriter')`.
+
+  `public/index.html`: `#profileCvOption` (hidden by default) + `#useProfileCvBtn` + `#profileCvDate` inserted below the PDF file input inside `#cvPickerGroup`.
+
+  `public/app.js`: `loadPrefillData()` now shows `#profileCvOption` and sets `#profileCvDate` when `data.hasCvData` is true. New `useProfileCv()` function: validates consent + job text, POSTs `/use-profile-cv`, replicates the post-upload UI state (hide form, show fileChosen with 👤 icon, show job display), pre-fills contact fields from `cvData`, then calls `showContactCard()`. **Tests (+9):** `GET /auth/profile-cv` (401 / 404 / 200 with cvData); `POST /use-profile-cv` source assertions; `cvDataToText` unit tests (full / minimal / null). 488/488 green.
 
 - **fix(ui+cost): toggle-row layout fix + daily AI spend display** —
 

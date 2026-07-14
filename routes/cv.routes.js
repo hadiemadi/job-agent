@@ -4,6 +4,7 @@ const path = require('path');
 const fse = require('fs-extra');
 const PizZip = require('pizzip');
 const { readCV, parseCVStructure, adjustLanguageLevel, classify, generateComparisonTemplate, draftFromSidebarDiscussion } = require('../agent');
+const { cvDataToText } = require('../agents/cvWriter');
 const { generateWordCV, generateWordCVAlt } = require('../src/wordExport');
 const { generateWordFromTemplate } = require('../src/wordTemplateExport');
 const { upload, templateUpload } = require('../services/uploads');
@@ -522,6 +523,25 @@ router.get('/session/usage', (req, res) => {
 router.get('/session/daily-usage', (req, res) => {
   try { const { spendTodayUsd, DAILY_AI_BUDGET_USD } = getSpendToday(); res.json({ usd: spendTodayUsd, budgetUsd: DAILY_AI_BUDGET_USD }); }
   catch (_) { res.json({ usd: 0, budgetUsd: 5 }); }
+});
+
+// Loads the user's saved profile CV into the active session, bypassing the PDF upload step.
+// Sets appSession.cvText (flat text) and appSession.cvData (structured) from profile.cvData.
+// Returns { ok, name, cvData, updatedAt } on success so the client can pre-fill the contact form.
+router.post('/use-profile-cv', async (req, res) => {
+  try {
+    const appSession = getSession();
+    if (!appSession.userId) return res.status(401).json({ error: 'Not logged in' });
+    const profile = await getUserProfile(appSession.userId);
+    if (!profile || !profile.cvData) return res.status(404).json({ error: 'No saved CV data. Upload a CV first to build your profile.' });
+    appSession.cvData = profile.cvData;
+    appSession.cvText = cvDataToText(profile.cvData);
+    appSession.cvPath = null;
+    appSession.cvFileName = profile.cvData.name ? `${profile.cvData.name} (profile)` : 'Profile CV';
+    res.json({ ok: true, name: profile.cvData.name || null, cvData: profile.cvData, updatedAt: profile.cvDataUpdatedAt || null });
+  } catch (err) {
+    sendError(res, '/use-profile-cv', 'ERR-CV-006', err);
+  }
 });
 
 // Profile page (Phase 5) — serve the static profile editor.
