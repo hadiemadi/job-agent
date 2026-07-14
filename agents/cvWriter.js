@@ -240,7 +240,9 @@ function buildGapDiscussionLines(gapDiscussions) {
     const discussed = g.coachConversation && g.coachConversation.length > 0;
     const outcome = g.status === 'accepted'
       ? (g.refinedDescription ? `added to your CV as: "${g.refinedDescription}"` : 'added to your CV')
-      : 'skipped — not added';
+      : g.status === 'no-user-response'
+        ? 'user did not respond — agent applied judgment'
+        : 'skipped — not added';
     const discussedNote = discussed ? ' (after discussing it with your Career Coach)' : '';
     return `- **${g.description}** — ${outcome}${discussedNote}`;
   });
@@ -265,7 +267,7 @@ function buildSessionSummary(preferences, originalCvData, tailoredCvData, modifi
 }
 
 // Tailor CV applying specific changes from HR review + client confirmations
-async function rewriteCVWithChanges(cvText, job, autoChanges, confirmedChanges, recommendedSections, originalName, confirmedContact, thread = [], preferences, hrDisplayHistory = [], originalCvData = null, gapDiscussions = []) {
+async function rewriteCVWithChanges(cvText, job, autoChanges, confirmedChanges, recommendedSections, originalName, confirmedContact, thread = [], preferences, hrDisplayHistory = [], originalCvData = null, gapDiscussions = [], agentDecideStatements = []) {
   const allChanges = [...(autoChanges || []), ...(confirmedChanges || [])];
   // autoChanges are already directly evidenced in the CV (HR review's safe, auto-applied
   // edits) — confirmedChanges are different in kind: each one is a single sentence HR drafted
@@ -318,7 +320,7 @@ ${customSections.length ? `Custom sections to add under "additional_sections": $
 
 CHANGES TO APPLY:
 ${changesText}
-
+${agentDecideStatements && agentDecideStatements.length ? `\nOPTIONAL INCLUSIONS — HR drafted these statements but the candidate did not respond. Include ONLY if the statement is directly and clearly supported by existing content in the CV. Omit entirely if speculative, overstated, or unsupported:\n${agentDecideStatements.map(s => `- "${s.description}"`).join('\n')}` : ''}
 Return JSON only:
 {
   "cv": {

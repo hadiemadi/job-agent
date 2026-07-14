@@ -17,13 +17,13 @@ const MAX_REVISION_PASSES = 2;
 // review so the caller can surface it, rather than silently shipping or silently blocking.
 async function tailorCvWithReview({
   cvText, job, autoChanges, confirmedChanges, recommendedSections, originalName,
-  confirmedContact, thread, preferences, hrDisplayHistory, originalCvData, gapDiscussions,
+  confirmedContact, thread, preferences, hrDisplayHistory, originalCvData, gapDiscussions, agentDecideStatements = [],
 }) {
   let writerResult;
   try {
     writerResult = await rewriteCVWithChanges(
       cvText, job, autoChanges, confirmedChanges, recommendedSections, originalName,
-      confirmedContact, thread, preferences, hrDisplayHistory, originalCvData, gapDiscussions
+      confirmedContact, thread, preferences, hrDisplayHistory, originalCvData, gapDiscussions, agentDecideStatements
     );
   } catch (err) { err.code = 'ERR-CV-004a'; err.stage = 'initial_draft'; throw err; }
 
@@ -43,7 +43,7 @@ async function tailorCvWithReview({
       writerResult = await rewriteCVWithChanges(
         cvText, job, [], requiredEditChanges, recommendedSections, originalName,
         confirmedContact, writerResult.thread, preferences, writerResult.hrDisplayHistory,
-        originalCvData, gapDiscussions
+        originalCvData, gapDiscussions, []
       );
     } catch (err) { err.code = 'ERR-CV-004c'; err.stage = `revision_draft_${passes + 1}`; throw err; }
     try {

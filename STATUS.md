@@ -5,11 +5,21 @@
 
 **Last updated:** 2026-07-14
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render Starter, always-on, US/Oregon)
-**Tests:** 488/488 green · **origin/main HEAD:** `pending`
+**Tests:** 491/491 green · **origin/main HEAD:** `pending`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **feat(gaps): unanswered gaps → agent decides** —
+
+  `buildGapInputs` (`routes/cv.routes.js`) now distinguishes undecided gaps from deliberate skips. Undecided gaps (no `userDecision` or `userDecision === 'undecided'`) where HR already drafted a `proposedStatement` are collected into `agentDecideStatements` and passed to the tailor agent with the instruction "Include ONLY if factually supported by the CV." Undecided gaps also receive `status: 'no-user-response'` in `gapDiscussions` instead of the old `'skipped'`.
+
+  `services/workflows.js`: `tailorCvWithReview` destructuring gains `agentDecideStatements = []`; passed to the first write pass. Revision passes always send `[]` (only the initial write uses agent judgment).
+
+  `agents/cvWriter.js`: `rewriteCVWithChanges` gains 13th param `agentDecideStatements = []`; when present, injects an "OPTIONAL INCLUSIONS" section into the tailor prompt after the confirmed changes block. `buildGapDiscussionLines` now renders `status === 'no-user-response'` as "user did not respond — agent applied judgment" instead of "skipped — not added".
+
+  **Tests (+3):** source assertions that `buildGapInputs` defines `no-user-response`, emits `agentDecideStatements`, and checks `proposedStatement`. 491/491 green.
 
 - **feat(bundle2): "Use my saved profile" — skip PDF upload** —
 

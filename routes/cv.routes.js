@@ -26,7 +26,11 @@ const { getSpendToday } = require('../core/claude');
 // a logic error elsewhere in the lifecycle (setUserDecision guards 'added' to gaps that already
 // have a draft) — skip it defensively rather than insert the unverified slogan or throw and
 // block the whole tailoring step over one bad record.
+// Gaps the candidate never responded to (undecided/null) get status 'no-user-response'. When
+// HR already drafted a statement for them, they are also returned in agentDecideStatements so
+// the tailor agent can judge whether to include each one based on CV evidence and severity.
 function buildGapInputs(gaps) {
+  const isUndecided = g => !g.userDecision || g.userDecision === 'undecided';
   const confirmedChanges = gaps
     .filter(g => g.userDecision === 'added')
     .map(g => {
@@ -37,14 +41,18 @@ function buildGapInputs(gaps) {
       return { description: g.proposedStatement, rationale: g.rationale };
     })
     .filter(Boolean);
+  // HR-drafted statements for gaps the user never responded to — agent decides whether to include.
+  const agentDecideStatements = gaps
+    .filter(g => isUndecided(g) && g.proposedStatement)
+    .map(g => ({ description: g.proposedStatement, rationale: g.rationale || '' }));
   const gapDiscussions = gaps.map(g => ({
     description: g.description,
     rationale: g.rationale,
-    status: g.userDecision === 'added' ? 'accepted' : 'skipped',
+    status: g.userDecision === 'added' ? 'accepted' : isUndecided(g) ? 'no-user-response' : 'skipped',
     coachConversation: g.coachConversation,
     refinedDescription: g.proposedStatement || null,
   }));
-  return { confirmedChanges, gapDiscussions };
+  return { confirmedChanges, gapDiscussions, agentDecideStatements };
 }
 
 // Merges new facts into a user's profile. Used on re-upload and post-tailor coach backfill.
@@ -220,7 +228,7 @@ router.post('/rewrite', async (req, res) => {
     const recommendedSections = (appSession.hrReview || {}).recommended_sections;
     const originalName = (appSession.cvData || {}).name;
     const autoChanges = (appSession.hrReview || {}).auto_changes || [];
-    const { confirmedChanges, gapDiscussions } = buildGapInputs(getGaps());
+    const { confirmedChanges, gapDiscussions, agentDecideStatements } = buildGapInputs(getGaps());
 
     // Snapshot all pipeline inputs from session NOW (before response ends the request scope).
     const jobParams = {
@@ -231,7 +239,7 @@ router.post('/rewrite', async (req, res) => {
       preferences: appSession.clientPreferences,
       hrDisplayHistory: appSession.hrDisplayHistory,
       originalCvData: appSession.cvData,
-      gapDiscussions,
+      gapDiscussions, agentDecideStatements,
     };
 
     // Diagnostic: capture input state at /rewrite call time to isolate ERR-CV-004 root causes.

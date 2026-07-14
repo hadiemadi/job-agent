@@ -75,3 +75,18 @@ describe('POST /use-profile-cv endpoint', () => {
     expect(useProfileSection).toMatch(/appSession\.cvData/);
   });
 });
+
+describe('buildGapInputs — undecided gaps get no-user-response status', () => {
+  test('cv.routes.js defines buildGapInputs', () => {
+    expect(cvSrc).toMatch(/function buildGapInputs/);
+  });
+
+  test('buildGapInputs emits no-user-response for undecided gaps', () => {
+    expect(cvSrc).toMatch(/no-user-response/);
+  });
+
+  test('buildGapInputs collects agentDecideStatements for undecided gaps with proposedStatement', () => {
+    expect(cvSrc).toMatch(/agentDecideStatements/);
+    expect(cvSrc).toMatch(/proposedStatement/);
+  });
+});
