@@ -748,11 +748,11 @@ describe('Cost estimator — calcCostEstimate', () => {
   });
 
   test('returns a positive number for haiku with no job text', () => {
-    // 1500 + 0 + 300 = 1800 per step; 4 steps = 7200 input; 600*4 = 2400 output
-    // rawCost = (7200/1e6)*1 + (2400/1e6)*5 = 0.0072 + 0.012 = 0.0192; *1.2 = 0.02304
+    // (3000 + 0 + 2000) * 9 = 45000 input; 1500 * 9 = 13500 output (haiku: $1/$5 per MTok)
+    // rawCost = (45000/1e6)*1 + (13500/1e6)*5 = 0.045 + 0.0675 = 0.1125; *1.3 = 0.14625
     const cost = window.calcCostEstimate('claude-haiku-4-5', 0);
     expect(typeof cost).toBe('number');
-    expect(cost).toBeCloseTo(0.02304, 4);
+    expect(cost).toBeCloseTo(0.14625, 4);
   });
 
   test('opus costs more than haiku for the same job text length', () => {

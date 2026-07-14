@@ -367,14 +367,15 @@ const MODEL_OPTIONS = [
   { id: 'deepseek-chat',    provider: 'DeepSeek',  label: 'DeepSeek V4 Pro', accuracy: 'Strong accuracy',     speed: 'Balanced speed', inputPer1M: 0.435, outputPer1M: 0.87 },
 ];
 
-// Fixed pipeline assumptions for cost estimate: 4 pipeline steps (read CV, parse job,
-// HR review, tailor), average CV ≈ 1500 tokens, 300 overhead tokens per step, output ≈ 600
-// tokens per step. All estimates include a 20% buffer for retries, system prompts, etc.
-const _COST_CV_TOKENS = 1500;
-const _COST_OVERHEAD_TOKENS = 300;
-const _COST_OUTPUT_TOKENS = 600;
-const _COST_PIPELINE_STEPS = 4;
-const _COST_BUFFER = 1.2;
+// Pipeline token estimate. Real observed usage is 60K–150K tokens per full run.
+// Each major call carries the full CV + job + system prompt in its context, so
+// per-call overhead dominates. Steps: HR review + coach gap analysis + ~4 gap
+// refinements + CV tailor + profile calls ≈ 8–10 calls total.
+const _COST_CV_TOKENS = 3000;       // typical professional CV (was 1500 — too low)
+const _COST_OVERHEAD_TOKENS = 2000; // system prompt overhead per call (was 300)
+const _COST_OUTPUT_TOKENS = 1500;   // avg output per call — HR JSON + tailor are large (was 600)
+const _COST_PIPELINE_STEPS = 9;     // HR + coach + ~4 gap refines + tailor + 2 profile calls (was 4)
+const _COST_BUFFER = 1.3;           // 30% buffer for retries and thread history growth (was 1.2)
 
 let _selectedModel = 'deepseek-chat';
 let _prefillProfile = null; // profile preferences fetched from DB on login; null for guests/first-time users

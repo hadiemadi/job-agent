@@ -3,13 +3,16 @@
 > Single source of truth for project state. Kept current automatically by Claude
 > Code (see CLAUDE.md). Update the date whenever it changes.
 
-**Last updated:** 2026-07-13
+**Last updated:** 2026-07-14
 **Repo:** `hadiemadi/job-agent` (branch `main`) · **Live:** `jobseeker-rpzr.onrender.com` (Render Starter, always-on, US/Oregon)
 **Tests:** 465/465 green · **origin/main HEAD:** `pending`
 
 ---
 
 ## ✅ Recently shipped (on `main`)
+
+- **fix(model-picker): realistic token estimate 14K → ~70K** —
+  `public/app.js`: `_COST_CV_TOKENS` 1500→3000, `_COST_OVERHEAD_TOKENS` 300→2000, `_COST_OUTPUT_TOKENS` 600→1500, `_COST_PIPELINE_STEPS` 4→9, `_COST_BUFFER` 1.2→1.3. New estimate: (3000+jobTokens+2000)×9 input + 1500×9 output ×1.3 ≈ 60–150K tokens for a typical run — matching observed usage. `public/app.test.js`: updated hardcoded expected cost for haiku/no-job-text to match new constants (0.02304 → 0.14625). `scripts/token-stats.js` (new): standalone script to query the last N jobs per pipeline step from the DB and print anonymous min/max/avg/p50 token stats per step — run with `DATABASE_URL=<url> node scripts/token-stats.js [--limit 20]`. 465/465 green.
 
 - **fix(hr): block fabricated CV claims from unanswered Coach questions + tighten lean rule** —
   Root cause: `/hr/refine` was passing Coach's unanswered opening question as `coachFinalStatement` to HR. HR treated the Coach's hypothesis ("do you have photonics coursework?") as a confirmed fact and drafted a CV statement based on it — fabricating credentials the candidate never claimed.
